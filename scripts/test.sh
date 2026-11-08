@@ -31,7 +31,7 @@ TESTS=(
     review-integration
 )
 
-RUN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/nightralph-testrun-XXXXXX")
+RUN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/redeye-testrun-XXXXXX")
 
 cleanup () {
     rm -rf "$RUN_TMP" || true

@@ -157,7 +157,7 @@ real terminal. None of them replaces an automated test.
 | stable-ticket-list.AC1.1, AC1.2, AC1.3, AC1.5, AC2.1 | The mock stream records bytes but does not show that a real terminal repaints without flicker, stale rows or rows jumping between waves. | Fixture B: watch the list across waves. Rows keep their positions, done rows stay green, the failed row stays red, and nothing vanishes or reappears. Resize the window mid-run. |
 | stable-ticket-list.AC1.9 | Pagination is unit-tested against `stream.rows`; real scrolling feel is not. | Run `npm run demo` in a window a few rows shorter than the ticket list, or fixture B with more tickets. The in-progress ticket stays visible, and the "more above" marker appears when scrolled. |
 | stable-ticket-list.AC3.1 | The regex proves the numbers are there, not that the header reads well. | Any run above: header reads like `Wave 2/3 - 5/8 done - 62%`, starts at 0% and ends at 100% only when every row is green. |
-| stable-ticket-list.AC4.4 | The display side is covered by the `:702` test; the full CLI path to the terminal is not. | Fixture C: `nightralph claude` in a TTY prints the finish summary, with no status grid, and exits 0. |
+| stable-ticket-list.AC4.4 | The display side is covered by the `:702` test; the full CLI path to the terminal is not. | Fixture C: `redeye claude` in a TTY prints the finish summary, with no status grid, and exits 0. |
 | stable-ticket-list.AC4.5 | The test compares output with and without the new calls, not with the previous release. | Run fixture B piped through `cat` (not a TTY) on this branch and on `0.0.52`, then diff the two outputs, leaving out agent output. Only wave lines and the summary should appear, in the same format. |
 
 ### Fixtures for human checks

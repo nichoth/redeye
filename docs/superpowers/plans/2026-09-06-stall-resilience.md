@@ -362,7 +362,7 @@ if (outcome.kind === 'no-commits') {
         repoRoot,
         progressPath,
         progress,
-        `nightralph: ${ticket.filename} ` +
+        `redeye: ${ticket.filename} ` +
         'no commits',
         d,
     )

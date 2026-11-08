@@ -11,11 +11,11 @@ tree.
 
 ## Prerequisites
 
-1. In `/Users/nick/code/nightralph` run `npm run build && npm test`.
+1. In `/Users/nick/code/redeye` run `npm run build && npm test`.
    Expect exit 0 and `# fail 0`. Delete any `mock-change-*.txt` left
    in the repo root.
 2. Build a throwaway two-feature repo. Set
-   `NR=/Users/nick/code/nightralph` and
+   `NR=/Users/nick/code/redeye` and
    `MOCK=$NR/test/mock-agent-pass.js`. Make a temp dir with
    `T=$(mktemp -d)`, then `mkdir $T/demo && cd $T/demo`. Run
    `git init -q -b main --template=` (the empty template keeps the
@@ -58,8 +58,8 @@ tree.
 | Step | Action | Expected |
 |------|--------|----------|
 | 1 | `node $NR/dist/index.js $MOCK --spec alpha-feat --dry-run; echo $?` | First line `Nothing to run: every ready-for-agent ticket is waiting on a blocker.` Paragraphs say alpha-feat/01 waits on `beta-feat/02 (ready-for-agent, not in run)`, `beta-feat/09 (not found)` for alpha-feat/03, and that `beta-fet` (alpha-feat/04) looks like a feature name. Exit 0, no wave listing |
-| 2 | Same command without `--dry-run` | Same message, exit 0. `git branch --list 'nightralph--*'` is empty, `git branch --show-current` is `main`, `git status` is clean, every alpha ticket still says `ready-for-agent` |
-| 3 | `node $NR/dist/index.js nightralph-no-such-provider --spec alpha-feat; echo $?` | Same stop message, no `Provider ... not found on PATH` line, exit 0, still no `nightralph--*` branch |
+| 2 | Same command without `--dry-run` | Same message, exit 0. `git branch --list 'redeye--*'` is empty, `git branch --show-current` is `main`, `git status` is clean, every alpha ticket still says `ready-for-agent` |
+| 3 | `node $NR/dist/index.js redeye-no-such-provider --spec alpha-feat; echo $?` | Same stop message, no `Provider ... not found on PATH` line, exit 0, still no `redeye--*` branch |
 | 4 | Read the message as a new user would | It is clear which feature to select or finish and which `**Blocked by:**` line to fix |
 
 ## End to end: a cross-feature blocker goes from pending to done
@@ -72,14 +72,14 @@ reports the missing ref and the typo.
    `**Status:** done` and commit.
 2. Run `node $NR/dist/index.js $MOCK --spec alpha-feat --test-cmd
    true --retry-delay 0 --retries 0 --no-review; echo $?`.
-3. Expect `Created branch nightralph--alpha-feat`. The status display
+3. Expect `Created branch redeye--alpha-feat`. The status display
    runs alpha-feat/01 in wave 1, then 02 and 04 in wave 2; the
    alpha-feat/03 row is blocked by `beta-feat/09 (not found)`.
 4. The finish summary starts `Finished: 3 completed, 1 remaining`. A
    paragraph lists `beta-feat/09 (not found)` against alpha-feat/03
    and another names `beta-fet` and alpha-feat/04. Exit code 1,
    because 03 is still `ready-for-agent`.
-5. `git branch --show-current` is `nightralph--alpha-feat`. Its 01,
+5. `git branch --show-current` is `redeye--alpha-feat`. Its 01,
    02 and 04 tickets say `**Status:** done`, 03 says
    `ready-for-agent`, and `git status` is clean.
 
@@ -91,21 +91,21 @@ back to the launch branch.
 1. Make a fresh copy of the fixture, but give alpha-feat a single
    ticket, 01, blocked by `None`. Leave beta-feat 02
    `ready-for-agent`. Commit on `main`.
-2. `git checkout -qb nightralph--alpha-feat`, change alpha 01's
+2. `git checkout -qb redeye--alpha-feat`, change alpha 01's
    field to `beta-feat 02`, commit, then `git checkout -q main`.
 3. Run `node $NR/dist/index.js $MOCK --spec alpha-feat; echo $?`.
-   Expect `Resumed nightralph--alpha-feat`, then
-   `Nothing to run on nightralph--alpha-feat. Back on main.` and the
+   Expect `Resumed redeye--alpha-feat`, then
+   `Nothing to run on redeye--alpha-feat. Back on main.` and the
    stop text naming `beta-feat/02`. Exit 0. `git branch
    --show-current` is `main` and the integration branch still exists.
 4. Variant: on `main`, set alpha 01 to `beta-feat 02` and commit, run
-   `git branch -f nightralph--alpha-feat main`, then run again. You
+   `git branch -f redeye--alpha-feat main`, then run again. You
    still get `Resumed`, then the stop, then you are back on `main`:
    the first scan did not stop the run before it resumed.
 5. AC3.5 variant: on the integration branch set alpha 01 to `done`,
    commit, return to `main`, and run with `--test-cmd true
    --no-review`. Expect exit 0, no `Nothing to run` text, and
-   `git branch --show-current` reports `nightralph--alpha-feat`.
+   `git branch --show-current` reports `redeye--alpha-feat`.
 
 ## End to end: in-place (non-git) typo
 

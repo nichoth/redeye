@@ -79,9 +79,9 @@ Constants and types:
 export const MAX_OWN_ENTRIES = 4
 export const MAX_ENTRY_CHARS = 4000
 export const LOG_TAIL_LINES = 40
-export const NOTES_PATH = '.nightralph/notes.md'
+export const NOTES_PATH = '.redeye/notes.md'
 
-const SENTINEL_PREFIX = '<!-- nightralph:entry'
+const SENTINEL_PREFIX = '<!-- redeye:entry'
 export const TRUNCATED_MARKER = '[truncated]'
 
 export const LEARNING_OUTCOMES = [
@@ -141,7 +141,7 @@ per the repo's `local/union-spacing` lint rule (existing precedent:
 `renderEntry(input:EntryInput):string` returns one entry:
 
 1. Sentinel line:
-   `<!-- nightralph:entry ticket=<encodeKey(key)>
+   `<!-- redeye:entry ticket=<encodeKey(key)>
    attempt=<n> outcome=<o>[ timedout=true] -->` (one line).
    `timedout=true` only when the variant has `run.timedOut` true.
    `encodeKey` escapes only `%` and whitespace, so the key stays
@@ -180,7 +180,7 @@ per the repo's `local/union-spacing` lint rule (existing precedent:
 Sanitizing: every free-text field that comes from outside
 (`run.notes`, `logTail`, `error`, `stderr`, `run.completedItems`) has
 every
-occurrence of `SENTINEL_PREFIX` replaced with `<!-- nightralph-entry`
+occurrence of `SENTINEL_PREFIX` replaced with `<!-- redeye-entry`
 (hyphen instead of colon) before rendering, so it cannot start a new
 entry when parsed.
 
@@ -222,7 +222,7 @@ are out of scope)
 
 `parseEntries(text:string):LearningEntry[]`
 - Split on `\n`. A line is a sentinel when it matches
-  `/^<!-- nightralph:entry (.*) -->$/`. Lines before the first sentinel
+  `/^<!-- redeye:entry (.*) -->$/`. Lines before the first sentinel
   are ignored. Each sentinel starts a new entry; following lines up to
   the next sentinel are its body.
 - Parse the sentinel's attributes by splitting the capture on spaces
@@ -331,7 +331,7 @@ checked.
   parsed entry against the inputs, in order. Include a key with a
   character that needs encoding (e.g. a space in the feature name).
 - AC1.2: notes that contain the literal sentinel prefix
-  (`<!-- nightralph:entry ticket=x:1 attempt=1 outcome=done -->`) on
+  (`<!-- redeye:entry ticket=x:1 attempt=1 outcome=done -->`) on
   its own line; the rendered entry parses to exactly one entry with the
   original key.
 - AC1.2 (supporting): sentinels with an unknown outcome, a

@@ -15,7 +15,7 @@ function makeTempProject ():{
     docsTemplatesDir:string;
 } {
     const base = mkdtempSync(
-        join(tmpdir(), 'nightralph-test-')
+        join(tmpdir(), 'redeye-test-')
     )
     const projectDir = join(base, 'project')
     mkdirSync(projectDir, { recursive: true })
@@ -404,11 +404,11 @@ test('setup creates AGENTS.md with managed markers when no file exists', t => {
         join(projectDir, 'AGENTS.md'), 'utf8'
     )
     t.ok(
-        content.includes('<!-- nightralph:start -->'),
+        content.includes('<!-- redeye:start -->'),
         'should contain start marker'
     )
     t.ok(
-        content.includes('<!-- nightralph:end -->'),
+        content.includes('<!-- redeye:end -->'),
         'should contain end marker'
     )
     t.ok(
@@ -442,11 +442,11 @@ test('setup appends managed section to existing AGENTS.md without markers', t =>
         'should preserve existing instructions'
     )
     t.ok(
-        content.includes('<!-- nightralph:start -->'),
+        content.includes('<!-- redeye:start -->'),
         'should append start marker'
     )
     t.ok(
-        content.includes('<!-- nightralph:end -->'),
+        content.includes('<!-- redeye:end -->'),
         'should append end marker'
     )
     t.ok(
@@ -466,9 +466,9 @@ test('setup replaces only managed section in existing AGENTS.md', t => {
         '',
         'Custom instructions.',
         '',
-        '<!-- nightralph:start -->',
+        '<!-- redeye:start -->',
         'old managed content',
-        '<!-- nightralph:end -->',
+        '<!-- redeye:end -->',
         '',
         'More custom content.',
         '',

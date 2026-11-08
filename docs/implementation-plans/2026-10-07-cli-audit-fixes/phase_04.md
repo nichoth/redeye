@@ -107,7 +107,7 @@ any test in `test/retry.test.ts`.
 
 Run: `npm publish --dry-run; echo "exit=$?"`
 Expected: the test run stops at the failing suite. The output starts
-with the `> nightralph@<version> prepublishOnly` header, then an `npm
+with the `> redeye@<version> prepublishOnly` header, then an `npm
 error command failed` block naming the command `npm run build && npm
 test` (the script name appears only in that header, not in the error
 block). No `Tarball Contents` listing is printed, and the exit code is

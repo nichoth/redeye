@@ -335,7 +335,7 @@ passes the value to the runners, including the positional in-place
 
 Hermetic repos: every new test that calls `initTempGitRepo()`
 creates `const templateDir = mkdtempSync(join(tmpdir(),
-'nightralph-tpl-'))`, calls `initTempGitRepo({ templateDir })`, and
+'redeye-tpl-'))`, calls `initTempGitRepo({ templateDir })`, and
 runs `rmSync(templateDir, { recursive:true, force:true })` in
 `finally` (precedent: `test/integration.test.ts:1023-1024`). A plain
 `initTempGitRepo()` picks up the machine's `init.templateDir`, whose

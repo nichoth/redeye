@@ -18,7 +18,7 @@ covers AC4.3 and end-to-end checks through the real CLI.
   `info/exclude` may be a symlink shared by every repo. Create every
   scratch repo below with `git init --template="$TPL"` (an empty
   directory) and `core.excludesFile=/dev/null`.
-- Scratch setup, used by the end-to-end sections. nightralph creates
+- Scratch setup, used by the end-to-end sections. redeye creates
   worktrees as siblings of the repo, so the repo gets its own parent
   directory:
   ```bash
@@ -42,7 +42,7 @@ covers AC4.3 and end-to-end checks through the real CLI.
   the provider. It needs `MOCK_RECORD_DIR` and `MOCK_MODE` (`pass`,
   `fail`, `fail-once`, `no-commit`, `hang`). It writes one JSON
   record per invocation (`time`, `cwd`, `token`, `prompt`) into
-  `$REC` and writes `notes-token <uuid>` to `.nightralph/notes.md`.
+  `$REC` and writes `notes-token <uuid>` to `.redeye/notes.md`.
 - Cleanup after each scenario: `rm -rf "$ROOT" "$TPL" "$REC"` (run
   `git -C "$ROOT/demo" worktree prune` first if a run was
   interrupted).
@@ -52,7 +52,7 @@ covers AC4.3 and end-to-end checks through the real CLI.
 | Step | Action | Expected |
 |------|--------|----------|
 | 1 | From the repo root, run the `node --input-type=module -e "import { renderPrompt } from './dist/orchestrator.js' ..."` snippet in `test-requirements.md` ("Human verification: AC4.3") and read the section after `---- AGENT INSTRUCTIONS ----`. | The prompt prints without error. |
-| 2 | Find the notes rule. | It tells the agent to keep `.nightralph/notes.md` (create the directory), update it after each checklist item and as soon as it hits a blocker, and never commit, `git add`, or delete it. |
+| 2 | Find the notes rule. | It tells the agent to keep `.redeye/notes.md` (create the directory), update it after each checklist item and as soon as it hits a blocker, and never commit, `git add`, or delete it. |
 | 3 | Find the commit rule and the INTEGRITY rule. | The commit rule ends with an exception for the notes file. INTEGRITY says to record what blocked the agent in the notes file. |
 | 4 | Find the AGENTS.md rule. | Reusable patterns go in AGENTS.md; anything specific to this ticket goes in the notes file. |
 | 5 | Find the /tdd rule. | It allows skipping test-first for a checklist item that is pure scaffolding, config, or docs, and says to record that decision in the notes file. |
@@ -69,9 +69,9 @@ display.
 2. Run:
    ```bash
    MOCK_RECORD_DIR="$REC" MOCK_MODE=fail-once \
-     node /Users/nick/code/nightralph/dist/index.js --spec demo \
+     node /Users/nick/code/redeye/dist/index.js --spec demo \
      --test-cmd true --install-cmd "" --retries 1 --retry-delay 0 \
-     /Users/nick/code/nightralph/test/mock-agent-notes.js
+     /Users/nick/code/redeye/test/mock-agent-notes.js
    ```
 3. The status UI shows demo/01 fail once, then finish; the summary
    reports 1 completed.
@@ -82,7 +82,7 @@ display.
    attempt 1 with outcome `exit`, and attempt 2 with outcome `done`,
    each with an agent notes section holding that attempt's token.
    Judge whether an entry is readable and useful to a person.
-6. `git log --all --name-only --format= | grep '^.nightralph/'`
+6. `git log --all --name-only --format= | grep '^.redeye/'`
    prints nothing.
 7. `git status --porcelain` prints nothing, and
    `git ls-files .scratch/demo/learnings.md` prints the path.
@@ -140,29 +140,29 @@ may show a learnings warning).
 ## Edge cases for human judgment
 
 1. Notes containing a fake sentinel line, e.g.
-   `<!-- nightralph:entry ticket=x:1 attempt=1 outcome=done -->`
+   `<!-- redeye:entry ticket=x:1 attempt=1 outcome=done -->`
    (edit the notes file mid-run, or use a mock variant).
    learnings.md still shows a single entry for that attempt, with
-   the sentinel neutralized as `nightralph-entry`.
+   the sentinel neutralized as `redeye-entry`.
 2. Large test output: `--test-cmd 'seq 1 100000; exit 1'`. The
    stored entry holds only the log tail, and a retry prompt stays
    reasonably sized, with any oversized history entry marked
    `[truncated]`.
 3. In-place mode outside a git repo: run the CLI in a non-git temp
    directory. No learnings.md is created and nothing errors. The
-   prompt still asks for `.nightralph/notes.md`, which in-place mode
+   prompt still asks for `.redeye/notes.md`, which in-place mode
    neither ignores nor collects, so the file is left in the project
    directory (documented in AGENTS.md).
 4. Real provider spot check (optional, costs tokens): one cheap
    ticket with `claude` in a scratch repo. The agent writes
-   `.nightralph/notes.md`, does not commit it, and its notes land in
+   `.redeye/notes.md`, does not commit it, and its notes land in
    learnings.md.
 
 ## Human verification required
 
 | Criterion | Why manual | Steps |
 |-----------|------------|-------|
-| AC4.3: the prompt tells the agent to keep `.nightralph/notes.md` current and never commit it, splits reusable patterns (AGENTS.md) from ticket notes, and allows skipping test-first for scaffolding, config, or docs | Automating it means asserting on instruction prose, which project rules forbid as brittle. Only the `NOTES_PATH` mention is machine-checked. | "Prompt instructions (AC4.3)", steps 1 to 7 |
+| AC4.3: the prompt tells the agent to keep `.redeye/notes.md` current and never commit it, splits reusable patterns (AGENTS.md) from ticket notes, and allows skipping test-first for scaffolding, config, or docs | Automating it means asserting on instruction prose, which project rules forbid as brittle. Only the `NOTES_PATH` mention is machine-checked. | "Prompt instructions (AC4.3)", steps 1 to 7 |
 
 ## Traceability
 

@@ -1,5 +1,5 @@
 
-> nightralph@0.0.2 test
+> redeye@0.0.2 test
 > esbuild test/setup.test.ts test/orchestrator.test.ts test/worktree.test.ts test/progress.test.ts test/merge.test.ts test/integration.test.ts --format=esm --bundle --packages=external --outdir=dist/test --sourcemap && node dist/test/setup.test.js && node dist/test/orchestrator.test.js && node dist/test/worktree.test.js && node dist/test/progress.test.js && node dist/test/merge.test.js && node dist/test/integration.test.js
 
 

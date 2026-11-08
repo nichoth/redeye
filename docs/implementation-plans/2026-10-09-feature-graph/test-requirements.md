@@ -64,7 +64,7 @@ CLI, `dist/index.js`, as a subprocess through `spawnCli`. Files:
 9. AC2.8's "no git" is tested in a tmp dir that is not a git repo,
    and "no files written" by comparing a sorted recursive listing
    before and after. "No preflight" is the absence of the
-   `Provider` line and of any `nightralph--` branch name.
+   `Provider` line and of any `redeye--` branch name.
 10. Tests do not pin whole sentences (user rule: no brittle text
     tests). They assert ticket labels and feature names taken from
     the fixtures, line counts, relative order (`indexOf`) and exit
@@ -134,7 +134,7 @@ is `R/T ready, N bad blocker(s), waits on ...`
 
 ## AC2: `graph` command output
 
-**feature-graph.AC2.1 Success:** `nightralph graph` exits 0 and
+**feature-graph.AC2.1 Success:** `redeye graph` exits 0 and
 prints one block per picker feature that has cross-feature edges
 - integration, `test/integration.test.ts`, Phase 5 Task 3:
   `spawnCli(['graph'])` on `GRAPH_BASE` -> code 0; stdout contains
@@ -202,7 +202,7 @@ no preflight, no git, no files written
 - integration, `test/integration.test.ts`, Phase 5 Task 3:
   `GRAPH_BASE` in a non-git tmp dir -> code 0; the sorted
   `readdirSync(cwd, { recursive:true })` listing is the same before
-  and after; neither stream contains `Provider` or `nightralph--`.
+  and after; neither stream contains `Provider` or `redeye--`.
 
 **feature-graph.AC2.9 Edge:** Done refs, edges inside a feature, and
 refs from tickets that are not `ready-for-agent` are not shown
@@ -353,7 +353,7 @@ not tested)
 - Approach (code review of the Phase 6 commits against the shipped
   Phase 1-5 code):
   1. `AGENTS.md`: the Project Structure list has `src/graph.ts`; the
-     CLI contract has a `nightralph graph [--spec <name>]` bullet
+     CLI contract has a `redeye graph [--spec <name>]` bullet
      (read-only, picker features or one `--spec` feature including
      nested or hidden ones, exit codes 0 and 2, registered after
      `init`); the orchestrator contract lists and describes
@@ -372,7 +372,7 @@ not tested)
      current checkout, act on "Run together" through the picker).
   3. Each described behavior matches the code; where they differ, the
      code wins and the doc is fixed.
-  4. Run `grep -n "simulateRun\|waitsOn\|nightralph graph\|### graph
+  4. Run `grep -n "simulateRun\|waitsOn\|redeye graph\|### graph
      module" AGENTS.md` and confirm each term lands in the sections
      above; run `perl -CSD -ne 'print "$.: $_" if
      /[\x{2014}\x{2192}]/' AGENTS.md README.md` and confirm no

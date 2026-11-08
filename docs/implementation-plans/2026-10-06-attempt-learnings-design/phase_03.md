@@ -28,7 +28,7 @@ This phase implements and tests:
 - **attempt-learnings-design.AC4.2 Edge:** A prompt rendered with no
   history equals one rendered with `history:''`.
 - **attempt-learnings-design.AC4.3 Human:** The prompt tells the agent
-  to keep `.nightralph/notes.md` current and never commit it, splits
+  to keep `.redeye/notes.md` current and never commit it, splits
   reusable patterns (AGENTS.md) from ticket notes, and allows skipping
   test-first for pure scaffolding, config, or docs items.
 

@@ -1,4 +1,4 @@
-# nightralph
+# redeye
 
 Last verified: 2026-10-10
 
@@ -7,7 +7,7 @@ loads tickets from `.scratch/<feature>/issues/`, runs the ready ones
 in waves (one git worktree and branch per ticket), gates each branch
 on the test command, merges the wave, and ends with a review and fix
 pass. A run launched from the default branch works on an integration
-branch, `nightralph--<feature>`; launched from any other branch it
+branch, `redeye--<feature>`; launched from any other branch it
 merges into that branch.
 
 ## Tech Stack
@@ -60,7 +60,7 @@ merges into that branch.
 ## Project Structure
 - `src/index.ts` -- CLI entry point (yargs commands), signal
   handling, integration branch setup
-- `src/setup.ts` -- `nightralph init` scaffolding
+- `src/setup.ts` -- `redeye init` scaffolding
 - `src/orchestrator.ts` -- ticket scanning, prompts, agent
   spawning and wave execution
 - `src/worktree.ts` -- git worktrees, integration branch planning
@@ -104,7 +104,7 @@ its tests.
   cannot race on `.git/worktrees`. New worktree operations join
   that queue.
 - Ignore rules are written inside the worktree
-  (`.nightralph/.gitignore`), never to `.git/info/exclude`, which
+  (`.redeye/.gitignore`), never to `.git/info/exclude`, which
   can be a symlink shared by every repo on the machine (via
   `init.templateDir`). Tests that need a repo use a hermetic
   `git init --template=<tmp>`.
@@ -114,7 +114,7 @@ its tests.
   since `.scratch/` may be ignored).
 - Agents stay inside their worktree and never `git push`; the
   prompt rules in `src/rules.ts` say so.
-- `nightralph graph` is read-only: no git, no provider preflight,
+- `redeye graph` is read-only: no git, no provider preflight,
   no writes. It reads the checkout in place.
 
 ### Processes
@@ -169,7 +169,7 @@ its tests.
 
 ### Logs on disk
 - `learnings.md` and `review.md` are append-only logs whose entries
-  open with a `<!-- nightralph:... -->` sentinel line. Sentinel
+  open with a `<!-- redeye:... -->` sentinel line. Sentinel
   text inside free-text fields is neutralized, so an entry cannot
   forge another, and the parsers drop malformed entries instead of
   throwing.
@@ -192,7 +192,7 @@ tooling. Put it under the heading it belongs to. Function
 signatures, defaults and log wording stay in the code and tests;
 anything specific to one ticket goes in the run's notes file.
 
-<!-- nightralph:start -->
+<!-- redeye:start -->
 ## Agent skills
 
 ### Issue tracker
@@ -206,4 +206,4 @@ Default label vocabulary. See `docs/agents/triage-labels.md`.
 ### Domain docs
 
 Single-context layout. See `docs/agents/domain.md`.
-<!-- nightralph:end -->
+<!-- redeye:end -->

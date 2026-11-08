@@ -1,12 +1,12 @@
 {
-  "project": "nightralph",
+  "project": "redeye",
   "branchName": "ralph/correctness-fixes",
   "description": "Correctness fixes: asset resolution, commit verification, provider adapters, isolated progress commits, exit codes, README accuracy, AGENTS.md preservation",
   "userStories": [
     {
       "id": "US-001",
       "title": "Fix asset resolution for npm-installed CLI",
-      "description": "As a user installing nightralph via npm, I want the setup command to find its bundled skills and templates so that setup works without running from a source checkout.",
+      "description": "As a user installing redeye via npm, I want the setup command to find its bundled skills and templates so that setup works without running from a source checkout.",
       "acceptanceCriteria": [
         "scriptDir in src/index.ts is derived from import.meta.url via fileURLToPath instead of process.argv[1]",
         "setup locates skills/ and docs-templates/ relative to the compiled module, not the bin symlink",
@@ -37,7 +37,7 @@
     {
       "id": "US-003",
       "title": "Add non-interactive provider adapters",
-      "description": "As a user running nightralph claude or nightralph codex, I want the CLI to invoke the correct non-interactive command so that agents run without hanging on interactive prompts.",
+      "description": "As a user running redeye claude or redeye codex, I want the CLI to invoke the correct non-interactive command so that agents run without hanging on interactive prompts.",
       "acceptanceCriteria": [
         "claude provider spawns with --print flag prepended to args",
         "codex provider spawns with exec subcommand prepended to args",
@@ -69,7 +69,7 @@
     {
       "id": "US-005",
       "title": "Return nonzero exit code for incomplete runs",
-      "description": "As a CI pipeline or monitoring script, I want nightralph to exit with a nonzero status when any ticket fails or remains incomplete so that I can detect failed runs.",
+      "description": "As a CI pipeline or monitoring script, I want redeye to exit with a nonzero status when any ticket fails or remains incomplete so that I can detect failed runs.",
       "acceptanceCriteria": [
         "runWaves and runWavesIsolated return a result object indicating whether all ready tickets completed successfully",
         "The CLI calls process.exit(1) when any ready ticket failed, was not merged, or remains ready-for-agent",
@@ -102,7 +102,7 @@
       "title": "Preserve existing AGENTS.md during setup",
       "description": "As a user running setup in a project that already has an AGENTS.md, I want my existing instructions preserved so that setup does not silently destroy project-specific content.",
       "acceptanceCriteria": [
-        "Setup writes its content inside managed-section markers (<!-- nightralph:start --> / <!-- nightralph:end -->)",
+        "Setup writes its content inside managed-section markers (<!-- redeye:start --> / <!-- redeye:end -->)",
         "If AGENTS.md exists and contains managed markers, only the managed section is replaced",
         "If AGENTS.md exists without markers, the managed section is appended and existing content is preserved",
         "If no AGENTS.md exists, the file is created with the managed section (current content wrapped in markers)",

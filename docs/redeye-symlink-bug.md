@@ -1,8 +1,8 @@
-# nightralph bug: missing `.claude/skills/` symlinks
+# redeye bug: missing `.claude/skills/` symlinks
 
 ## Problem
 
-When `npx nightralph setup` runs, skills are copied to
+When `npx redeye setup` runs, skills are copied to
 `.agents/skills/` but symlinks in `.claude/skills/` are not always
 created. Claude Code only discovers skills via `.claude/skills/`, so
 the missing symlinks make those skills invisible.
@@ -18,19 +18,19 @@ Two issues in `src/setup.ts` and `src/index.ts`:
 1. The `--claude` flag (`src/index.ts`, lines 33-37) defaults to
    `false`. The symlink-creation loop in `src/setup.ts` (lines
    113-131) is gated on `if (claude)` at line 113. Running
-   `npx nightralph setup` without `--claude` skips symlink creation
+   `npx redeye setup` without `--claude` skips symlink creation
    entirely. This flag should default to `true`, or auto-detect
    whether a `.claude/` directory exists in the target project.
 
 2. The `SKILL_DIRS` constant in `src/setup.ts` only lists 6 of the
-   16 skills nightralph ships. The other 10 were installed by a prior
-   version. If nightralph is the canonical installer, `SKILL_DIRS`
+   16 skills redeye ships. The other 10 were installed by a prior
+   version. If redeye is the canonical installer, `SKILL_DIRS`
    should either list every bundled skill or dynamically enumerate the
    `skills/` directory rather than maintaining a hardcoded subset.
 
 ## How the 12 existing symlinks survived
 
-They were created by a prior nightralph install (commit `1563300`,
+They were created by a prior redeye install (commit `1563300`,
 Aug 23) that either used `--claude` or ran an older version that
 always created symlinks. The current install added 4 new skills to
 `.agents/skills/` but never created their symlinks.
@@ -49,7 +49,7 @@ always created symlinks. The current install added 4 new skills to
 
 ## Verification
 
-After the fix, `npx nightralph setup` in a project with a `.claude/`
+After the fix, `npx redeye setup` in a project with a `.claude/`
 directory should produce one symlink in `.claude/skills/<name>` for
 every directory in `.agents/skills/<name>`, with no manual
 `--claude` flag needed.

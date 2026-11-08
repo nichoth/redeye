@@ -25,13 +25,13 @@ This phase implements and tests:
 
 ### attempt-learnings-design.AC3: Learnings IO
 - **attempt-learnings-design.AC3.1 Success:** `collectNotes` returns
-  the notes file's contents and removes the `.nightralph/` directory,
+  the notes file's contents and removes the `.redeye/` directory,
   also when there is no notes file.
 - **attempt-learnings-design.AC3.2 Edge:** `collectNotes` returns
   `null` when there is no notes file.
 - **attempt-learnings-design.AC3.3 Success:** After
   `ensureNotesIgnored(worktreePath)`, git ignores everything under
-  `.nightralph/` in that worktree (including its own `.gitignore`), and
+  `.redeye/` in that worktree (including its own `.gitignore`), and
   nothing under the repo's git dir is written.
 - **attempt-learnings-design.AC3.4 Edge:** `readEntries` on a missing
   file returns `[]`.
@@ -127,7 +127,7 @@ attempt-learnings-design.AC3.4
 
 **Implementation:**
 
-Temp dirs with `mkdtempSync(join(tmpdir(), 'nightralph-learnings-'))`,
+Temp dirs with `mkdtempSync(join(tmpdir(), 'redeye-learnings-'))`,
 removed in `finally` with `rmSync(dir, { recursive:true, force:true })`.
 For the git test, copy the `initTempRepo` pattern from
 `test/progress.test.ts:40-57` (git init, `core.hooksPath /dev/null`,
@@ -137,7 +137,7 @@ points `TMPDIR` at a private directory that is deleted after the run.
 **Testing:**
 - AC3.1: write a random-token notes file at `join(dir, NOTES_PATH)`;
   `collectNotes(dir)` returns a string containing the token, and
-  afterwards neither the file nor its `.nightralph` directory exists.
+  afterwards neither the file nor its `.redeye` directory exists.
   Also: after `ensureNotesIgnored(dir)` with no notes file,
   `collectNotes(dir)` returns `null` and the directory is gone.
 - AC3.2: `collectNotes` on an empty dir returns `null`; a notes file
@@ -150,7 +150,7 @@ points `TMPDIR` at a private directory that is deleted after the run.
   with argument arrays, no shell strings, no `as` casts.
 - AC3.3: in a temp git repo, snapshot `<git dir>/info/exclude` (or
   its absence), call `ensureNotesIgnored(repoRoot)` twice, write
-  `.nightralph/notes.md`; `git check-ignore -q .nightralph/notes.md`
+  `.redeye/notes.md`; `git check-ignore -q .redeye/notes.md`
   exits 0, `git status --porcelain` output is empty (the `.gitignore`
   ignores itself), and `info/exclude` is unchanged.
 - AC3.3 (worktree): add a worktree (`git worktree add <tmp> -b x`),

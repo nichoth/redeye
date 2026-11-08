@@ -7,7 +7,7 @@ base tree dirty during merges.
 
 **Architecture:** `runTicketAttempt` builds the history before
 spawning and collects the notes file right after the agent exits.
-`runTicketAttempt` also writes a self-ignoring `.nightralph/.gitignore`
+`runTicketAttempt` also writes a self-ignoring `.redeye/.gitignore`
 in the worktree before spawning. `runTicketAttempts` appends one entry
 per attempt. `runWavesIsolated` commits the touched learnings files
 right after each wave's pool settles, appends a `merge` entry for unrecovered
@@ -51,7 +51,7 @@ This phase implements and tests:
 
 ### attempt-learnings-design.AC7: Repo hygiene and safety
 - **attempt-learnings-design.AC7.1 Success:** No commit on any ref
-  contains a `.nightralph/` path.
+  contains a `.redeye/` path.
 - **attempt-learnings-design.AC7.2 Success:** `learnings.md` is
   committed and has no uncommitted changes when the run ends.
 - **attempt-learnings-design.AC7.3 Failure:** When `learnings.md`
@@ -386,7 +386,7 @@ Call sites inside `runTicketAttempts`:
        try {
            await commitProgress(
                repoRoot, path,
-               'nightralph: record attempt learnings'
+               'redeye: record attempt learnings'
            )
        } catch (err) {
            d.log(
@@ -460,14 +460,14 @@ Order of events: read stdin to `end` (the prompt), then
    containing `{ time:Date.now(), cwd:process.cwd(), token, prompt }`
    (`MOCK_RECORD_DIR` is required; one file per invocation, so
    concurrent agents never share a file);
-3. write `.nightralph/notes.md` in `process.cwd()` (mkdir recursive)
+3. write `.redeye/notes.md` in `process.cwd()` (mkdir recursive)
    containing `notes-token ${token}`;
 4. act on `MOCK_MODE`:
   - `pass`: write a `mock-agent-change-<uuid>.txt`, then
     `git add -A` and commit (copy the `GIT_ENV` identity and
     commit-with-retry approach from `test/mock-agent-pass.js`).
     Using `git add -A` is deliberate: it proves the
-    `.nightralph/.gitignore` safety net keeps `.nightralph/` out even
+    `.redeye/.gitignore` safety net keeps `.redeye/` out even
     when an agent stages everything. Exit 0.
   - `fail`: exit 1.
   - `fail-once`: if `<MOCK_RECORD_DIR>/failed-<basename(cwd)>` does not
@@ -518,7 +518,7 @@ restore cwd, env vars, and temp dirs in `finally`. With
   `retries:1`. Two records; the second record's prompt includes the
   first record's token. `readEntries` gives two entries for the ticket
   with outcomes `['exit', 'done']`. `git log --all --name-only
-  --format=` output has no line starting with `.nightralph/`.
+  --format=` output has no line starting with `.redeye/`.
   `git ls-files learnings.md` is non-empty and
   `git status --porcelain -- learnings.md` is empty.
 - **AC5.3**: ticket 1 (`ready-for-agent`) and ticket 2 blocked by 1,

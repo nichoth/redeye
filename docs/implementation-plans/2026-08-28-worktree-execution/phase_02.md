@@ -56,7 +56,7 @@ Started: <ISO timestamp>
 - [ ] 01-add-auth.md
 - [ ] 02-add-api.md
 - [x] 03-add-tests.md
-  branch: nightralph/03-add-tests
+  branch: redeye/03-add-tests
   exit: 0
   completed: 2026-08-28T14:30:00Z
 ```

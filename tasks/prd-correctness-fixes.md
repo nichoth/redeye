@@ -3,7 +3,7 @@
 ## Introduction
 
 The 2026-08-29 correctness audit identified several defects that
-prevent nightralph from working reliably when installed via npm,
+prevent redeye from working reliably when installed via npm,
 from safely handling agent output, and from reporting failures
 accurately. This PRD covers the P0 and P1 fixes, excluding
 dependency validation semantics (intentional design) and Node
@@ -23,7 +23,7 @@ engine range (already fixed).
 
 ### US-001: Fix asset resolution for npm-installed CLI
 
-**Description:** As a user installing nightralph via npm, I want the
+**Description:** As a user installing redeye via npm, I want the
 `setup` command to find its bundled skills and templates so that
 setup works without running from a source checkout.
 
@@ -56,8 +56,8 @@ a ticket done, so that work is never silently lost.
 
 ### US-003: Add non-interactive provider adapters
 
-**Description:** As a user running `nightralph claude` or
-`nightralph codex`, I want the CLI to invoke the correct
+**Description:** As a user running `redeye claude` or
+`redeye codex`, I want the CLI to invoke the correct
 non-interactive command so that agents run without hanging on
 interactive prompts.
 
@@ -88,7 +88,7 @@ staged work is not swept into an automated commit.
 ### US-005: Return nonzero exit code for incomplete runs
 
 **Description:** As a CI pipeline or monitoring script, I want
-nightralph to exit with a nonzero status when any ticket fails
+redeye to exit with a nonzero status when any ticket fails
 or remains incomplete so that I can detect failed runs.
 
 **Acceptance Criteria:**
@@ -125,7 +125,7 @@ setup does not silently destroy project-specific content.
 
 **Acceptance Criteria:**
 - [ ] Setup writes its content inside managed-section markers
-      (e.g. `<!-- nightralph:start -->` / `<!-- nightralph:end -->`)
+      (e.g. `<!-- redeye:start -->` / `<!-- redeye:end -->`)
 - [ ] If AGENTS.md exists and contains managed markers, only the
       managed section is replaced
 - [ ] If AGENTS.md exists without markers, the managed section is
@@ -184,13 +184,13 @@ setup does not silently destroy project-specific content.
 
 ## Success Metrics
 
-- `npm pack && npm install -g ./nightralph-*.tgz && nightralph setup`
+- `npm pack && npm install -g ./redeye-*.tgz && redeye setup`
   works in a fresh project
 - An agent that exits 0 without committing is reported as incomplete,
   not marked done
 - `echo $?` after a failed run returns 1
 - Progress commits never contain files other than `progress.md`
-- `nightralph claude` spawns `claude --print` without hanging
+- `redeye claude` spawns `claude --print` without hanging
 
 ## Open Questions
 

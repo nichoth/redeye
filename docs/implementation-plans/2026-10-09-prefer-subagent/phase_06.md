@@ -78,13 +78,13 @@ Place it after `### Review`. Cover, in prose:
 - The model is a fallback, not a mandate: a model passed on an
   individual subagent call, or a subagent definition's own `model`,
   wins, and the built-in Explore subagent picks its own model.
-  nightralph never sets `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`.
+  redeye never sets `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`.
 - Subagent turns do not count toward `--max-turns` (observed on
   Claude Code 2.1.296, not documented by Anthropic), but subagent
   time counts against `--timeout`.
 - Spawned agents load the user's global `~/.claude` plugins and
   hooks, which can spend turns and steer delegation their own way;
-  nightralph does not isolate them.
+  redeye does not isolate them.
 - Stats, recorded for every claude run whether or not the flag is
   set: each claude attempt's entry in `learnings.md` gets
   `Subagents: <n>.` and `Cost: $<x>.`; the status display row shows

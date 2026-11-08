@@ -3,7 +3,7 @@
 ## Summary
 
 This feature adds an opt-in `--prefer-subagent <model>` flag to
-nightralph. When it is set and the provider is claude, every spawned
+redeye. When it is set and the provider is claude, every spawned
 agent (ticket runs, merge-conflict respawns, the reviewer and the
 fixer) gets the `CLAUDE_CODE_SUBAGENT_MODEL` environment variable. It
 also gets a short prompt rule telling it to hand read-only work
@@ -13,7 +13,7 @@ flag value travels down the same path as the existing `effort` option.
 When the flag is absent, spawns and prompts are byte-identical to
 today. For codex and pi, the CLI warns once and drops the value.
 
-Separately, and whether or not the flag is used, nightralph starts
+Separately, and whether or not the flag is used, redeye starts
 measuring subagent activity for claude runs. A new pure module,
 `src/stats.ts`, reads claude's stream-json output line by line. It
 counts subagents started by the main agent and picks up the final
@@ -26,7 +26,7 @@ ticket's outcome, an exit code, or the finish summary text.
 
 ## Definition of Done
 
-`nightralph claude --prefer-subagent <model>` sets
+`redeye claude --prefer-subagent <model>` sets
 `CLAUDE_CODE_SUBAGENT_MODEL` for every spawned claude agent (ticket,
 merge respawn, reviewer, fixer) and adds a prompt rule: subagents do
 read-only exploration, search and experiments/test runs; the main agent
@@ -173,7 +173,7 @@ codex/pi subagents.
 - **isolated run / worktree**: In a git repo, each ticket runs in its
   own git worktree on its own branch, and branches merge back after
   the wave. In-place runs (`runWaves`) skip this.
-- **merge respawn**: When a branch conflicts on merge, nightralph
+- **merge respawn**: When a branch conflicts on merge, redeye
   starts an agent again to resolve the conflict.
 - **reviewer / fixer / review pass**: The advisory end-of-run step.
   The reviewer agent writes findings and the fixer agent applies them.
@@ -516,5 +516,5 @@ count is the final count; accepting both `Agent` and `Task` covers the
 
 **Global config.** Spawned agents load the user's `~/.claude` plugins
 and SessionStart hooks, which can spend turns (a Skill call was
-observed) and push delegation in their own way. nightralph does not
+observed) and push delegation in their own way. redeye does not
 isolate them.

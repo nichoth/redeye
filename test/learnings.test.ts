@@ -193,7 +193,7 @@ test('AC1.2: notes containing sentinel prefix parse as one entry', t => {
                 timedOut: false,
                 notes: (
                     'Some text\n' +
-                    '<!-- nightralph:entry ' +
+                    '<!-- redeye:entry ' +
                     'ticket=x:1 attempt=1 outcome=done -->\n' +
                     `More text with token: ${tokenInNotes}`
                 ),
@@ -211,7 +211,7 @@ test('AC1.2: notes containing sentinel prefix parse as one entry', t => {
         'should parse original key correctly'
     )
     t.ok(
-        parsed[0].body.includes('<!-- nightralph-entry'),
+        parsed[0].body.includes('<!-- redeye-entry'),
         'sanitized sentinel should be in body (hyphen instead colon)'
     )
     t.ok(
@@ -260,10 +260,10 @@ test('AC1.2: completedItems and notes with sentinel are sanitized', t => {
             run: {
                 exitCode: 0,
                 completedItems: [
-                    'item with sentinel <!-- nightralph:entry',
+                    'item with sentinel <!-- redeye:entry',
                 ],
                 timedOut: false,
-                notes: `notes with sentinel <!-- nightralph:entry ${token}`,
+                notes: `notes with sentinel <!-- redeye:entry ${token}`,
             },
         },
     ]
@@ -271,12 +271,12 @@ test('AC1.2: completedItems and notes with sentinel are sanitized', t => {
     const rendered = renderEntry(entries[0])
     // Should find the sentinel in rendered output
     t.ok(
-        rendered.includes('<!-- nightralph:entry'),
+        rendered.includes('<!-- redeye:entry'),
         'should have real sentinel line'
     )
     // Should find sanitized version in completedItems and notes
     t.ok(
-        rendered.includes('<!-- nightralph-entry'),
+        rendered.includes('<!-- redeye-entry'),
         'sanitized sentinels should use hyphen'
     )
     t.ok(
@@ -289,19 +289,19 @@ test('AC1.2: completedItems and notes with sentinel are sanitized', t => {
 
 test('AC1.2: invalid entries are dropped without throwing', t => {
     const text = `
-<!-- nightralph:entry ticket= attempt=1 outcome=done -->
+<!-- redeye:entry ticket= attempt=1 outcome=done -->
 empty ticket
-<!-- nightralph:entry ticket=valid:1 attempt=not-a-number outcome=done -->
+<!-- redeye:entry ticket=valid:1 attempt=not-a-number outcome=done -->
 non-numeric attempt
-<!-- nightralph:entry ticket=valid:1a attempt=1abc outcome=done -->
+<!-- redeye:entry ticket=valid:1a attempt=1abc outcome=done -->
 attempt with suffix
-<!-- nightralph:entry ticket=valid:1b attempt=1.5 outcome=done -->
+<!-- redeye:entry ticket=valid:1b attempt=1.5 outcome=done -->
 fractional attempt
-<!-- nightralph:entry ticket=%E0%A attempt=1 outcome=done -->
+<!-- redeye:entry ticket=%E0%A attempt=1 outcome=done -->
 malformed escape
-<!-- nightralph:entry ticket=valid:2 attempt=1 outcome=done -->
+<!-- redeye:entry ticket=valid:2 attempt=1 outcome=done -->
 this one is valid
-<!-- nightralph:entry ticket=valid:3 attempt=1 outcome=unknown -->
+<!-- redeye:entry ticket=valid:3 attempt=1 outcome=unknown -->
 unknown outcome
 `
 
@@ -347,7 +347,7 @@ test('Parsing robustness: CRLF line endings are handled', t => {
 test('AC1.2+: logTail with sentinel is sanitized', t => {
     const token = randomUUID()
     const sentinel =
-        '<!-- nightralph:entry ticket=x:1 attempt=1 ' +
+        '<!-- redeye:entry ticket=x:1 attempt=1 ' +
         'outcome=done -->'
     const entry:EntryInput = {
         key: 'test:1',
@@ -374,7 +374,7 @@ test('AC1.2+: logTail with sentinel is sanitized', t => {
         'logTail token should be preserved in body'
     )
     t.ok(
-        parsed[0].body.includes('<!-- nightralph-entry'),
+        parsed[0].body.includes('<!-- redeye-entry'),
         'sentinel in logTail should be sanitized'
     )
 })
@@ -382,7 +382,7 @@ test('AC1.2+: logTail with sentinel is sanitized', t => {
 test('AC1.2+: install logTail with sentinel is sanitized', t => {
     const token = randomUUID()
     const sentinel =
-        '<!-- nightralph:entry ticket=x:1 attempt=1 ' +
+        '<!-- redeye:entry ticket=x:1 attempt=1 ' +
         'outcome=done -->'
     const entry:EntryInput = {
         key: 'test:2',
@@ -407,7 +407,7 @@ test('AC1.2+: install logTail with sentinel is sanitized', t => {
 test('AC1.2+: error field with sentinel is sanitized', t => {
     const token = randomUUID()
     const sentinel =
-        '<!-- nightralph:entry ticket=x:1 attempt=1 ' +
+        '<!-- redeye:entry ticket=x:1 attempt=1 ' +
         'outcome=done -->'
     const entry:EntryInput = {
         key: 'test:2',
@@ -427,7 +427,7 @@ test('AC1.2+: error field with sentinel is sanitized', t => {
         'error token should be preserved in body'
     )
     t.ok(
-        parsed[0].body.includes('<!-- nightralph-entry'),
+        parsed[0].body.includes('<!-- redeye-entry'),
         'sentinel in error should be sanitized'
     )
 })
@@ -435,7 +435,7 @@ test('AC1.2+: error field with sentinel is sanitized', t => {
 test('AC1.2+: stderr field with sentinel is sanitized', t => {
     const token = randomUUID()
     const sentinel =
-        '<!-- nightralph:entry ticket=x:1 attempt=1 ' +
+        '<!-- redeye:entry ticket=x:1 attempt=1 ' +
         'outcome=done -->'
     const entry:EntryInput = {
         key: 'test:3',
@@ -455,7 +455,7 @@ test('AC1.2+: stderr field with sentinel is sanitized', t => {
         'stderr token should be preserved in body'
     )
     t.ok(
-        parsed[0].body.includes('<!-- nightralph-entry'),
+        parsed[0].body.includes('<!-- redeye-entry'),
         'sentinel in stderr should be sanitized'
     )
 })
@@ -463,7 +463,7 @@ test('AC1.2+: stderr field with sentinel is sanitized', t => {
 test('AC1.2+: completedItems with sentinel are sanitized', t => {
     const token = randomUUID()
     const sentinel =
-        '<!-- nightralph:entry ticket=x:1 attempt=1 ' +
+        '<!-- redeye:entry ticket=x:1 attempt=1 ' +
         'outcome=done -->'
     const entry:EntryInput = {
         key: 'test:4',
@@ -488,7 +488,7 @@ test('AC1.2+: completedItems with sentinel are sanitized', t => {
         'completedItems token should be preserved'
     )
     t.ok(
-        parsed[0].body.includes('<!-- nightralph-entry'),
+        parsed[0].body.includes('<!-- redeye-entry'),
         'sentinel in completedItems should be sanitized'
     )
 })
@@ -547,7 +547,7 @@ test('parseEntries strips only a whole --- separator line', t => {
     // No separator line, so a suffix-based strip would eat the
     // trailing --- of the body text itself
     const text =
-        '<!-- nightralph:entry ticket=p:2 attempt=1 outcome=done -->\n' +
+        '<!-- redeye:entry ticket=p:2 attempt=1 outcome=done -->\n' +
         `notes ${token}---\n`
 
     const parsed = parseEntries(text)
@@ -936,10 +936,10 @@ function initTempRepo ():{
     templateDir:string
 } {
     const repoRoot = mkdtempSync(
-        join(tmpdir(), 'nightralph-learnings-test-')
+        join(tmpdir(), 'redeye-learnings-test-')
     )
     const templateDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-learnings-template-')
+        join(tmpdir(), 'redeye-learnings-template-')
     )
 
     const result = spawnSync('git', ['init', '--template=' + templateDir], {
@@ -998,7 +998,7 @@ function initTempRepo ():{
 
 test('AC3.1: collectNotes returns notes file contents', t => {
     const dir = mkdtempSync(
-        join(tmpdir(), 'nightralph-learnings-')
+        join(tmpdir(), 'redeye-learnings-')
     )
     try {
         const notesPath = join(dir, NOTES_PATH)
@@ -1040,7 +1040,7 @@ test(
     'AC3.1: collectNotes removes dir when no notes file exists',
     t => {
         const dir = mkdtempSync(
-            join(tmpdir(), 'nightralph-learnings-')
+            join(tmpdir(), 'redeye-learnings-')
         )
         try {
             const notesPath = join(dir, NOTES_PATH)
@@ -1065,7 +1065,7 @@ test(
             t.equal(
                 dirExists,
                 false,
-                '.nightralph directory should be removed'
+                '.redeye directory should be removed'
             )
         } finally {
             rmSync(dir, { recursive: true, force: true })
@@ -1077,7 +1077,7 @@ test(
 
 test('AC3.2: collectNotes returns null for missing file', t => {
     const dir = mkdtempSync(
-        join(tmpdir(), 'nightralph-learnings-')
+        join(tmpdir(), 'redeye-learnings-')
     )
     try {
         const result = collectNotes(dir)
@@ -1094,7 +1094,7 @@ test('AC3.2: collectNotes returns null for missing file', t => {
 
 test('AC3.2: collectNotes returns null for blank notes', t => {
     const dir = mkdtempSync(
-        join(tmpdir(), 'nightralph-learnings-')
+        join(tmpdir(), 'redeye-learnings-')
     )
     try {
         const notesPath = join(dir, NOTES_PATH)
@@ -1120,7 +1120,7 @@ test('AC3.2: collectNotes returns null for blank notes', t => {
 
 test('AC3.4: readEntries returns empty array for missing file', t => {
     const dir = mkdtempSync(
-        join(tmpdir(), 'nightralph-learnings-')
+        join(tmpdir(), 'redeye-learnings-')
     )
     try {
         const missingPath = join(dir, 'missing.md')
@@ -1142,7 +1142,7 @@ test(
     'appendEntry and readEntries round-trip entries correctly',
     t => {
         const dir = mkdtempSync(
-            join(tmpdir(), 'nightralph-learnings-')
+            join(tmpdir(), 'redeye-learnings-')
         )
         try {
             const logPath = join(dir, 'subdir', 'learnings.md')
@@ -1208,12 +1208,12 @@ test(
 
 test('AC3.3: ensureNotesIgnored creates .gitignore', t => {
     const repoRoot = mkdtempSync(
-        join(tmpdir(), 'nightralph-learnings-')
+        join(tmpdir(), 'redeye-learnings-')
     )
     try {
         ensureNotesIgnored(repoRoot)
 
-        const gitignorePath = join(repoRoot, '.nightralph', '.gitignore')
+        const gitignorePath = join(repoRoot, '.redeye', '.gitignore')
         const exists = existsSync(gitignorePath)
         t.equal(exists, true, '.gitignore should exist')
 
@@ -1251,7 +1251,7 @@ test(
             // git check-ignore should exit 0
             const checkIgnore = spawnSync(
                 'git',
-                ['check-ignore', '-q', '.nightralph/notes.md'],
+                ['check-ignore', '-q', '.redeye/notes.md'],
                 { cwd: repoRoot, encoding: 'utf8' }
             )
             t.equal(
@@ -1334,7 +1334,7 @@ test(
             // git check-ignore should exit 0 in worktree
             const checkIgnore = spawnSync(
                 'git',
-                ['check-ignore', '-q', '.nightralph/notes.md'],
+                ['check-ignore', '-q', '.redeye/notes.md'],
                 { cwd: worktreePath, encoding: 'utf8' }
             )
             t.equal(
@@ -1372,16 +1372,16 @@ test(
 )
 
 test('collectNotes - reads a named file and removes the dir', t => {
-    const dir = mkdtempSync(join(tmpdir(), 'nightralph-notes-'))
+    const dir = mkdtempSync(join(tmpdir(), 'redeye-notes-'))
     try {
-        mkdirSync(join(dir, '.nightralph'))
+        mkdirSync(join(dir, '.redeye'))
         writeFileSync(
-            join(dir, '.nightralph', 'findings.md'), '- [ ] a\n'
+            join(dir, '.redeye', 'findings.md'), '- [ ] a\n'
         )
-        writeFileSync(join(dir, '.nightralph', 'notes.md'), 'n')
+        writeFileSync(join(dir, '.redeye', 'notes.md'), 'n')
         t.equal(collectNotes(dir, 'findings.md'), '- [ ] a',
             'returns the named file, trimmed')
-        t.ok(!existsSync(join(dir, '.nightralph')),
+        t.ok(!existsSync(join(dir, '.redeye')),
             'removes the whole directory')
     } finally {
         rmSync(dir, { recursive: true, force: true })
@@ -1476,7 +1476,7 @@ test('AC4.4: entries with stats round-trip through parseEntries', t => {
 
 test('AC4.4: entries written before stats still parse', t => {
     const old = [
-        '<!-- nightralph:entry ticket=f:1 attempt=1 outcome=done -->',
+        '<!-- redeye:entry ticket=f:1 attempt=1 outcome=done -->',
         '## 2026-10-01 09:00 -- f/01 attempt 1 -- done',
         '',
         'Agent exit: 0. Checked items: none.',

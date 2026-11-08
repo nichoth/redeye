@@ -25,17 +25,17 @@ esbuild through `scripts/test.sh`.
 
 ## Global Constraints
 
-- Branch names: `nightralph--<feature>` for one feature,
-  `nightralph--all` otherwise; reviewer `<repo>--review`, fixer
+- Branch names: `redeye--<feature>` for one feature,
+  `redeye--all` otherwise; reviewer `<repo>--review`, fixer
   `<repo>--review-fix`; worktrees `<repo>.review`, `<repo>.review-fix`.
-- Findings file inside a worktree: `.nightralph/findings.md`; clean
+- Findings file inside a worktree: `.redeye/findings.md`; clean
   marker line: `No findings.`
 - Review log: `.scratch/<feature>/review.md` (one feature) or
   `.scratch/review.md` (several).
 - Review diff always excludes `.scratch`:
   `git diff <from>..<to> -- . ':(exclude).scratch'`.
 - Review statuses: `clean`, `fixed`, `unresolved`, `review-failed`.
-- Commit message for the log: `nightralph: record review`.
+- Commit message for the log: `redeye: record review`.
 - `src/review.ts`, `src/retry.ts`, `src/rules.ts` import no values from
   `src/orchestrator.ts` (type-only imports are fine).
 - TypeScript style: no space between colon and type
@@ -498,20 +498,20 @@ import from `../src/worktree.js`):
 // -- integration branch planning --
 
 test('integrationBranchName - one feature, several, none', t => {
-    t.equal(integrationBranchName(['auth']), 'nightralph--auth',
+    t.equal(integrationBranchName(['auth']), 'redeye--auth',
         'one feature')
     t.equal(integrationBranchName(['auth', 'auth']),
-        'nightralph--auth', 'duplicates count once')
+        'redeye--auth', 'duplicates count once')
     t.equal(integrationBranchName(['auth', 'billing']),
-        'nightralph--all', 'several features')
-    t.equal(integrationBranchName([]), 'nightralph--all', 'none')
-    t.equal(integrationBranchName(['']), 'nightralph--all',
+        'redeye--all', 'several features')
+    t.equal(integrationBranchName([]), 'redeye--all', 'none')
+    t.equal(integrationBranchName(['']), 'redeye--all',
         'an empty feature name counts as none')
 })
 
 test('planIntegrationBranch - only on the default branch', t => {
     t.equal(planIntegrationBranch('main', 'main', ['auth']),
-        'nightralph--auth', 'on the default branch')
+        'redeye--auth', 'on the default branch')
     t.equal(planIntegrationBranch('my-work', 'main', ['auth']),
         null, 'on another branch')
     t.equal(planIntegrationBranch('main', null, ['auth']),
@@ -605,8 +605,8 @@ export function integrationBranchName (
 ):string {
     const distinct = [...new Set(features.filter(Boolean))]
     return distinct.length === 1 ?
-        `nightralph--${distinct[0]}` :
-        'nightralph--all'
+        `redeye--${distinct[0]}` :
+        'redeye--all'
 }
 
 // The integration branch to use, or null to merge into the
@@ -707,12 +707,12 @@ test('prepareIntegrationBranch - AC2.1 creates and checks out ' +
 
     const plan = prepareIntegrationBranch(dir, ['auth'])
 
-    t.equal(plan.branch, 'nightralph--auth', 'names the branch')
+    t.equal(plan.branch, 'redeye--auth', 'names the branch')
     t.ok(plan.created, 'created')
     t.ok(!plan.resumed, 'not resumed')
     t.equal(plan.launchBranch, 'main', 'launched from main')
     t.equal(plan.forkedFrom, 'main', 'forked from main')
-    t.equal(getCurrentBranch(dir), 'nightralph--auth',
+    t.equal(getCurrentBranch(dir), 'redeye--auth',
         'checked out')
     t.equal(git(dir, 'rev-parse main'), mainBefore,
         'main did not move')
@@ -724,7 +724,7 @@ test('prepareIntegrationBranch - AC2.2 resumes an existing ' +
     git(dir, 'branch -M main')
     const ticket = '.scratch/auth/issues/01-login.md'
     commitFile(dir, ticket, ticketBody('ready-for-agent'))
-    git(dir, 'checkout -b nightralph--auth')
+    git(dir, 'checkout -b redeye--auth')
     writeFileSync(join(dir, ticket), ticketBody('done'))
     git(dir, `commit -am "done" --no-verify`)
     git(dir, 'checkout main')
@@ -735,7 +735,7 @@ test('prepareIntegrationBranch - AC2.2 resumes an existing ' +
     t.ok(plan.resumed, 'resumed')
     t.ok(!plan.created, 'not created')
     t.equal(plan.behind, 1, 'main is one commit ahead')
-    t.equal(getCurrentBranch(dir), 'nightralph--auth',
+    t.equal(getCurrentBranch(dir), 'redeye--auth',
         'checked out')
     const tickets = scanTickets(
         join(dir, '.scratch', 'auth', 'issues'), 'auth'
@@ -755,7 +755,7 @@ test('prepareIntegrationBranch - AC2.3 leaves another branch ' +
     t.equal(plan.branch, 'my-work', 'merges into the current branch')
     t.ok(!plan.created && !plan.resumed, 'nothing checked out')
     t.equal(plan.forkedFrom, null, 'not an integration branch')
-    t.ok(!localBranchExists(dir, 'nightralph--auth'),
+    t.ok(!localBranchExists(dir, 'redeye--auth'),
         'no integration branch created')
 })
 
@@ -763,11 +763,11 @@ test('prepareIntegrationBranch - a hand-resumed integration ' +
     'branch reports its fork point', t => {
     const dir = initTempRepo()
     git(dir, 'branch -M main')
-    git(dir, 'checkout -b nightralph--auth')
+    git(dir, 'checkout -b redeye--auth')
 
     const plan = prepareIntegrationBranch(dir, ['auth'])
 
-    t.equal(plan.branch, 'nightralph--auth', 'stays put')
+    t.equal(plan.branch, 'redeye--auth', 'stays put')
     t.equal(plan.forkedFrom, 'main', 'knows it came from main')
 })
 
@@ -779,7 +779,7 @@ test('prepareIntegrationBranch - AC2.5 a dirty tree throws ' +
 
     t.throws(() => prepareIntegrationBranch(dir, ['auth']),
         'throws on a dirty tree')
-    t.ok(!localBranchExists(dir, 'nightralph--auth'),
+    t.ok(!localBranchExists(dir, 'redeye--auth'),
         'no branch created')
     t.equal(getCurrentBranch(dir), 'main', 'still on main')
 })
@@ -788,9 +788,9 @@ test('describeIntegrationBranch - checks nothing out', t => {
     const dir = initTempRepo()
     git(dir, 'branch -M main')
     const line = describeIntegrationBranch(dir, ['auth'])
-    t.ok(line.includes('nightralph--auth'), 'names the branch')
+    t.ok(line.includes('redeye--auth'), 'names the branch')
     t.equal(getCurrentBranch(dir), 'main', 'still on main')
-    t.ok(!localBranchExists(dir, 'nightralph--auth'),
+    t.ok(!localBranchExists(dir, 'redeye--auth'),
         'creates nothing')
 })
 
@@ -1209,7 +1209,7 @@ function cliGitRepo ():{
     issuesDir:string
     templateDir:string
 } {
-    const templateDir = mkdtempSync(join(tmpdir(), 'nightralph-tpl-'))
+    const templateDir = mkdtempSync(join(tmpdir(), 'redeye-tpl-'))
     const projectDir = initTempGitRepo({ templateDir })
     execSync('git branch -M main', { cwd:projectDir })
     writeFileSync(
@@ -1243,7 +1243,7 @@ test('CLI subprocess - AC2.1 a run from main lands on the ' +
         t.equal(
             gitOut(projectDir, ['rev-parse', '--abbrev-ref', 'HEAD'])
                 .trim(),
-            `nightralph--${FEAT}`,
+            `redeye--${FEAT}`,
             'left on the integration branch'
         )
         t.equal(gitOut(projectDir, ['rev-parse', 'main']), mainBefore,
@@ -1257,7 +1257,7 @@ test('CLI subprocess - AC2.1 a run from main lands on the ' +
 test('CLI subprocess - AC2.2 a run from main resumes the ' +
     'integration branch without redoing done tickets', async t => {
     const { projectDir, issuesDir, templateDir } = cliGitRepo()
-    const recordDir = mkdtempSync(join(tmpdir(), 'nightralph-rec-'))
+    const recordDir = mkdtempSync(join(tmpdir(), 'redeye-rec-'))
     try {
         writeFileSync(
             join(issuesDir, '01-first.md'),
@@ -1268,7 +1268,7 @@ test('CLI subprocess - AC2.2 a run from main resumes the ' +
             makeTicketBody({ status:'ready-for-agent' })
         )
         commitAll(projectDir, 'add tickets')
-        execSync(`git checkout -b nightralph--${FEAT}`,
+        execSync(`git checkout -b redeye--${FEAT}`,
             { cwd:projectDir })
         writeFileSync(
             join(issuesDir, '01-first.md'),
@@ -1520,16 +1520,16 @@ helper and imports):
 
 ```ts
 test('collectNotes - reads a named file and removes the dir', t => {
-    const dir = mkdtempSync(join(tmpdir(), 'nightralph-notes-'))
+    const dir = mkdtempSync(join(tmpdir(), 'redeye-notes-'))
     try {
-        mkdirSync(join(dir, '.nightralph'))
+        mkdirSync(join(dir, '.redeye'))
         writeFileSync(
-            join(dir, '.nightralph', 'findings.md'), '- [ ] a\n'
+            join(dir, '.redeye', 'findings.md'), '- [ ] a\n'
         )
-        writeFileSync(join(dir, '.nightralph', 'notes.md'), 'n')
+        writeFileSync(join(dir, '.redeye', 'notes.md'), 'n')
         t.equal(collectNotes(dir, 'findings.md'), '- [ ] a',
             'returns the named file, trimmed')
-        t.ok(!existsSync(join(dir, '.nightralph')),
+        t.ok(!existsSync(join(dir, '.redeye')),
             'removes the whole directory')
     } finally {
         rmSync(dir, { recursive:true, force:true })
@@ -1736,7 +1736,7 @@ git commit -m "refactor(prompt): shared rule lines; collectNotes reads any file"
 - Consumes: `formatDate`, `NOTES_PATH` (Task 5).
 - Produces:
   - `FINDINGS_FILE = 'findings.md'`,
-    `FINDINGS_PATH = '.nightralph/findings.md'`,
+    `FINDINGS_PATH = '.redeye/findings.md'`,
     `NO_FINDINGS = 'No findings.'`, `REVIEW_EXCLUDE = '.scratch'`,
     `REVIEW_STATUSES`, `type ReviewStatus`.
   - `type Finding = { summary:string; detail:string; checked:boolean }`.
@@ -1859,7 +1859,7 @@ test('renderReviewEntry/parseReviewEntries - AC3.1 round trip',
 
 test('parseReviewEntries - AC3.2 sentinel text in findings and ' +
     'notes cannot forge an entry', t => {
-        const forged = `<!-- nightralph:review from=${C} to=${C} ` +
+        const forged = `<!-- redeye:review from=${C} to=${C} ` +
             'status=clean -->'
         const text = renderReviewEntry({
             from:A, to:B, status:'unresolved', now:NOW,
@@ -1882,9 +1882,9 @@ test('parseReviewEntries - AC3.3 drops malformed entries, ' +
         })
         const text = [
             'preamble',
-            `<!-- nightralph:review from=${A} status=clean -->`,
+            `<!-- redeye:review from=${A} status=clean -->`,
             'missing to',
-            `<!-- nightralph:review from=${A} to=${B} ` +
+            `<!-- redeye:review from=${A} to=${B} ` +
                 'status=bogus -->',
             'unknown status',
             good,
@@ -1966,8 +1966,8 @@ export const NO_FINDINGS = 'No findings.'
 // review log), so the review never looks at it.
 export const REVIEW_EXCLUDE = '.scratch'
 
-const SENTINEL_PREFIX = '<!-- nightralph:review'
-const SENTINEL_RE = /^<!-- nightralph:review (.*) -->$/
+const SENTINEL_PREFIX = '<!-- redeye:review'
+const SENTINEL_RE = /^<!-- redeye:review (.*) -->$/
 const SHA_RE = /^[0-9a-f]{4,64}$/
 const FIX_HEADING = '### Fix'
 const FINDING_RE = /^ ?[-*+]\s+\[([ xX])\]\s+(.+)$/
@@ -2031,7 +2031,7 @@ function normalize (s:string):string {
 function sanitize (text:string):string {
     return text.replace(
         new RegExp(SENTINEL_PREFIX, 'g'),
-        '<!-- nightralph-review'
+        '<!-- redeye-review'
     )
 }
 
@@ -2566,9 +2566,9 @@ function git (cwd:string, args:string[]):string {
 function withRepo (
     fn:(repoRoot:string) => Promise<void>
 ):Promise<void> {
-    const templateDir = mkdtempSync(join(tmpdir(), 'nightralph-tpl-'))
+    const templateDir = mkdtempSync(join(tmpdir(), 'redeye-tpl-'))
     const repoRoot = realpathSync(
-        mkdtempSync(join(tmpdir(), 'nightralph-review-'))
+        mkdtempSync(join(tmpdir(), 'redeye-review-'))
     )
     execFileSync('git', ['init', `--template=${templateDir}`],
         { cwd:repoRoot, stdio:'ignore' })
@@ -2641,7 +2641,7 @@ function fakeAgent (
 }
 
 function writeFindings (cwd:string, text:string):void {
-    mkdirSync(join(cwd, '.nightralph'), { recursive:true })
+    mkdirSync(join(cwd, '.redeye'), { recursive:true })
     writeFileSync(join(cwd, FINDINGS_PATH), text)
 }
 
@@ -3032,10 +3032,10 @@ test('runFixer - AC6.4 a retry sees the previous attempt\'s notes',
         await withRepo(async repoRoot => {
             const agent = fakeAgent((cwd, call) => {
                 if (call === 1) {
-                    mkdirSync(join(cwd, '.nightralph'),
+                    mkdirSync(join(cwd, '.redeye'),
                         { recursive:true })
                     writeFileSync(
-                        join(cwd, '.nightralph', 'notes.md'),
+                        join(cwd, '.redeye', 'notes.md'),
                         'NOTES-TOKEN'
                     )
                     return { exitCode:1 }
@@ -3164,7 +3164,7 @@ export async function runFixer (
             if (isDirty(wt.worktreePath)) {
                 await commitDirty(
                     wt.worktreePath,
-                    'nightralph: auto-commit review fix ' +
+                    'redeye: auto-commit review fix ' +
                     'remaining changes'
                 )
             }
@@ -3281,9 +3281,9 @@ function commitFile (name) {
 }
 
 function writeFindings (text) {
-    mkdirSync(join(process.cwd(), '.nightralph'), { recursive:true })
+    mkdirSync(join(process.cwd(), '.redeye'), { recursive:true })
     writeFileSync(
-        join(process.cwd(), '.nightralph', 'findings.md'), text
+        join(process.cwd(), '.redeye', 'findings.md'), text
     )
 }
 
@@ -3410,9 +3410,9 @@ async function withHarness (
     env:Partial<Record<typeof ENV_KEYS[number], string>>,
     fn:(h:Harness) => Promise<void>
 ):Promise<void> {
-    const templateDir = mkdtempSync(join(tmpdir(), 'nightralph-tpl-'))
-    const projectDir = mkdtempSync(join(tmpdir(), 'nightralph-ri-'))
-    const recordDir = mkdtempSync(join(tmpdir(), 'nightralph-rec-'))
+    const templateDir = mkdtempSync(join(tmpdir(), 'redeye-tpl-'))
+    const projectDir = mkdtempSync(join(tmpdir(), 'redeye-ri-'))
+    const recordDir = mkdtempSync(join(tmpdir(), 'redeye-rec-'))
     const saved = Object.fromEntries(
         ENV_KEYS.map(k => [k, process.env[k]])
     )
@@ -3662,7 +3662,7 @@ export async function runReviewPass (
 
     appendEntry(opts.reviewPath, renderReviewEntry(entry))
     await commitProgress(
-        opts.repoRoot, opts.reviewPath, 'nightralph: record review'
+        opts.repoRoot, opts.reviewPath, 'redeye: record review'
     )
     return {
         status:entry.status,
@@ -3855,8 +3855,8 @@ add it to the toc block):
 ```markdown
 ### Integration branch
 
-Launched from your default branch (`main`), nightralph does not merge
-into it. It creates `nightralph--<feature>` (or `nightralph--all` for
+Launched from your default branch (`main`), redeye does not merge
+into it. It creates `redeye--<feature>` (or `redeye--all` for
 several features), merges every ticket there, and leaves you on that
 branch. Running again from `main` resumes the same branch, so finished
 tickets stay finished. Launched from any other branch, it merges into

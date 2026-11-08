@@ -7,7 +7,7 @@ verification.
 
 ## AC1: Tracker choice prompt
 
-### AC1.1: Running `nightralph setup` prompts user to choose between "GitHub Issues" and "Local Markdown"
+### AC1.1: Running `redeye setup` prompts user to choose between "GitHub Issues" and "Local Markdown"
 
 **Verification:** Human
 

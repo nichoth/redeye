@@ -9,7 +9,7 @@ docs, verified below.
 ## Prerequisites
 
 - Node 24 or newer, git, macOS or Linux. Run from
-  `/Users/nick/code/nightralph` with a clean tree.
+  `/Users/nick/code/redeye` with a clean tree.
 - `npm run build && npm test` passes; `npm run lint` shows no
   errors.
 - Scratch project `$P`:
@@ -24,11 +24,11 @@ docs, verified below.
   git add -A && git commit -m init
   ```
 
-- `AGENT=/Users/nick/code/nightralph/test/mock-agent-pass.js`
-- `NR="node /Users/nick/code/nightralph/dist/index.js"`
+- `AGENT=/Users/nick/code/redeye/test/mock-agent-pass.js`
+- `NR="node /Users/nick/code/redeye/dist/index.js"`
 - Resetting `$P` between steps that merge or create
-  `nightralph--demo`: `git checkout main && git branch -D
-  nightralph--demo`, and `git checkout -- .scratch` (or rebuild
+  `redeye--demo`: `git checkout main && git branch -D
+  redeye--demo`, and `git checkout -- .scratch` (or rebuild
   `$P`) if a ticket ran.
 - Remove `$P` and its `demo.*` sibling worktree directories when
   done.
@@ -40,18 +40,18 @@ any of this.
 
 | Step | Action | Expected |
 |------|--------|----------|
-| 1.1 | In `$P`: `$NR nightralph-no-such-provider --spec demo; echo "exit=$?"` | `exit=2`; one stderr line `Provider 'nightralph-no-such-provider' not found on PATH`; `git branch --list 'nightralph--*'` prints nothing; HEAD is still `main`. |
-| 1.2 | `$NR nightralph-no-such-provider --spec demo --dry-run; echo "exit=$?"` | `exit=0`; output has `Provider:     not found on PATH` and still shows the wave plan. |
+| 1.1 | In `$P`: `$NR redeye-no-such-provider --spec demo; echo "exit=$?"` | `exit=2`; one stderr line `Provider 'redeye-no-such-provider' not found on PATH`; `git branch --list 'redeye--*'` prints nothing; HEAD is still `main`. |
+| 1.2 | `$NR redeye-no-such-provider --spec demo --dry-run; echo "exit=$?"` | `exit=0`; output has `Provider:     not found on PATH` and still shows the wave plan. |
 | 1.3 | `$NR $AGENT --spec demo --dry-run` | `Provider:` line shows the absolute path of `mock-agent-pass.js`. |
 | 1.4 | `touch $P/noexec.js && chmod 644 $P/noexec.js`; `$NR $P/noexec.js --spec demo; echo "exit=$?"` | `exit=2`; stderr names the path and says `not found or not executable`. |
-| 1.5 | `mkdir -p bin && cp $AGENT bin/agent.mjs && chmod 755 bin/agent.mjs`; `echo bin/ >> .gitignore && git commit -am ignore-bin`; `$NR ./bin/agent.mjs --spec demo --no-review --retries 0 --install-cmd "" --test-cmd "" --timeout 30; echo "exit=$?"` | `exit=0`; HEAD is `nightralph--demo` and `git log --format=%s` shows `mock agent change` (the relative path resolved against the launch directory, not the worktree). |
-| 1.6 | On a TTY, a provider that passes preflight but fails to spawn: `printf '#!/nonexistent/interp\n' > bad && chmod 755 bad`; `$NR ./bad --spec demo --no-review --retries 0 --test-cmd ""` | The status UI log area shows `agent process error: ...` with the ticket prefix, not painted over; `.scratch/demo/logs/01-task.log` contains `nightralph: agent process error`. |
+| 1.5 | `mkdir -p bin && cp $AGENT bin/agent.mjs && chmod 755 bin/agent.mjs`; `echo bin/ >> .gitignore && git commit -am ignore-bin`; `$NR ./bin/agent.mjs --spec demo --no-review --retries 0 --install-cmd "" --test-cmd "" --timeout 30; echo "exit=$?"` | `exit=0`; HEAD is `redeye--demo` and `git log --format=%s` shows `mock agent change` (the relative path resolved against the launch directory, not the worktree). |
+| 1.6 | On a TTY, a provider that passes preflight but fails to spawn: `printf '#!/nonexistent/interp\n' > bad && chmod 755 bad`; `$NR ./bad --spec demo --no-review --retries 0 --test-cmd ""` | The status UI log area shows `agent process error: ...` with the ticket prefix, not painted over; `.scratch/demo/logs/01-task.log` contains `redeye: agent process error`. |
 
 ## Phase 2: Test gate off
 
 | Step | Action | Expected |
 |------|--------|----------|
-| 2.1 | Fresh `$P`; `printf '{"name":"p","private":true}\n' > package.json && git add -A && git commit -m pkg`; `$NR $AGENT --spec demo --no-review --retries 0 --install-cmd "" --timeout 30 \| tee out.txt` | Exit 0; `grep -c "No test command detected" out.txt` prints `1`; ticket done and merged on `nightralph--demo`; no `.scratch/demo/logs/*.test.log`; log shows `01-task.md: no test gate`. |
+| 2.1 | Fresh `$P`; `printf '{"name":"p","private":true}\n' > package.json && git add -A && git commit -m pkg`; `$NR $AGENT --spec demo --no-review --retries 0 --install-cmd "" --timeout 30 \| tee out.txt` | Exit 0; `grep -c "No test command detected" out.txt` prints `1`; ticket done and merged on `redeye--demo`; no `.scratch/demo/logs/*.test.log`; log shows `01-task.md: no test gate`. |
 | 2.2 | Set `package.json` to `{"name":"p","private":true,"scripts":{"test":"exit 7"}}`, commit, reset, rerun the 2.1 command | Non-zero exit; no `No test command detected`; `01-task.test.log` exists; `mock agent change` not in the log. |
 | 2.3 | Reset, rerun 2.2 with `--test-cmd ""` | Exit 0; no warning, no `.test.log`, ticket merged. |
 | 2.4 | `$NR $AGENT --spec demo --dry-run --test-cmd ""` in `$P`, then in a non-git copy (`cp -r $P/.scratch $(mktemp -d)` and run there) | Both print `Test command: (none)`; the git one also prints `Install:` and the worktree/branch layout. |
@@ -83,14 +83,14 @@ any of this.
 1. Build `$P` with a `package.json` that has no `scripts`.
 2. `$NR $AGENT --spec demo --dry-run`: `Provider:` shows the
    absolute mock path, `Test command: (none)`, and the branch
-   decision says it will create `nightralph--demo`.
+   decision says it will create `redeye--demo`.
 3. `git branch`: only `main` (the dry run changed nothing).
 4. `$NR $AGENT --spec demo --retries 0 --install-cmd "" --no-review
    --timeout 30`.
 5. Exactly one `No test command detected` line, exit 0,
-   `Created branch nightralph--demo` and `Work is on
-   nightralph--demo`.
-6. HEAD is `nightralph--demo`; `git log --format=%s` includes
+   `Created branch redeye--demo` and `Work is on
+   redeye--demo`.
+6. HEAD is `redeye--demo`; `git log --format=%s` includes
    `mock agent change`; the ticket says `**Status:** done`.
 7. `git status` is clean.
 8. Run the same command again: it resumes the branch, finds nothing
@@ -100,7 +100,7 @@ any of this.
 
 1. In `$P` on main: `$NR claudee --spec demo`.
 2. Exit 2 and one line: `Provider 'claudee' not found on PATH`.
-3. `git branch` and `git status` unchanged; no `nightralph--demo`.
+3. `git branch` and `git status` unchanged; no `redeye--demo`.
 4. With `--dry-run`: exit 0 and `Provider:     not found on PATH`.
 
 ## Human verification required

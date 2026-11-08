@@ -2,15 +2,15 @@
 
 ## Introduction
 
-The nightralph test suite has solid unit coverage for parsing,
+The redeye test suite has solid unit coverage for parsing,
 wave scheduling, and setup scaffolding, but nothing validates that
 the CLI commands actually work end-to-end. The CLI layer
 (`src/index.ts`) is completely untested, the `setup` and execute
 commands are never tested in composition, and `spawnAgent` is only
 exercised through trivial mock scripts. This PRD defines the
 integration tests needed to close those gaps and give confidence
-that `npx nightralph setup` followed by
-`npx nightralph claude -m <model>` works on real issue docs.
+that `npx redeye setup` followed by
+`npx redeye claude -m <model>` works on real issue docs.
 
 ## Goals
 
@@ -62,7 +62,7 @@ and produces the expected output.
 
 **Description:** As a developer, I want to verify that `--model`
 (or `-m`) is passed through to the spawned agent process so that
-running `npx nightralph claude -m claude-sonnet-4-6` actually
+running `npx redeye claude -m claude-sonnet-4-6` actually
 forwards the model argument.
 
 **Acceptance Criteria:**

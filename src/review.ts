@@ -204,8 +204,8 @@ export function renderFixPrompt (opts:{
     ].join('\n')
 }
 
-const SENTINEL_PREFIX = '<!-- nightralph:review'
-const SENTINEL_RE = /^<!-- nightralph:review (.*) -->$/
+const SENTINEL_PREFIX = '<!-- redeye:review'
+const SENTINEL_RE = /^<!-- redeye:review (.*) -->$/
 const SHA_RE = /^[0-9a-f]{4,64}$/
 const FIX_HEADING = '### Fix'
 const FINDING_RE = /^ ?[-*+]\s+\[([ xX])\]\s+(.+)$/
@@ -269,7 +269,7 @@ function normalize (s:string):string {
 function sanitize (text:string):string {
     return text.replace(
         new RegExp(SENTINEL_PREFIX, 'g'),
-        '<!-- nightralph-review'
+        '<!-- redeye-review'
     )
 }
 
@@ -755,7 +755,7 @@ export async function runFixer (
             if (isDirty(wt.worktreePath)) {
                 await commitDirty(
                     wt.worktreePath,
-                    'nightralph: auto-commit review fix ' +
+                    'redeye: auto-commit review fix ' +
                     'remaining changes'
                 )
             }
@@ -878,7 +878,7 @@ export async function runReviewPass (
 
     appendEntry(opts.reviewPath, renderReviewEntry(entry))
     await commitProgress(
-        opts.repoRoot, opts.reviewPath, 'nightralph: record review'
+        opts.repoRoot, opts.reviewPath, 'redeye: record review'
     )
     return {
         status: entry.status,

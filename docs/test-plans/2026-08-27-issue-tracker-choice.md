@@ -14,7 +14,7 @@
 | Step | Action | Expected |
 |------|--------|----------|
 | 1 | Open a terminal, `cd` to a clean temp directory | Working directory is empty or has a basic package.json |
-| 2 | Run `node <path-to-nightralph>/dist/index.js setup` | An interactive prompt appears: "Issue tracker format" |
+| 2 | Run `node <path-to-redeye>/dist/index.js setup` | An interactive prompt appears: "Issue tracker format" |
 | 3 | Observe the choices listed | Two choices appear: "Local Markdown" (with description "Issues as .md files in .scratch/") and "GitHub Issues" (with description "Issues via gh CLI") |
 | 4 | Press up/down arrow keys | Highlighted selection moves between the two choices |
 | 5 | Highlight "Local Markdown" and press Enter | Prompt accepts the selection. Setup proceeds, printing "Installing skills to .agents/skills/" and listing installed files |
@@ -27,7 +27,7 @@
 |------|--------|----------|
 | 1 | Confirm `gh auth status` succeeds (exit code 0) | Output shows authenticated user and active account |
 | 2 | Remove any previous setup output (`rm -rf .agents docs AGENTS.md`) | Clean state |
-| 3 | Run `node <path-to-nightralph>/dist/index.js setup` | Prompt appears |
+| 3 | Run `node <path-to-redeye>/dist/index.js setup` | Prompt appears |
 | 4 | Select "GitHub Issues" and press Enter | No error message. Setup proceeds normally |
 | 5 | Verify `docs/agents/issue-tracker.md` was created | File exists, content matches the GitHub template (heading references GitHub) |
 | 6 | Verify `AGENTS.md` contains "GitHub Issues" and a reference to `gh` | The issue tracker section reads: "Issues are tracked via GitHub Issues using the `gh` CLI." |
@@ -38,7 +38,7 @@
 |------|--------|----------|
 | 1 | Make `gh auth status` fail. Option A: run `gh auth logout`. Option B: temporarily rename the `gh` binary (`which gh`, then `mv` it) | `gh auth status` now fails or `gh` is not found |
 | 2 | Remove any previous setup output | Clean state |
-| 3 | Run `node <path-to-nightralph>/dist/index.js setup` | Prompt appears |
+| 3 | Run `node <path-to-redeye>/dist/index.js setup` | Prompt appears |
 | 4 | Select "GitHub Issues" and press Enter | Error message printed: "GitHub Issues requires the gh CLI, authenticated." followed by install/login instructions |
 | 5 | Check exit code: `echo $?` | Exit code is `2` |
 | 6 | Verify no `docs/agents/issue-tracker.md` was created | File does not exist -- setup aborted before template installation |

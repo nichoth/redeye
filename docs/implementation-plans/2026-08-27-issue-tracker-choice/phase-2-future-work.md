@@ -2,7 +2,7 @@
 
 ## Goal
 
-Enable `nightralph <provider>` to pull tickets from GitHub Issues instead of `.scratch/` when the project is configured for GitHub tracking. This allows teams to use GitHub Issues as a native issue tracking system while leveraging nightralph's orchestrator for workflow execution.
+Enable `redeye <provider>` to pull tickets from GitHub Issues instead of `.scratch/` when the project is configured for GitHub tracking. This allows teams to use GitHub Issues as a native issue tracking system while leveraging redeye's orchestrator for workflow execution.
 
 ## Overview
 
@@ -68,7 +68,7 @@ The `--dir` and `--spec` flags assume local file-based issues. GitHub mode requi
 
 ### New Flags for GitHub Mode
 
-- `--label <label>` -- filter issues by GitHub label (e.g., `nightralph`, `phase-1`)
+- `--label <label>` -- filter issues by GitHub label (e.g., `redeye`, `phase-1`)
 - `--milestone <milestone>` -- filter issues by GitHub milestone
 - `--assignee <user>` -- filter issues assigned to a specific user
 
@@ -76,7 +76,7 @@ The `--dir` and `--spec` flags assume local file-based issues. GitHub mode requi
 
 The `resolveIssuesDir` function in `index.ts` currently prompts for a local feature directory. A GitHub-aware variant would:
 
-1. Query `gh issue list --label nightralph --json labels` to discover available labels
+1. Query `gh issue list --label redeye --json labels` to discover available labels
 2. Prompt user to select which label(s) to execute
 3. Optional: support milestone selection if `--milestone` is not specified
 

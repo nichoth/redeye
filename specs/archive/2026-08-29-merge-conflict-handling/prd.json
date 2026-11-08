@@ -1,5 +1,5 @@
 {
-  "project": "nightralph",
+  "project": "redeye",
   "branchName": "ralph/merge-conflict-handling",
   "description": "Fix merge-conflict handling bugs: deferred markDone, respawn strategy, conflicted flag, worktree cleanup, failure recording",
   "userStories": [

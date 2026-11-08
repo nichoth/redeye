@@ -7,7 +7,7 @@
 ## Overview
 
 Add git worktree isolation, progress tracking, and wave-end merge
-to the nightralph orchestrator. This is the `tdd` phase in the
+to the redeye orchestrator. This is the `tdd` phase in the
 `grill -> to-spec -> to-tickets -> tdd` pipeline.
 
 ## Phases

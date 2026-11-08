@@ -37,7 +37,7 @@ This phase implements and tests:
 
 ## Project conventions the executor must follow
 
-Same as phase 1: read `/Users/nick/code/nightralph/AGENTS.md`;
+Same as phase 1: read `/Users/nick/code/redeye/AGENTS.md`;
 4-space indent, single quotes, no semicolons, `name:type` with no
 space, 80 columns, tapzero tests, temp dirs removed in `finally`, no
 em dashes. `npm run build` before CLI subprocess tests; `npm test`

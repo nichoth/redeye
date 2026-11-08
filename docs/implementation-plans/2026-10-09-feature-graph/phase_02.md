@@ -431,7 +431,7 @@ feature-graph.AC3.5, feature-graph.AC3.6
   `'../src/resolve.js'`, and the graph exports from
   `'../src/graph.js'`.
 - `makeScratch():{ root:string; scratchDir:string; load:LoadFn }`:
-  `mkdtempSync(join(tmpdir(), 'nightralph-graph-'))`, creates
+  `mkdtempSync(join(tmpdir(), 'redeye-graph-'))`, creates
   `.scratch`, and returns `load = names => loadSelection(scratchDir,
   names)`.
 - `addFeature(scratchDir, name, tickets:Array<[num:number,

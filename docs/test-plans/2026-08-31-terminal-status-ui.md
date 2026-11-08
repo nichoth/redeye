@@ -40,8 +40,8 @@ terminal's color scheme.
 
 | Step | Action | Expected |
 |------|--------|----------|
-| 1 | Run `npx nightralph claude --spec manual-test --dry-run` to confirm tickets are detected | Dry-run output lists all 8 tickets in wave order |
-| 2 | Run `npx nightralph claude --spec manual-test` (or substitute your provider) | Terminal UI appears with a status line and ticket list |
+| 1 | Run `npx redeye claude --spec manual-test --dry-run` to confirm tickets are detected | Dry-run output lists all 8 tickets in wave order |
+| 2 | Run `npx redeye claude --spec manual-test` (or substitute your provider) | Terminal UI appears with a status line and ticket list |
 | 3 | Observe tickets before any agent starts processing | Each ticket line shows a dim/empty dot character next to the filename |
 | 4 | Observe a ticket when the agent begins working on it | The dot changes to a filled circle in yellow/amber color |
 | 5 | Observe a ticket after the agent completes it successfully | The dot changes to a filled circle in green |
@@ -58,7 +58,7 @@ and that `render()` produces correct output for different
 | Step | Action | Expected |
 |------|--------|----------|
 | 1 | Resize your terminal to approximately 15 rows tall (short enough that not all 8 tickets fit) | -- |
-| 2 | Run `npx nightralph claude --spec manual-test` | Terminal UI appears with pagination indicators ("... N more below") because not all tickets fit |
+| 2 | Run `npx redeye claude --spec manual-test` | Terminal UI appears with pagination indicators ("... N more below") because not all tickets fit |
 | 3 | While the display is running, drag the terminal window taller (add ~10 rows) | The display re-renders immediately; more tickets become visible; the "more below" count decreases or disappears |
 | 4 | Drag the terminal window shorter again | The display re-renders; fewer tickets are visible; the "more below" indicator reappears with a higher count |
 | 5 | Verify no visual artifacts (leftover lines, broken layout) after each resize | The display is clean after every resize |
@@ -73,7 +73,7 @@ path.
 | Step | Action | Expected |
 |------|--------|----------|
 | 1 | Ensure you are inside a git repository with a clean working tree | `git status` shows no uncommitted changes |
-| 2 | Run `npx nightralph claude --spec manual-test` from inside the git repo | The CLI auto-detects the git repo and uses `runWavesIsolated` |
+| 2 | Run `npx redeye claude --spec manual-test` from inside the git repo | The CLI auto-detects the git repo and uses `runWavesIsolated` |
 | 3 | Observe the terminal UI | Status display appears with wave number, ticket dots, percentage, and rolling message area -- identical layout to the non-isolated mode |
 | 4 | Verify worktrees are created | While running, open another terminal and run `git worktree list`; sibling directories named `<repo>.<num>-<slug>` should appear |
 | 5 | Wait for all tickets to complete | All dots turn green, percentage reaches 100%, branches are merged back |
@@ -101,9 +101,9 @@ produces clean, ANSI-free output.
 
 | Step | Action | Expected |
 |------|--------|----------|
-| 1 | Run `npx nightralph claude --spec manual-test 2>&1 \| cat` | Output goes to cat (non-TTY); should see plain-text wave/ticket info with no escape codes |
-| 2 | Run `npx nightralph claude --spec manual-test > /tmp/nightralph-output.txt 2>&1` | -- |
-| 3 | Inspect `/tmp/nightralph-output.txt` | File contains readable text with no `\x1b[` sequences; wave starts and log messages are present |
+| 1 | Run `npx redeye claude --spec manual-test 2>&1 \| cat` | Output goes to cat (non-TTY); should see plain-text wave/ticket info with no escape codes |
+| 2 | Run `npx redeye claude --spec manual-test > /tmp/redeye-output.txt 2>&1` | -- |
+| 3 | Inspect `/tmp/redeye-output.txt` | File contains readable text with no `\x1b[` sequences; wave starts and log messages are present |
 
 ## Human Verification Required
 

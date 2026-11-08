@@ -1,5 +1,5 @@
 {
-  "project": "nightralph",
+  "project": "redeye",
   "branchName": "ralph/audit-fixes",
   "description": "Fix verified bugs and practical issues from the AUDIT.md review",
   "userStories": [
@@ -57,7 +57,7 @@
     {
       "id": "US-004",
       "title": "Add permission flags to provider argument maps",
-      "description": "As a user running nightralph claude, I want the spawned agent to have write permissions so that tickets can actually be implemented.",
+      "description": "As a user running redeye claude, I want the spawned agent to have write permissions so that tickets can actually be implemented.",
       "acceptanceCriteria": [
         "claude provider args include a permission flag that allows file writes (e.g. --dangerously-skip-permissions)",
         "codex provider args include a sandbox flag that allows workspace writes (e.g. --full-auto)",

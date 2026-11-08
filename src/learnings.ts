@@ -13,9 +13,9 @@ import { basename, dirname, join } from 'node:path'
 export const MAX_OWN_ENTRIES = 4
 export const MAX_ENTRY_CHARS = 4000
 export const LOG_TAIL_LINES = 40
-export const NOTES_PATH = '.nightralph/notes.md'
+export const NOTES_PATH = '.redeye/notes.md'
 
-const SENTINEL_PREFIX = '<!-- nightralph:entry'
+const SENTINEL_PREFIX = '<!-- redeye:entry'
 export const TRUNCATED_MARKER = '[truncated]'
 
 export const LEARNING_OUTCOMES = [
@@ -96,7 +96,7 @@ function sanitize (text:string|null):string {
     if (!text) return ''
     return text.replace(
         new RegExp(SENTINEL_PREFIX, 'g'),
-        '<!-- nightralph-entry'
+        '<!-- redeye-entry'
     )
 }
 
@@ -168,7 +168,7 @@ export function renderEntry (input:EntryInput):string {
         ''
 
     const sentinel =
-        `<!-- nightralph:entry ticket=${encodedKey} ` +
+        `<!-- redeye:entry ticket=${encodedKey} ` +
         `attempt=${input.attempt} outcome=${input.outcome}` +
         `${timedOutStr} -->`
 
@@ -293,7 +293,7 @@ export function parseEntries (text:string):LearningEntry[] {
     let currentSentinel:string|null = null
     let currentBody:string[] = []
 
-    const sentinelRegex = /^<!-- nightralph:entry (.*) -->$/
+    const sentinelRegex = /^<!-- redeye:entry (.*) -->$/
 
     for (const line of lines) {
         const match = line.match(sentinelRegex)

@@ -80,7 +80,7 @@ implementation history.
   `readEntries`, `appendEntry`, `collectNotes`,
   `ensureNotesIgnored`),
   the sentinel format
-  (`<!-- nightralph:entry ticket=<key> attempt=<n> outcome=<o>
+  (`<!-- redeye:entry ticket=<key> attempt=<n> outcome=<o>
   [timedout=true] -->`, where only `%` and whitespace in the key are
   percent-escaped, so `ticket=my-feature:4` stays readable; `attempt`
   is `0` for `merge` entries) and outcome values, that it imports no
@@ -119,9 +119,9 @@ implementation history.
    agent's own notes; the file is committed alongside `progress.md`
    and persists across runs; each agent's prompt includes its own
    ticket's recent entries and what its direct blockers did; agents
-   keep their notes in `.nightralph/notes.md` inside the worktree,
-   which nightralph collects and keeps out of commits with a
-   self-ignoring `.nightralph/.gitignore`.
+   keep their notes in `.redeye/notes.md` inside the worktree,
+   which redeye collects and keeps out of commits with a
+   self-ignoring `.redeye/.gitignore`.
 2. Read the note against the code once more for accuracy.
 
 **Commit:**

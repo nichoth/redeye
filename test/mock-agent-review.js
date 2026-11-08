@@ -28,9 +28,9 @@ function commitFile (name) {
 }
 
 function writeFindings (text) {
-    mkdirSync(join(process.cwd(), '.nightralph'), { recursive:true })
+    mkdirSync(join(process.cwd(), '.redeye'), { recursive:true })
     writeFileSync(
-        join(process.cwd(), '.nightralph', 'findings.md'), text
+        join(process.cwd(), '.redeye', 'findings.md'), text
     )
 }
 

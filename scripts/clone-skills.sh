@@ -40,12 +40,12 @@ copy_skill "skills/engineering/tdd" "tdd"
 sed -i '' 's/^name: grill-with-docs$/name: grill/' \
     "$SKILLS_DIR/grill/SKILL.md"
 
-# This package's setup command is `nightralph init`, not
+# This package's setup command is `redeye init`, not
 # the upstream slash command.
 MATCHES=$(grep -rl 'setup-matt-pocock-skills' "$SKILLS_DIR" || true)
 if [ -n "$MATCHES" ]; then
     echo "$MATCHES" | xargs sed -i '' \
-        's#`/setup-matt-pocock-skills`#`npx nightralph init`#g'
+        's#`/setup-matt-pocock-skills`#`npx redeye init`#g'
 fi
 
 if grep -rq 'setup-matt-pocock-skills' "$SKILLS_DIR"; then

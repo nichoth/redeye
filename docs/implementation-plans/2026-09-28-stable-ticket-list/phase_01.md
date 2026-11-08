@@ -71,7 +71,7 @@ This phase implements and tests:
 
 ## Project conventions for every task
 
-- Read `/Users/nick/code/nightralph/AGENTS.md` and
+- Read `/Users/nick/code/redeye/AGENTS.md` and
   `/Users/nick/.claude/CLAUDE.md` first.
 - Type annotations have no space after the colon (`num:number`).
   Lines stay under 80 columns. Multi-line ternaries put `?` and `:` at

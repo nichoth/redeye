@@ -3,7 +3,7 @@
 ## What was done
 
 Implementation plan created and validated for adding a
-live-updating terminal status display to nightralph. The plan
+live-updating terminal status display to redeye. The plan
 has 4 phases with 18 tasks total, covering:
 
 1. Phase 1 (Infrastructure): Types and ANSI escape code helpers
@@ -21,7 +21,7 @@ Code review passed with zero issues. Test requirements written.
 ## Files
 
 Plan directory:
-/Users/nick/code/nightralph/docs/implementation-plans/2026-08-31-terminal-status-ui/
+/Users/nick/code/redeye/docs/implementation-plans/2026-08-31-terminal-status-ui/
 
 - phase_01.md
 - phase_02.md
@@ -30,7 +30,7 @@ Plan directory:
 - test-requirements.md
 
 Design plan:
-/Users/nick/code/nightralph/docs/design-plans/2026-08-31-terminal-status-ui.md
+/Users/nick/code/redeye/docs/design-plans/2026-08-31-terminal-status-ui.md
 
 ## How to execute
 
@@ -38,7 +38,7 @@ Run the execute-implementation-plan skill with the plan
 directory and working directory:
 
 ```
-/ed3d-plan-and-execute:execute-implementation-plan /Users/nick/code/nightralph/docs/implementation-plans/2026-08-31-terminal-status-ui/ /Users/nick/code/nightralph/
+/ed3d-plan-and-execute:execute-implementation-plan /Users/nick/code/redeye/docs/implementation-plans/2026-08-31-terminal-status-ui/ /Users/nick/code/redeye/
 ```
 
 ## Branch

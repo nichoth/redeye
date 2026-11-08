@@ -1,5 +1,5 @@
 {
-  "project": "nightralph",
+  "project": "redeye",
   "branchName": "ralph/review-fixes",
   "description": "Fix seven gaps from the adversarial review so unattended runs cannot orphan processes, leak worktrees, lose progress data, or report wrong defaults",
   "userStories": [

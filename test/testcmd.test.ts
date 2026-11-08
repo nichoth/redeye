@@ -9,7 +9,7 @@ import {
 } from '../src/testcmd.js'
 
 function tmp ():string {
-    return mkdtempSync(join(tmpdir(), 'nightralph-testcmd-'))
+    return mkdtempSync(join(tmpdir(), 'redeye-testcmd-'))
 }
 
 test('detectTestCmd - no package.json', t => {

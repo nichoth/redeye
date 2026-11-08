@@ -59,8 +59,8 @@ Phases 1-5.
     (pure; the loader is injected)
   ```
 - Modify: `AGENTS.md` CLI contract (`### CLI (\`src/index.ts\`)`,
-  line 114) -- after the `nightralph init` bullet (lines 115-117)
-  add a `nightralph graph [--spec <name>]` bullet: read-only, reads
+  line 114) -- after the `redeye init` bullet (lines 115-117)
+  add a `redeye graph [--spec <name>]` bullet: read-only, reads
   the current checkout like the picker (no provider preflight, no
   git, no writes); without `--spec` it reports the picker's features
   (`findFeatureDirs`); with `--spec` one feature, which may be nested
@@ -141,7 +141,7 @@ Phases 1-5.
 
 **Verification:**
 
-Run: `grep -n "simulateRun\|waitsOn\|nightralph graph\|### graph module" AGENTS.md`
+Run: `grep -n "simulateRun\|waitsOn\|redeye graph\|### graph module" AGENTS.md`
 Expected: each term appears in the sections above
 
 Run: `perl -CSD -ne 'print "$.: $_" if /[\x{2014}\x{2192}]/' AGENTS.md`
@@ -165,18 +165,18 @@ git commit -m "docs: document the graph module and command in AGENTS.md"
   to the `## Examples` code block (lines 140-170):
   ```
   # Show which features wait on tickets in other features
-  npx nightralph graph
+  npx redeye graph
   ```
-  The existing examples use `npx nightralph ...`; put the new one
-  after the `--dry-run` example (`npx nightralph codex --dry-run`).
+  The existing examples use `npx redeye ...`; put the new one
+  after the `--dry-run` example (`npx redeye codex --dry-run`).
 
 **Content of the section** (prose, user-facing):
 
 - What it answers: which features wait on tickets in other features,
   through which tickets, and which features to select together so the
   work can run.
-- Usage: `nightralph graph` (the features the picker shows) and
-  `nightralph graph --spec <name>` (one feature and what it waits on,
+- Usage: `redeye graph` (the features the picker shows) and
+  `redeye graph --spec <name>` (one feature and what it waits on,
   nested or complete features included).
 - A short sample of the output, in the shape `renderGraph` produces
   (copy it from a real run against a fixture, e.g. the Phase 5 test
@@ -206,6 +206,6 @@ Expected: no output (the README has none today)
 
 ```bash
 git add README.md
-git commit -m "docs: document nightralph graph in the README"
+git commit -m "docs: document redeye graph in the README"
 ```
 <!-- END_TASK_2 -->

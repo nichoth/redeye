@@ -52,13 +52,13 @@ containing that record.
 
 ### attempt-learnings-design.AC3: Learnings IO
 - **attempt-learnings-design.AC3.1 Success:** `collectNotes` returns
-  the notes file's contents and removes the `.nightralph/` directory,
+  the notes file's contents and removes the `.redeye/` directory,
   also when there is no notes file.
 - **attempt-learnings-design.AC3.2 Edge:** `collectNotes` returns
   `null` when there is no notes file.
 - **attempt-learnings-design.AC3.3 Success:** After
   `ensureNotesIgnored(worktreePath)`, git ignores everything under
-  `.nightralph/` in that worktree (including its own `.gitignore`), and
+  `.redeye/` in that worktree (including its own `.gitignore`), and
   nothing under the repo's git dir is written.
 - **attempt-learnings-design.AC3.4 Edge:** `readEntries` on a missing
   file returns `[]`.
@@ -69,7 +69,7 @@ containing that record.
 - **attempt-learnings-design.AC4.2 Edge:** A prompt rendered with no
   history equals one rendered with `history:''`.
 - **attempt-learnings-design.AC4.3 Human:** The prompt tells the agent
-  to keep `.nightralph/notes.md` current and never commit it, splits
+  to keep `.redeye/notes.md` current and never commit it, splits
   reusable patterns (AGENTS.md) from ticket notes, and allows skipping
   test-first for pure scaffolding, config, or docs items.
 
@@ -95,7 +95,7 @@ containing that record.
 
 ### attempt-learnings-design.AC7: Repo hygiene and safety
 - **attempt-learnings-design.AC7.1 Success:** No commit on any ref
-  contains a `.nightralph/` path.
+  contains a `.redeye/` path.
 - **attempt-learnings-design.AC7.2 Success:** `learnings.md` is
   committed and has no uncommitted changes when the run ends.
 - **attempt-learnings-design.AC7.3 Failure:** When `learnings.md`
@@ -137,7 +137,7 @@ Path: `.scratch/<feature>/learnings.md`, next to `progress.md` and
 Append-only, one entry per attempt, oldest first:
 
 ````markdown
-<!-- nightralph:entry ticket=my-feature:4 attempt=2 outcome=tests -->
+<!-- redeye:entry ticket=my-feature:4 attempt=2 outcome=tests -->
 ## 2026-10-07 03:14 -- my-feature/04 attempt 2 -- failed (tests)
 
 Effort: xhigh. Agent exit: 0. Checked items: "parse header",
@@ -152,7 +152,7 @@ not ok 7 - rejects empty input
 
 ### Agent notes
 
-<contents of .nightralph/notes.md, or "The agent left no notes.">
+<contents of .redeye/notes.md, or "The agent left no notes.">
 
 ---
 ````
@@ -160,7 +160,7 @@ not ok 7 - rejects empty input
 The sentinel comment is the only thing parsed; the `##` heading is for
 humans. Agent notes may contain their own headings, so the heading is
 never used as a delimiter. Any occurrence of the sentinel prefix
-(`<!-- nightralph:entry`) inside agent notes is stripped before the
+(`<!-- redeye:entry`) inside agent notes is stripped before the
 entry is written.
 
 Sentinel fields:
@@ -214,7 +214,7 @@ entries are cut and end with `[truncated]`.
 
 New and changed agent instructions:
 
-1. Keep `.nightralph/notes.md` (create the directory) up to date as you
+1. Keep `.redeye/notes.md` (create the directory) up to date as you
    work: after each checklist item and as soon as you hit a blocker,
    not only at the end. Record what you implemented, files changed,
    how you interpreted any vague acceptance criteria, what blocked you,
@@ -261,7 +261,7 @@ Pure functions:
   same directory as `progressPath`.
 
 Exported constants: `MAX_OWN_ENTRIES`, `MAX_ENTRY_CHARS`,
-`LOG_TAIL_LINES`, `NOTES_PATH` (`.nightralph/notes.md`),
+`LOG_TAIL_LINES`, `NOTES_PATH` (`.redeye/notes.md`),
 `TRUNCATED_MARKER`, `LEARNING_OUTCOMES` (the valid outcome values).
 
 IO functions:
@@ -271,11 +271,11 @@ IO functions:
   parent directory. Parallel tickets share one Node thread, so
   synchronous appends cannot interleave.
 - `collectNotes(worktreePath):string|null` -- reads
-  `<worktree>/.nightralph/notes.md` and deletes the whole
-  `.nightralph/` directory (whether or not the file exists); `null`
+  `<worktree>/.redeye/notes.md` and deletes the whole
+  `.redeye/` directory (whether or not the file exists); `null`
   when absent or blank.
 - `ensureNotesIgnored(worktreePath):void` -- creates
-  `<worktree>/.nightralph/` and writes a `.gitignore` containing `*`
+  `<worktree>/.redeye/` and writes a `.gitignore` containing `*`
   into it, so git ignores the directory and everything in it. It
   never writes `info/exclude`: that file can be a symlink shared by
   every repo on the machine (e.g. via `init.templateDir`), so writing
@@ -360,17 +360,17 @@ parsed entry, the log).
 6. `collectNotes` returns contents and deletes the directory; `null`
    when absent.
 7. After `ensureNotesIgnored`, `git add -A` in a temp repo stages
-   nothing under `.nightralph/`.
+   nothing under `.redeye/`.
 
 `test/integration.test.ts` integration tests (where the `runWavesIsolated`
 tests live), with one env-driven mock agent, `test/mock-agent-notes.js`
 (`MOCK_MODE` = `pass`, `fail`, `fail-once`, or `hang`):
 
 1. **Retry sees history.** The mock in `fail-once` mode saves
-   its stdin prompt to a file, writes a token to `.nightralph/notes.md`,
+   its stdin prompt to a file, writes a token to `.redeye/notes.md`,
    fails on its first attempt only. Assert: attempt 2's prompt contains attempt
    1's token; `learnings.md` parses to two entries for the ticket
-   (`exit`, then `done`); no commit on any ref touches `.nightralph/`;
+   (`exit`, then `done`); no commit on any ref touches `.redeye/`;
    `learnings.md` is tracked and has no uncommitted changes at the end.
 2. **Notes survive a timeout.** The mock in `hang` mode writes
    a token then hangs; the entry is `timedOut` and contains the token.

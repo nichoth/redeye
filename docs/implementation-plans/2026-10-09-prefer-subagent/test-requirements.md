@@ -128,7 +128,7 @@ spawn site (ticket attempts, merge respawns) and by a wrapped
 ## Human verification
 
 The fake claude replays stream-json fixtures written from the design's
-reading of Claude Code. The tests prove nightralph handles that shape.
+reading of Claude Code. The tests prove redeye handles that shape.
 They cannot prove the real CLI emits it or honours the env var. Run
 H1 to H3 once against the installed `claude` (the design observed
 2.1.296; record the version you test).
@@ -138,7 +138,7 @@ AC1.6 beyond the env log). The automated tests only show the var
 reaches the child's environment.
 Approach: in a scratch repo with one small `ready-for-agent` ticket
 that needs a code search, run
-`nightralph claude --spec <feature> --prefer-subagent haiku`. Also run
+`redeye claude --spec <feature> --prefer-subagent haiku`. Also run
 `CLAUDE_CODE_SUBAGENT_MODEL=haiku claude -p "<prompt that asks for a
 subagent>" --output-format stream-json --verbose > out.jsonl`. In
 `out.jsonl`, confirm the assistant messages with a non-null
@@ -153,7 +153,7 @@ subagent is a main-loop `tool_use` named `Agent` (or `Task` on older
 versions) with a string `id`; (b) the subagent's own messages carry
 `parent_tool_use_id` equal to that id; (c) the final `result` has a
 numeric `total_cost_usd` and, on this version, `subagent_stats.spawned`.
-Then check that the H1 nightralph run's `learnings.md` entry shows the
+Then check that the H1 redeye run's `learnings.md` entry shows the
 same `Subagents:` count and a `Cost:` matching `total_cost_usd`, and
 that the finish line totals them.
 

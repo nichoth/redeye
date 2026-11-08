@@ -107,7 +107,7 @@ Expected: no hit refers to the `startWave` argument (hits about
   those dependents as blocked and names the failed ticket.
 - Rewrite the opening of "How It Works" to define a wave in plain
   terms: a batch of tickets whose blockers are all done; they run in
-  parallel (up to `--concurrency` at once); nightralph waits for the
+  parallel (up to `--concurrency` at once); redeye waits for the
   whole batch, merges the branches, then looks for newly unblocked
   tickets, which form the next wave. The wave total in the header is
   a prediction that assumes every ticket succeeds.

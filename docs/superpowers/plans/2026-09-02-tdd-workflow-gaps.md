@@ -33,7 +33,7 @@ The pipeline is a monotonic ambiguity reducer. `grill` extracts decisions, `to-s
 
 The artifacts chain cleanly. `domain-modeling` writes `CONTEXT.md` and ADRs, `to-spec` and `to-tickets` read them, and the `tdd` skill reads `CONTEXT.md` too. Vocabulary set during grilling survives into ticket titles and test names. The advice to run `grill -> to-spec` in one context window is correct because `to-spec` is a synthesis with no interview.
 
-Ticket sizing matches the runtime. `to-tickets` sizes each slice to one fresh context window and nightralph gives each ticket exactly that. Vertical slices with blocking edges map directly onto waves and worktrees. Bundling the skills at a pinned upstream commit is the real value of the package.
+Ticket sizing matches the runtime. `to-tickets` sizes each slice to one fresh context window and redeye gives each ticket exactly that. Vertical slices with blocking edges map directly onto waves and worktrees. Bundling the skills at a pinned upstream commit is the real value of the package.
 
 ### Where it breaks down
 
@@ -47,7 +47,7 @@ Ticket sizing matches the runtime. `to-tickets` sizes each slice to one fresh co
 
 5. **The "no file paths in tickets" rule is wrong for this runtime.** Upstream avoids paths because tickets go stale on a human tracker. Here tickets are executed within hours by an agent told to read for two minutes. Paths and symbol names are the biggest per-ticket speedup available.
 
-6. **Drift the package exists to prevent.** `to-spec` and `to-tickets` tell the user to run `/setup-matt-pocock-skills`, which this package does not ship; the command is `nightralph init`. Both issue-tracker templates document `/wayfinder`, which is not bundled.
+6. **Drift the package exists to prevent.** `to-spec` and `to-tickets` tell the user to run `/setup-matt-pocock-skills`, which this package does not ship; the command is `redeye init`. Both issue-tracker templates document `/wayfinder`, which is not bundled.
 
 ### Fix summary
 
@@ -94,10 +94,10 @@ Not in scope: re-running tests on the base branch after a wave merges, and a tes
 In `scripts/clone-skills.sh`, after the existing `sed` that renames `grill-with-docs`, add:
 
 ```bash
-# This package's setup command is `nightralph init`, not
+# This package's setup command is `redeye init`, not
 # the upstream slash command.
 for f in "$SKILLS_DIR"/*/SKILL.md; do
-    sed -i '' 's#`/setup-matt-pocock-skills`#`npx nightralph init`#g' "$f"
+    sed -i '' 's#`/setup-matt-pocock-skills`#`npx redeye init`#g' "$f"
 done
 
 if grep -rq 'setup-matt-pocock-skills' "$SKILLS_DIR"; then
@@ -111,7 +111,7 @@ fi
 Run from the repo root:
 
 ```bash
-sed -i '' 's#`/setup-matt-pocock-skills`#`npx nightralph init`#g' \
+sed -i '' 's#`/setup-matt-pocock-skills`#`npx redeye init`#g' \
     src/skills/to-spec/SKILL.md src/skills/to-tickets/SKILL.md
 grep -rn 'setup-matt-pocock-skills' src/skills
 ```
@@ -139,7 +139,7 @@ Expected: all tests pass.
 
 ```bash
 git add scripts/clone-skills.sh src/skills src/docs-templates
-git commit -m "fix: drop references to commands nightralph does not ship"
+git commit -m "fix: drop references to commands redeye does not ship"
 ```
 
 ---
@@ -178,7 +178,7 @@ import { tmpdir } from 'node:os'
 import { detectTestCmd, runTestCmd } from '../src/testcmd.js'
 
 function tmp ():string {
-    return mkdtempSync(join(tmpdir(), 'nightralph-testcmd-'))
+    return mkdtempSync(join(tmpdir(), 'redeye-testcmd-'))
 }
 
 test('detectTestCmd - no package.json', t => {
@@ -723,7 +723,7 @@ In `runWavesIsolated`, directly after the `if (!hasNewCommits(...)) { ... contin
                     await commitProgress(
                         repoRoot,
                         progressPath,
-                        `nightralph: ${ticket.filename} ` +
+                        `redeye: ${ticket.filename} ` +
                             'tests failed'
                     )
                     try {
@@ -770,7 +770,7 @@ git commit -m "feat: run the test command in each worktree before merge"
 
 **Interfaces:**
 - Consumes: `detectTestCmd` from Task 2; `testCmd` opts from Task 4.
-- Produces: `nightralph <provider> --test-cmd <cmd>`. Omitted means auto-detect via `detectTestCmd(process.cwd())`. An empty string disables the gate.
+- Produces: `redeye <provider> --test-cmd <cmd>`. Omitted means auto-detect via `detectTestCmd(process.cwd())`. An empty string disables the gate.
 
 - [ ] **Step 1: Add the option**
 
@@ -863,10 +863,10 @@ Replace the note that begins `An agent run only counts as a success when the age
   dependents.
 ```
 
-Replace the sentence `The nightralph CLI does the tdd part of the workflow.` with:
+Replace the sentence `The redeye CLI does the tdd part of the workflow.` with:
 
 ```
-The `nightralph` CLI does the `tdd` part of the workflow: the agent
+The `redeye` CLI does the `tdd` part of the workflow: the agent
 prompt tells the agent to write a failing test per acceptance
 criterion at the seams named in the spec's Testing Decisions, and
 the orchestrator runs the project's test command in the worktree
@@ -887,7 +887,7 @@ git commit -m "feat: --test-cmd flag; document the test gate and real timeout de
 
 ---
 
-### Task 6: Tell to-tickets to include file paths for nightralph tickets
+### Task 6: Tell to-tickets to include file paths for redeye tickets
 
 **Files:**
 - Modify: `src/docs-templates/issue-tracker.md`

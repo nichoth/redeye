@@ -31,7 +31,7 @@ This phase implements and tests:
 ### cross-feature-blockers.AC3: Zero-ready stop
 - **cross-feature-blockers.AC3.1 Success:** when the first scan
   finds nothing ready, the run prints why and exits 0, and the
-  branch is unchanged, with no `nightralph--*` branch created
+  branch is unchanged, with no `redeye--*` branch created
 - **cross-feature-blockers.AC3.2 Edge:** the stop happens before
   provider preflight, so an unknown provider with nothing ready
   still exits 0
@@ -120,7 +120,7 @@ shift after Phases 2-4):
 - Model test: `'CLI subprocess - AC1.4 a provider not on PATH
   fails before git state changes'` ~line 4919 -- uses
   `cliGitRepo()`, one ticket, `commitAll`, then asserts
-  `gitOut(projectDir, ['branch', '--list', 'nightralph--*'])` is
+  `gitOut(projectDir, ['branch', '--list', 'redeye--*'])` is
   empty and HEAD is `main`. Copy its structure and cleanup.
 - `'CLI subprocess - dry-run deadlock detection'` ~line 489: two
   tickets blocking each other, `--dry-run`; asserts exit 0,
@@ -377,29 +377,29 @@ the line-4919 test.
 - AC3.1: `twoFeatureRepo(BLOCKED_BODY, 'ready-for-agent')`; run
   `spawnCli([MOCK_AGENT, '--spec', FEAT], { cwd:projectDir })`.
   Exit 0; `stdout` includes `'other-feat/01'`;
-  `gitOut(projectDir, ['branch', '--list', 'nightralph--*'])`
+  `gitOut(projectDir, ['branch', '--list', 'redeye--*'])`
   is empty; HEAD (`rev-parse --abbrev-ref HEAD`) is `main`;
   `01-first.md` is unchanged (still `ready-for-agent`).
-- AC3.2: same setup, provider `'nightralph-no-such-provider'`:
-  exit 0, no `nightralph--*` branch.
+- AC3.2: same setup, provider `'redeye-no-such-provider'`:
+  exit 0, no `redeye--*` branch.
 - AC3.3: same setup with `--dry-run`: exit 0, `stdout` includes
   `'other-feat/01'`.
 - AC3.4: `twoFeatureRepo(makeTicketBody({
   status:'ready-for-agent' }), 'ready-for-agent')` (ticket 01 is
-  ready on `main`). Then `git checkout -b nightralph--test-feat`,
+  ready on `main`). Then `git checkout -b redeye--test-feat`,
   rewrite `01-first.md` to `BLOCKED_BODY`, `commitAll`,
   `git checkout main`. Run with `MOCK_AGENT`. Exit 0; HEAD is
-  `main`; `nightralph--test-feat` still exists; `stdout` includes
+  `main`; `redeye--test-feat` still exists; `stdout` includes
   `'other-feat/01'` (printed only by the stop's explanation).
 - Resume skips the first-scan stop: `twoFeatureRepo(BLOCKED_BODY,
-  'ready-for-agent')`, then `git branch nightralph--test-feat`
+  'ready-for-agent')`, then `git branch redeye--test-feat`
   (same commit as `main`). Run with `MOCK_AGENT`. Exit 0; HEAD is
   `main`; `stdout` includes `'Resumed'` (the existing resume log,
   so the run went through `prepareIntegrationBranch` and the stop
   came from the re-scan) and `'other-feat/01'`.
 - AC3.5: same as AC3.4 but on the integration branch set
   `01-first.md` to `makeTicketBody({ status:'done' })`. Run with
-  `MOCK_AGENT`. Exit 0 and HEAD is `nightralph--test-feat` (the run
+  `MOCK_AGENT`. Exit 0 and HEAD is `redeye--test-feat` (the run
   went on into `runWavesIsolated`; its review pass is skipped
   because only `.scratch` changed).
 - AC3.6: `twoFeatureRepo(BLOCKED_BODY, 'done')` with the mock agent
@@ -407,8 +407,8 @@ the line-4919 test.
   `'--retry-delay', '0', '--test-cmd', 'true', '--no-review'` (as
   the tests at ~`test/integration.test.ts:5078-5080` do) so the run
   fits in `spawnCli`'s 30s timeout. Exit 0;
-  `nightralph--test-feat` exists; `git show
-  nightralph--test-feat:.scratch/test-feat/issues/01-first.md`
+  `redeye--test-feat` exists; `git show
+  redeye--test-feat:.scratch/test-feat/issues/01-first.md`
   includes `**Status:** done`.
 
 **Update existing tests:**

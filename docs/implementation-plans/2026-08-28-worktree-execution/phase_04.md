@@ -49,7 +49,7 @@ export async function runWavesIsolated(opts:{
    writeProgress(progressPath, progress)
    await commitProgress(
        repoRoot, progressPath,
-       `nightralph: start ${opts.featureName}`
+       `redeye: start ${opts.featureName}`
    )
    ```
 
@@ -93,7 +93,7 @@ export async function runWavesIsolated(opts:{
        writeProgress(progressPath, progress)
        await commitProgress(
          repoRoot, progressPath,
-         `nightralph: ${ticket.filename} done`
+         `redeye: ${ticket.filename} done`
        )
 
      // Batch merge at wave end

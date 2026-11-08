@@ -78,7 +78,7 @@ cli-audit-fixes.AC5.3
 
 **Step 1: Requirements under Install**
 
-After the `npm i -S nightralph` code block (line 55) and before
+After the `npm i -S redeye` code block (line 55) and before
 `### Install Dependency Skills` (line 57), add:
 
 ```markdown
@@ -86,9 +86,9 @@ After the `npm i -S nightralph` code block (line 55) and before
 
 - Node 24 or newer (see `engines` in `package.json`) and git.
 - The agent CLI you name on the command line (`claude`, `codex` or
-  `pi`) installed and on your `PATH`. nightralph checks this before
+  `pi`) installed and on your `PATH`. redeye checks this before
   it touches git and exits with code 2 if the command is not found.
-- macOS or Linux. nightralph runs agents in their own process group
+- macOS or Linux. redeye runs agents in their own process group
   and uses `sh -c` for test and install commands, so it does not
   run on Windows.
 ```

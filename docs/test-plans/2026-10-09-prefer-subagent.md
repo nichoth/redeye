@@ -45,8 +45,8 @@ CLI, the live TTY display, and the docs.
 | 2.2 | `jq -c 'select(.type=="assistant" and .parent_tool_use_id!=null) \| .message.model' out.jsonl \| sort -u` | Only haiku model ids |
 | 2.3 | `jq -c 'select(.type=="assistant" and .parent_tool_use_id==null) \| .message.model' out.jsonl \| sort -u` | The default main model, not haiku |
 | 2.4 | `jq -c 'select(.type=="assistant" and .parent_tool_use_id==null) \| .message.content[]? \| select(.type=="tool_use" and (.name=="Agent" or .name=="Task")) \| .id' out.jsonl` | One or more string ids; each appears as a `parent_tool_use_id` in the 2.2 messages |
-| 2.5 | `jq 'select(.type=="result") \| {total_cost_usd, subagent_stats, num_turns}' out.jsonl` | `total_cost_usd` numeric; `subagent_stats.spawned` an integer. If the field is missing on your version, note it: nightralph then keeps its live count |
-| 2.6 | `NR claude --spec sub --prefer-subagent haiku` (git repo, real run) | Exit 0; ends on `nightralph--sub` with `Work is on nightralph--sub` |
+| 2.5 | `jq 'select(.type=="result") \| {total_cost_usd, subagent_stats, num_turns}' out.jsonl` | `total_cost_usd` numeric; `subagent_stats.spawned` an integer. If the field is missing on your version, note it: redeye then keeps its live count |
+| 2.6 | `NR claude --spec sub --prefer-subagent haiku` (git repo, real run) | Exit 0; ends on `redeye--sub` with `Work is on redeye--sub` |
 | 2.7 | `cat .scratch/sub/learnings.md` | The attempt entry has `Agent exit: 0. Subagents: <n>. Cost: $<x>.` |
 | 2.8 | Inspect `.scratch/sub/logs/<ticket>.log`; optionally `ps eww <agent pid>` while it runs | Raw stream present; the agent env contains `CLAUDE_CODE_SUBAGENT_MODEL=haiku` |
 | 2.9 | Read the terminal right after `Finished: ...` | Next line is `Subagents: N started across M agent runs, cost $X.XX`; M counts ticket, reviewer and any fixer runs; N and $X match the sums of the learnings entries plus the review runs |

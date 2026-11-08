@@ -9,7 +9,7 @@ are complete. Phase 5 remains.
 ## Plan location
 
 ```
-/Users/nick/code/nightralph/docs/implementation-plans/2026-08-28-worktree-execution/
+/Users/nick/code/redeye/docs/implementation-plans/2026-08-28-worktree-execution/
 ```
 
 Contains: `phase_01.md` through `phase_05.md`. No `test-requirements.md`.

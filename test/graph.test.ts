@@ -18,7 +18,7 @@ function makeScratch ():{
     scratchDir:string;
     load:LoadFn;
 } {
-    const root = mkdtempSync(join(tmpdir(), 'nightralph-graph-'))
+    const root = mkdtempSync(join(tmpdir(), 'redeye-graph-'))
     const scratchDir = join(root, '.scratch')
     mkdirSync(scratchDir, { recursive: true })
     const load:LoadFn = names => loadSelection(scratchDir, names)

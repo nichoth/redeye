@@ -176,7 +176,7 @@ async function commitTicketFiles (
         await execFileAsync(
             'git',
             ['commit', '-m',
-                'nightralph: update ticket checklists',
+                'redeye: update ticket checklists',
                 '--', ...paths],
             { cwd: repoRoot }
         )
@@ -978,7 +978,7 @@ export function createPiStreamFormatter (
 }
 
 function writePromptFile (prompt:string):string {
-    const name = `nightralph-${Date.now()}-` +
+    const name = `redeye-${Date.now()}-` +
         `${Math.random().toString(36).slice(2)}.md`
     const filePath = join(tmpdir(), name)
     writeFileSync(filePath, prompt)
@@ -1265,7 +1265,7 @@ export function spawnAgent (opts:{
         // bare console.warn would be painted over. Route
         // the reason through onLine and into the ticket
         // log so it is visible in both places.
-        logStream.write(`nightralph: ${msg}\n`)
+        logStream.write(`redeye: ${msg}\n`)
         if (opts.onLine) {
             opts.onLine(`${prefix}${msg}`)
         } else {
@@ -1294,7 +1294,7 @@ export function spawnAgent (opts:{
     // is an uncaught 'error' event that kills the orchestrator.
     proc.stdin.on('error', err => {
         logStream.write(
-            'nightralph: stdin write failed: ' +
+            'redeye: stdin write failed: ' +
             `${formatErrorMessage(err)}\n`
         )
     })
@@ -1370,7 +1370,7 @@ export function spawnAgent (opts:{
             rlErr.close()
             const msg = 'agent process error: ' +
                 formatErrorMessage(err)
-            logStream.write(`nightralph: ${msg}\n`)
+            logStream.write(`redeye: ${msg}\n`)
             if (promptFile) cleanupPromptFile(promptFile)
             if (opts.onLine) {
                 opts.onLine(`${prefix}${msg}`)
@@ -2073,7 +2073,7 @@ async function runTicketAttempt (
     if (isDirty(worktree.worktreePath)) {
         const committed = await commitDirty(
             worktree.worktreePath,
-            'nightralph: auto-commit ' +
+            'redeye: auto-commit ' +
             `${ticket.filename} remaining changes`
         )
         if (committed) {
@@ -2421,7 +2421,7 @@ function explainOpen (
             (remaining.length === 0 && failedKeys.size === 0 ?
                 `All remaining ${noun} marked ${HUMAN_STATUS}. ` :
                 `${human.length} ${noun} marked ${HUMAN_STATUS}. `) +
-            'nightralph only runs ready-for-agent tickets, ' +
+            'redeye only runs ready-for-agent tickets, ' +
             'so an agent cannot finish these:',
             indentFilenames(human),
         )
@@ -2438,7 +2438,7 @@ function explainOpen (
             'Do that work by hand, then set each ticket\'s ' +
             '**Status:** to done' +
             (blockedByHuman.length > 0 ?
-                ' and run nightralph again.' :
+                ' and run redeye again.' :
                 '.')
         )
     }
@@ -2966,7 +2966,7 @@ export async function runWavesIsolated (opts:{
             dataMap.set(feat, merged)
             await saveProgress(
                 repoRoot, path, merged,
-                `nightralph: start ${feat}`, d,
+                `redeye: start ${feat}`, d,
             )
         }
         tracker = createProgressTracker({
@@ -2987,7 +2987,7 @@ export async function runWavesIsolated (opts:{
         )
         await saveProgress(
             repoRoot, progressPath, progress,
-            `nightralph: start ${opts.featureName}`, d,
+            `redeye: start ${opts.featureName}`, d,
         )
         tracker = createProgressTracker({
             progressPaths: new Map(),
@@ -3076,7 +3076,7 @@ export async function runWavesIsolated (opts:{
             try {
                 await commitProgress(
                     repoRoot, path,
-                    'nightralph: record attempt learnings'
+                    'redeye: record attempt learnings'
                 )
             } catch (err) {
                 d.log(
@@ -3128,7 +3128,7 @@ export async function runWavesIsolated (opts:{
                     repoRoot,
                     tracker.pathFor(ticket.feature),
                     tracker.dataFor(ticket.feature),
-                    `nightralph: ${ticket.filename} ` +
+                    `redeye: ${ticket.filename} ` +
                     'worktree error',
                     d,
                 )
@@ -3153,7 +3153,7 @@ export async function runWavesIsolated (opts:{
                     repoRoot,
                     tracker.pathFor(ticket.feature),
                     tracker.dataFor(ticket.feature),
-                    `nightralph: ${ticket.filename} error`,
+                    `redeye: ${ticket.filename} error`,
                     d,
                 )
                 continue
@@ -3178,7 +3178,7 @@ export async function runWavesIsolated (opts:{
                     repoRoot,
                     tracker.pathFor(ticket.feature),
                     tracker.dataFor(ticket.feature),
-                    `nightralph: ${ticket.filename} ` +
+                    `redeye: ${ticket.filename} ` +
                     'no commits',
                     d,
                 )
@@ -3202,7 +3202,7 @@ export async function runWavesIsolated (opts:{
                     repoRoot,
                     tracker.pathFor(ticket.feature),
                     tracker.dataFor(ticket.feature),
-                    `nightralph: ${ticket.filename} ` +
+                    `redeye: ${ticket.filename} ` +
                     failureNote(outcome.reason),
                     d,
                 )
@@ -3273,7 +3273,7 @@ export async function runWavesIsolated (opts:{
                         repoRoot,
                         tracker.pathFor(ticket.feature),
                         tracker.dataFor(ticket.feature),
-                        `nightralph: ${ticket.filename} done`,
+                        `redeye: ${ticket.filename} done`,
                         d,
                     )
 
@@ -3340,7 +3340,7 @@ export async function runWavesIsolated (opts:{
                             repoRoot,
                             tracker.pathFor(ticket.feature),
                             tracker.dataFor(ticket.feature),
-                            `nightralph: ${ticket.filename} ` +
+                            `redeye: ${ticket.filename} ` +
                             'done (respawn)',
                             d,
                         )
@@ -3409,7 +3409,7 @@ export async function runWavesIsolated (opts:{
                             repoRoot,
                             tracker.pathFor(ticket.feature),
                             tracker.dataFor(ticket.feature),
-                            `nightralph: ${ticket.filename} ` +
+                            `redeye: ${ticket.filename} ` +
                             'merge failed',
                             d,
                         )

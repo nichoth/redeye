@@ -1,7 +1,7 @@
 # Terminal Status UI Implementation Plan
 
 **Goal:** Add a live-updating terminal status display to the
-nightralph orchestrator, showing ticket progress as colored dots
+redeye orchestrator, showing ticket progress as colored dots
 with a rolling message area.
 
 **Architecture:** Single flat module `src/display.ts` containing

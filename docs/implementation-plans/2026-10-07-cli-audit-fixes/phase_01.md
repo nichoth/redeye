@@ -37,7 +37,7 @@ This phase implements and tests:
   and an existing file without execute permission. It never throws.
 - **cli-audit-fixes.AC1.4 Success:** The CLI given a bare provider
   name that is not on PATH exits 2, stderr names the provider, no
-  `nightralph--*` branch exists afterwards, and the current branch
+  `redeye--*` branch exists afterwards, and the current branch
   is unchanged.
 - **cli-audit-fixes.AC1.5 Success:** The CLI given an absolute path
   to a mock agent runs it as before.
@@ -52,7 +52,7 @@ This phase implements and tests:
 
 ## Project conventions the executor must follow
 
-Read `/Users/nick/code/nightralph/AGENTS.md` first. Then:
+Read `/Users/nick/code/redeye/AGENTS.md` first. Then:
 
 - Style: 4-space indent, single quotes, no semicolons, no space in
   type annotations (`name:string`, `{ key:value }`), `string|null`
@@ -64,7 +64,7 @@ Read `/Users/nick/code/nightralph/AGENTS.md` first. Then:
 - Tests: `import { test } from '@substrate-system/tapzero'`, named
   `'<module> - <behavior>'`, `t.ok` / `t.equal` / `t.deepEqual` with
   a message as the last argument, temp dirs from `mkdtempSync(join(
-  tmpdir(), 'nightralph-...'))` removed in `finally`. Do not assert
+  tmpdir(), 'redeye-...'))` removed in `finally`. Do not assert
   on exact prose; assert on the one token that matters (a path, a
   provider name, an exit code).
 - No em dashes or arrow characters in comments or docs. Use `--` and
@@ -229,7 +229,7 @@ add:
 ```
 
 This runs before `prepareIntegrationBranch` (line 419), so a bad
-name never creates or checks out `nightralph--<feature>`. Keep
+name never creates or checks out `redeye--<feature>`. Keep
 `agentCmd:argv.provider` unchanged where `runWavesIsolated` and
 `runWaves` are called; the resolved path is only for the check and
 the dry-run line.
@@ -264,9 +264,9 @@ with status `ready-for-agent`.
 - cli-audit-fixes.AC1.4: `const { projectDir, issuesDir,
   templateDir } = cliGitRepo()`, write the ticket, `commitAll(
   projectDir, 'add tickets')`, then run
-  `spawnCli(['nightralph-no-such-provider', '--spec', FEAT],
+  `spawnCli(['redeye-no-such-provider', '--spec', FEAT],
   { cwd:projectDir })`. Assert `code === 2`, `stderr` includes
-  `nightralph-no-such-provider`, `git branch --list 'nightralph--*'`
+  `redeye-no-such-provider`, `git branch --list 'redeye--*'`
   in the repo prints nothing, and `git rev-parse --abbrev-ref HEAD`
   is still `main` (use `gitOut(projectDir, [...])`, line 4386).
 - cli-audit-fixes.AC1.5: in a plain temp project (no git), run
@@ -276,7 +276,7 @@ with status `ready-for-agent`.
   `--model` test at line 274 and proves an absolute path still
   passes the check.
 - cli-audit-fixes.AC1.6: in a plain temp project, run
-  `spawnCli(['nightralph-no-such-provider', '--spec', FEAT,
+  `spawnCli(['redeye-no-such-provider', '--spec', FEAT,
   '--dry-run'], { cwd:projectDir })`. Assert `code === 0` and that
   `stdout` includes `Provider:` and `not found`.
 
@@ -312,7 +312,7 @@ through the closing of `resolve({ ... })`) with:
 ```ts
             const msg = 'agent process error: ' +
                 formatErrorMessage(err)
-            logStream.write(`nightralph: ${msg}\n`)
+            logStream.write(`redeye: ${msg}\n`)
             if (promptFile) cleanupPromptFile(promptFile)
             if (opts.onLine) {
                 opts.onLine(`${prefix}${msg}`)
@@ -339,7 +339,7 @@ assertion below would fail.
 **Testing:**
 
 - cli-audit-fixes.AC1.7: call `spawnAgent({ prompt:'x',
-  agentCmd:join(tmpDir, 'nightralph-no-such-agent'), model:null,
+  agentCmd:join(tmpDir, 'redeye-no-such-agent'), model:null,
   timeout:10, logPath:join(tmpDir, 'agent.log'), onLine:line =>
   lines.push(line) })` where `tmpDir` is a fresh temp dir. Assert
   the result has `exitCode === 1`, that some collected line includes

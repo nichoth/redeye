@@ -83,8 +83,8 @@ export function integrationBranchName (
 ):string {
     const distinct = [...new Set(features.filter(Boolean))]
     return distinct.length === 1 ?
-        `nightralph--${distinct[0]}` :
-        'nightralph--all'
+        `redeye--${distinct[0]}` :
+        'redeye--all'
 }
 
 // The integration branch to use, or null to merge into the
@@ -472,7 +472,7 @@ export async function commitDirty (
             [
                 'commit', '-m',
                 message ??
-                    'nightralph: auto-commit ' +
+                    'redeye: auto-commit ' +
                     'remaining changes',
             ],
             { cwd }

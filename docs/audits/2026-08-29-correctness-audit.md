@@ -38,7 +38,7 @@ Location:
 - [`README.md`](../../README.md#L42)
 
 The CLI derives its bundled asset directory from `process.argv[1]`. When npm
-invokes the executable through `node_modules/.bin/nightralph`, that value is
+invokes the executable through `node_modules/.bin/redeye`, that value is
 the symlink path. The CLI therefore looks for `.bin/skills` and
 `.bin/docs-templates`, neither of which exists.
 
@@ -130,7 +130,7 @@ Location:
 - [`src/index.ts`](../../src/index.ts#L226)
 
 Both execution paths report agent failures but return normally. A reproduction
-produced an agent exit code of 1 and a nightralph process exit code of 0.
+produced an agent exit code of 1 and a redeye process exit code of 0.
 
 Shell scripts, CI, and overnight monitoring cannot distinguish a completed run
 from an incomplete one. The command should return a nonzero status when any

@@ -198,7 +198,7 @@ operationally by `npm run build`.
   The event wiring itself is a single line that is best
   verified by resizing a terminal window while the display
   is active.
-- **Verification approach:** Run nightralph with enough
+- **Verification approach:** Run redeye with enough
   tickets to trigger pagination. Resize the terminal window.
   Confirm the display re-renders with the updated viewport
   size -- more or fewer tickets become visible.
@@ -255,7 +255,7 @@ operationally by `npm run build`.
   worktree support and real agent execution. The automated
   test covers `runWaves`; `runWavesIsolated` follows the
   same display API pattern and is verified by running
-  `nightralph <provider>` inside a git repo and confirming
+  `redeye <provider>` inside a git repo and confirming
   the terminal UI appears.
 - **Phase:** 4
 

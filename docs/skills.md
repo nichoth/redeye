@@ -33,7 +33,7 @@ local markdown. Need the Pocock skills to create local markdown.
 Seed `docs/agents/issue-tracker.md` via `npx` runnable script.
 
 Should include a script that can be executed with `npmx`, like
-`npmx nightralph setup`.
+`npmx redeye setup`.
 
 #### Example `issue-tracker.md`
 

@@ -40,7 +40,7 @@ function makeTestTicket (overrides?:Partial<Ticket>):Ticket {
 
 function initTempRepo ():string {
     const dir = mkdtempSync(
-        join(tmpdir(), 'nightralph-progress-test-')
+        join(tmpdir(), 'redeye-progress-test-')
     )
     execSync('git init', { cwd: dir })
     execSync('git config core.hooksPath /dev/null', { cwd: dir })
@@ -172,7 +172,7 @@ test(
         t.equal(beforeCheck, false, 'should start not done')
 
         checkTicket(data, 1, {
-            branch: 'nightralph/01-add-auth',
+            branch: 'redeye/01-add-auth',
             exitCode: 0,
         })
 
@@ -183,7 +183,7 @@ test(
         )
         t.equal(
             data.tickets[0].branch,
-            'nightralph/01-add-auth',
+            'redeye/01-add-auth',
             'should set branch'
         )
         t.equal(
@@ -214,7 +214,7 @@ test(
 
         const data = generateProgress('feature', tickets)
         checkTicket(data, 1, {
-            branch: 'nightralph/01-add-auth',
+            branch: 'redeye/01-add-auth',
             exitCode: 0,
         })
 
@@ -225,7 +225,7 @@ test(
             'should have checked checkbox'
         )
         t.ok(
-            markdown.includes('branch: nightralph/01-add-auth'),
+            markdown.includes('branch: redeye/01-add-auth'),
             'should have branch metadata'
         )
         t.ok(
@@ -251,7 +251,7 @@ test(
         const data = generateProgress('feature', tickets)
 
         checkTicket(data, 1, {
-            branch: 'nightralph/01-add-auth',
+            branch: 'redeye/01-add-auth',
             exitCode: 1,
             done: false,
         })
@@ -268,7 +268,7 @@ test(
         )
         t.equal(
             data.tickets[0].branch,
-            'nightralph/01-add-auth',
+            'redeye/01-add-auth',
             'should set branch'
         )
         t.equal(
@@ -288,7 +288,7 @@ test(
 
         const data = generateProgress('feature', tickets)
         checkTicket(data, 1, {
-            branch: 'nightralph/01-add-auth',
+            branch: 'redeye/01-add-auth',
             exitCode: 1,
             done: false,
         })
@@ -716,7 +716,7 @@ test(
     'readProgress returns null when the file does not exist',
     t => {
         const dir = mkdtempSync(
-            join(tmpdir(), 'nightralph-read-progress-test-')
+            join(tmpdir(), 'redeye-read-progress-test-')
         )
         const missingPath = join(dir, 'progress.md')
 
@@ -732,7 +732,7 @@ test(
     'readProgress parses a previously written progress file',
     t => {
         const dir = mkdtempSync(
-            join(tmpdir(), 'nightralph-read-progress-test-')
+            join(tmpdir(), 'redeye-read-progress-test-')
         )
         const progressPath = join(dir, 'progress.md')
 
@@ -742,7 +742,7 @@ test(
         ]
         const data = generateProgress('my-feature', tickets)
         checkTicket(data, 1, {
-            branch: 'nightralph/01-add-auth',
+            branch: 'redeye/01-add-auth',
             exitCode: 0,
         })
         writeProgress(progressPath, data)
@@ -772,7 +772,7 @@ test(
         )
         t.equal(
             parsed?.tickets[0].branch,
-            'nightralph/01-add-auth',
+            'redeye/01-add-auth',
             'should parse branch metadata'
         )
         t.equal(
@@ -800,7 +800,7 @@ test(
 
         const existing = generateProgress('my-feature', tickets)
         checkTicket(existing, 1, {
-            branch: 'nightralph/01-add-auth',
+            branch: 'redeye/01-add-auth',
             exitCode: 0,
         })
 
@@ -814,7 +814,7 @@ test(
         )
         t.equal(
             merged.tickets[0].branch,
-            'nightralph/01-add-auth',
+            'redeye/01-add-auth',
             'should carry forward branch metadata'
         )
         t.equal(
@@ -985,7 +985,7 @@ test('isSpecComplete - returns false when file missing',
 test('isSpecComplete - returns false when tickets ' +
     'are incomplete', t => {
     const dir = mkdtempSync(
-        join(tmpdir(), 'nightralph-isc-')
+        join(tmpdir(), 'redeye-isc-')
     )
     const path = join(dir, 'progress.md')
     writeFileSync(path, [
@@ -1009,7 +1009,7 @@ test('isSpecComplete - returns false when tickets ' +
 test('isSpecComplete - returns true when all ' +
     'tickets checked', t => {
     const dir = mkdtempSync(
-        join(tmpdir(), 'nightralph-isc-')
+        join(tmpdir(), 'redeye-isc-')
     )
     const path = join(dir, 'progress.md')
     writeFileSync(path, [

@@ -23,7 +23,7 @@ function makeTempScratch ():{
     scratchDir:string;
 } {
     const cwd = mkdtempSync(
-        join(tmpdir(), 'nightralph-resolve-')
+        join(tmpdir(), 'redeye-resolve-')
     )
     const scratchDir = join(cwd, '.scratch')
     mkdirSync(scratchDir, { recursive: true })

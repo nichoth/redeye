@@ -1,6 +1,6 @@
 # Issue Tracker Choice -- Implementation Plan
 
-**Goal:** Add an inquirer prompt to `nightralph setup` that lets users choose between GitHub Issues and Local Markdown as their issue tracker, with `gh` prerequisite checking and correct template installation.
+**Goal:** Add an inquirer prompt to `redeye setup` that lets users choose between GitHub Issues and Local Markdown as their issue tracker, with `gh` prerequisite checking and correct template installation.
 
 **Architecture:** The setup function gains a `tracker` field on `SetupOpts` (`'github' | 'local'`). The CLI handler in `index.ts` prompts for the choice via `@inquirer/prompts` `select`, runs `gh auth status` when GitHub is chosen, then passes the result to `setup()`. The `setup()` function copies the correct `issue-tracker*.md` template and writes an AGENTS.md that reflects the choice.
 
@@ -17,7 +17,7 @@
 This phase implements and tests:
 
 ### issue-tracker-choice.AC1: Tracker choice prompt
-- **issue-tracker-choice.AC1.1 Success:** Running `nightralph setup` prompts user to choose between "GitHub Issues" and "Local Markdown"
+- **issue-tracker-choice.AC1.1 Success:** Running `redeye setup` prompts user to choose between "GitHub Issues" and "Local Markdown"
 - **issue-tracker-choice.AC1.2 Success:** Choosing "Local Markdown" installs the local markdown issue-tracker template to `docs/agents/issue-tracker.md`
 
 ### issue-tracker-choice.AC2: GitHub prerequisite check
@@ -47,7 +47,7 @@ This phase implements and tests:
 
 **Implementation:**
 
-Create the GitHub issue tracker template at `src/docs-templates/issue-tracker-github.md`. Optionally reference the Matt Pocock template at `~/.claude/plugins/cache/claude-plugins-official/mattpocock-skills/1.2.3/skills/engineering/setup-matt-pocock-skills/issue-tracker-github.md` for conventions (this path is machine-local and not a required input -- the template can be written from scratch using `gh` CLI documentation). Adapt to match nightralph's conventions (simpler, no GitLab, no PR triage surface).
+Create the GitHub issue tracker template at `src/docs-templates/issue-tracker-github.md`. Optionally reference the Matt Pocock template at `~/.claude/plugins/cache/claude-plugins-official/mattpocock-skills/1.2.3/skills/engineering/setup-matt-pocock-skills/issue-tracker-github.md` for conventions (this path is machine-local and not a required input -- the template can be written from scratch using `gh` CLI documentation). Adapt to match redeye's conventions (simpler, no GitLab, no PR triage surface).
 
 The template should document:
 - Title: `# Issue tracker: GitHub`

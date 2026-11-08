@@ -20,7 +20,7 @@ Callers report the outcome and completed log path after writing the log.
 
 ## Context and decisions
 
-Investigation on 2026-10-20 found nightralph 0.1.2 apparently frozen at
+Investigation on 2026-10-20 found redeye 0.1.2 apparently frozen at
 the fix agent's last message. The agent had actually finished and the
 orchestrator was running its independent `npm test` gate. Successive
 process snapshots showed the suite advancing.
@@ -472,7 +472,7 @@ the test gate and blocked dependents.
 - [ ] Add this text:
 
 ```markdown
-* After an agent finishes, nightralph independently runs the test gate,
+* After an agent finishes, redeye independently runs the test gate,
   even if the agent already ran tests. Ticket gates and the final
   review-fix gate announce the command, worktree, and timeout, then
   report elapsed time every 15 seconds while waiting for it to finish.

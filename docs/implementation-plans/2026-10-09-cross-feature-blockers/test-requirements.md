@@ -232,12 +232,12 @@ Task 4, using the `twoFeatureRepo` helper.
 **cross-feature-blockers.AC3.1** (first scan stop)
 - unit: the `nothingReady` and `renderNothingReady` cases above.
 - CLI subprocess: blocked by pending `other-feat 01`: exit 0,
-  output has `'other-feat/01'`, no `nightralph--*` branch, HEAD is
+  output has `'other-feat/01'`, no `redeye--*` branch, HEAD is
   `main`, `01-first.md` still `ready-for-agent`.
 
 **cross-feature-blockers.AC3.2** (before provider preflight)
 - CLI subprocess: same setup, provider
-  `'nightralph-no-such-provider'`: exit 0, no `nightralph--*`
+  `'redeye-no-such-provider'`: exit 0, no `redeye--*`
   branch. Non-resuming runs only (decision 2).
 
 **cross-feature-blockers.AC3.3** (`--dry-run`)
@@ -248,10 +248,10 @@ Task 4, using the `twoFeatureRepo` helper.
 
 **cross-feature-blockers.AC3.4** (resume re-scan stop)
 - CLI subprocess: 01 ready on `main`, blocked on
-  `nightralph--test-feat`: exit 0, HEAD is `main`, the integration
+  `redeye--test-feat`: exit 0, HEAD is `main`, the integration
   branch still exists, output has `'other-feat/01'`.
 - CLI subprocess (decision 2): blocked on `main` with an existing
-  `nightralph--test-feat` at the same commit: exit 0, HEAD `main`,
+  `redeye--test-feat` at the same commit: exit 0, HEAD `main`,
   output has `'Resumed'` and `'other-feat/01'`, proving the stop
   came from the re-scan.
 
@@ -259,7 +259,7 @@ Task 4, using the `twoFeatureRepo` helper.
 resume)
 - unit: `nothingReady` all-done -> false.
 - CLI subprocess: 01 done on the integration branch: exit 0, HEAD
-  stays `nightralph--test-feat` (the run reached
+  stays `redeye--test-feat` (the run reached
   `runWavesIsolated`; its review pass is skipped by the existing
   skip rule because only `.scratch` changed).
 
@@ -267,7 +267,7 @@ resume)
 - unit: `nothingReady` with one unblocked ticket -> false.
 - CLI subprocess: blocker `other-feat 01` is done, with
   `--retry-delay 0 --test-cmd true --no-review`: exit 0,
-  `nightralph--test-feat` exists and its `01-first.md` has
+  `redeye--test-feat` exists and its `01-first.md` has
   `**Status:** done`.
 
 ## AC4: Docs and contracts

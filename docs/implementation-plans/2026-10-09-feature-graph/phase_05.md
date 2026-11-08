@@ -1,6 +1,6 @@
 # Feature Graph Implementation Plan -- Phase 5
 
-**Goal:** `nightralph graph [--spec <name>]` prints the report.
+**Goal:** `redeye graph [--spec <name>]` prints the report.
 
 **Architecture:** A `.command('graph', ...)` in `src/index.ts`,
 registered right after `init` so yargs matches it before the
@@ -28,7 +28,7 @@ print the same text.
 This phase implements and tests:
 
 ### feature-graph.AC2: `graph` command output
-- **feature-graph.AC2.1 Success:** `nightralph graph` exits 0 and prints
+- **feature-graph.AC2.1 Success:** `redeye graph` exits 0 and prints
   one block per picker feature that has cross-feature edges
 - **feature-graph.AC2.4 Success:** `--spec x` prints only x's block, or
   a not-waiting line when x is unblocked
@@ -85,7 +85,7 @@ This phase implements and tests:
 - `test/integration.test.ts` (6000+ lines; grep, never read whole):
   - runs the built CLI, so `npm run build` must run before the suite.
   - `tmp()` at line 39: `mkdtempSync(join(tmpdir(),
-    'nightralph-int-test-'))`.
+    'redeye-int-test-'))`.
   - `spawnCli(args, { cwd?, env?, closeStdin? })` at lines 220-250
     resolves `{ code, stdout, stderr }`; 30s timeout; stdin stays
     open unless `closeStdin:true`.
@@ -288,7 +288,7 @@ Every test removes its project dir in `finally`.
   Record a recursive listing of the dir
   (`readdirSync(cwd, { recursive:true })`, sorted) before and after
   `['graph']`; they deep-equal. `code` is 0, and neither stream
-  contains `Provider` (the preflight line) or `nightralph--` (an
+  contains `Provider` (the preflight line) or `redeye--` (an
   integration branch name).
 
 **Verification:**
@@ -304,7 +304,7 @@ Expected: no errors
 
 ```bash
 git add src/index.ts src/resolve.ts test/integration.test.ts
-git commit -m "feat: add the nightralph graph command"
+git commit -m "feat: add the redeye graph command"
 ```
 <!-- END_TASK_3 -->
 <!-- END_SUBCOMPONENT_A -->

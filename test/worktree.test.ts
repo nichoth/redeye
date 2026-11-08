@@ -38,7 +38,7 @@ import { scanTickets, type Ticket } from '../src/orchestrator.js'
 
 function initTempRepo ():string {
     const dir = mkdtempSync(
-        join(tmpdir(), 'nightralph-worktree-test-')
+        join(tmpdir(), 'redeye-worktree-test-')
     )
     execSync('git init', { cwd: dir })
     execSync(
@@ -884,7 +884,7 @@ test('commitDirty uses custom message', async t => {
 
     await commitDirty(
         worktreePath,
-        'nightralph: auto-commit test'
+        'redeye: auto-commit test'
     )
 
     const log = execSync(
@@ -893,7 +893,7 @@ test('commitDirty uses custom message', async t => {
     ).trim()
     t.equal(
         log,
-        'nightralph: auto-commit test',
+        'redeye: auto-commit test',
         'commit message matches'
     )
 })
@@ -901,20 +901,20 @@ test('commitDirty uses custom message', async t => {
 // -- integration branch planning --
 
 test('integrationBranchName - one feature, several, none', t => {
-    t.equal(integrationBranchName(['auth']), 'nightralph--auth',
+    t.equal(integrationBranchName(['auth']), 'redeye--auth',
         'one feature')
     t.equal(integrationBranchName(['auth', 'auth']),
-        'nightralph--auth', 'duplicates count once')
+        'redeye--auth', 'duplicates count once')
     t.equal(integrationBranchName(['auth', 'billing']),
-        'nightralph--all', 'several features')
-    t.equal(integrationBranchName([]), 'nightralph--all', 'none')
-    t.equal(integrationBranchName(['']), 'nightralph--all',
+        'redeye--all', 'several features')
+    t.equal(integrationBranchName([]), 'redeye--all', 'none')
+    t.equal(integrationBranchName(['']), 'redeye--all',
         'an empty feature name counts as none')
 })
 
 test('planIntegrationBranch - only on the default branch', t => {
     t.equal(planIntegrationBranch('main', 'main', ['auth']),
-        'nightralph--auth', 'on the default branch')
+        'redeye--auth', 'on the default branch')
     t.equal(planIntegrationBranch('my-work', 'main', ['auth']),
         null, 'on another branch')
     t.equal(planIntegrationBranch('main', null, ['auth']),
@@ -982,12 +982,12 @@ test('prepareIntegrationBranch - AC2.1 creates and checks out ' +
 
     const plan = prepareIntegrationBranch(dir, ['auth'])
 
-    t.equal(plan.branch, 'nightralph--auth', 'names the branch')
+    t.equal(plan.branch, 'redeye--auth', 'names the branch')
     t.ok(plan.created, 'created')
     t.ok(!plan.resumed, 'not resumed')
     t.equal(plan.launchBranch, 'main', 'launched from main')
     t.equal(plan.forkedFrom, 'main', 'forked from main')
-    t.equal(getCurrentBranch(dir), 'nightralph--auth',
+    t.equal(getCurrentBranch(dir), 'redeye--auth',
         'checked out')
     t.equal(git(dir, 'rev-parse main'), mainBefore,
         'main did not move')
@@ -999,7 +999,7 @@ test('prepareIntegrationBranch - AC2.2 resumes an existing ' +
     git(dir, 'branch -M main')
     const ticket = '.scratch/auth/issues/01-login.md'
     commitFile(dir, ticket, ticketBody('ready-for-agent'))
-    git(dir, 'checkout -b nightralph--auth')
+    git(dir, 'checkout -b redeye--auth')
     writeFileSync(join(dir, ticket), ticketBody('done'))
     git(dir, 'commit -am "done" --no-verify')
     git(dir, 'checkout main')
@@ -1010,7 +1010,7 @@ test('prepareIntegrationBranch - AC2.2 resumes an existing ' +
     t.ok(plan.resumed, 'resumed')
     t.ok(!plan.created, 'not created')
     t.equal(plan.behind, 1, 'main is one commit ahead')
-    t.equal(getCurrentBranch(dir), 'nightralph--auth',
+    t.equal(getCurrentBranch(dir), 'redeye--auth',
         'checked out')
     const tickets = scanTickets(
         join(dir, '.scratch', 'auth', 'issues'), 'auth'
@@ -1023,10 +1023,10 @@ test('prepareIntegrationBranch - an integration branch already in ' +
     'the launch branch is fast-forwarded', t => {
     const dir = initTempRepo()
     git(dir, 'branch -M main')
-    git(dir, 'checkout -b nightralph--auth')
+    git(dir, 'checkout -b redeye--auth')
     commitFile(dir, 'a.txt', 'work')
     git(dir, 'checkout main')
-    git(dir, 'merge --no-ff nightralph--auth -m merged --no-verify')
+    git(dir, 'merge --no-ff redeye--auth -m merged --no-verify')
     commitFile(dir, 'README.md', 'moved on')
 
     const plan = prepareIntegrationBranch(dir, ['auth'])
@@ -1034,8 +1034,8 @@ test('prepareIntegrationBranch - an integration branch already in ' +
     t.ok(plan.resumed, 'resumed')
     t.ok(plan.fastForwarded, 'fast-forwarded')
     t.equal(plan.behind, 0, 'no longer behind')
-    t.equal(getCurrentBranch(dir), 'nightralph--auth', 'checked out')
-    t.equal(git(dir, 'rev-parse nightralph--auth'),
+    t.equal(getCurrentBranch(dir), 'redeye--auth', 'checked out')
+    t.equal(git(dir, 'rev-parse redeye--auth'),
         git(dir, 'rev-parse main'), 'tip equals main')
 })
 
@@ -1043,16 +1043,16 @@ test('prepareIntegrationBranch - a diverged branch is not ' +
     'fast-forwarded', t => {
     const dir = initTempRepo()
     git(dir, 'branch -M main')
-    git(dir, 'checkout -b nightralph--auth')
+    git(dir, 'checkout -b redeye--auth')
     commitFile(dir, 'a.txt', 'work')
     git(dir, 'checkout main')
     commitFile(dir, 'README.md', 'moved on')
-    const before = git(dir, 'rev-parse nightralph--auth')
+    const before = git(dir, 'rev-parse redeye--auth')
 
     const plan = prepareIntegrationBranch(dir, ['auth'])
 
     t.ok(!plan.fastForwarded, 'not fast-forwarded')
-    t.equal(git(dir, 'rev-parse nightralph--auth'), before,
+    t.equal(git(dir, 'rev-parse redeye--auth'), before,
         'branch tip untouched')
 })
 
@@ -1067,7 +1067,7 @@ test('prepareIntegrationBranch - AC2.3 leaves another branch ' +
     t.equal(plan.branch, 'my-work', 'merges into the current branch')
     t.ok(!plan.created && !plan.resumed, 'nothing checked out')
     t.equal(plan.forkedFrom, null, 'not an integration branch')
-    t.ok(!localBranchExists(dir, 'nightralph--auth'),
+    t.ok(!localBranchExists(dir, 'redeye--auth'),
         'no integration branch created')
 })
 
@@ -1075,11 +1075,11 @@ test('prepareIntegrationBranch - a hand-resumed integration ' +
     'branch reports its fork point', t => {
     const dir = initTempRepo()
     git(dir, 'branch -M main')
-    git(dir, 'checkout -b nightralph--auth')
+    git(dir, 'checkout -b redeye--auth')
 
     const plan = prepareIntegrationBranch(dir, ['auth'])
 
-    t.equal(plan.branch, 'nightralph--auth', 'stays put')
+    t.equal(plan.branch, 'redeye--auth', 'stays put')
     t.equal(plan.forkedFrom, 'main', 'knows it came from main')
 })
 
@@ -1091,7 +1091,7 @@ test('prepareIntegrationBranch - AC2.5 a dirty tree throws ' +
 
     t.throws(() => prepareIntegrationBranch(dir, ['auth']),
         'throws on a dirty tree')
-    t.ok(!localBranchExists(dir, 'nightralph--auth'),
+    t.ok(!localBranchExists(dir, 'redeye--auth'),
         'no branch created')
     t.equal(getCurrentBranch(dir), 'main', 'still on main')
 })
@@ -1100,9 +1100,9 @@ test('describeIntegrationBranch - checks nothing out', t => {
     const dir = initTempRepo()
     git(dir, 'branch -M main')
     const line = describeIntegrationBranch(dir, ['auth'])
-    t.ok(line.includes('nightralph--auth'), 'names the branch')
+    t.ok(line.includes('redeye--auth'), 'names the branch')
     t.equal(getCurrentBranch(dir), 'main', 'still on main')
-    t.ok(!localBranchExists(dir, 'nightralph--auth'),
+    t.ok(!localBranchExists(dir, 'redeye--auth'),
         'creates nothing')
 })
 

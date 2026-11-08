@@ -27,8 +27,8 @@ whose changes pass the test gate before they merge.
 
 ### integration-branch-review-design.AC1: Branch planning
 - **integration-branch-review-design.AC1.1 Success:**
-  `integrationBranchName` returns `nightralph--<feature>` for exactly
-  one feature, and `nightralph--all` for several or none.
+  `integrationBranchName` returns `redeye--<feature>` for exactly
+  one feature, and `redeye--all` for several or none.
 - **integration-branch-review-design.AC1.2 Success:**
   `planIntegrationBranch` returns that name when the current branch is
   the default branch, and `null` otherwise.
@@ -133,9 +133,9 @@ whose changes pass the test gate before they merge.
 
 1. **When to create the branch.** Only when launched from the default
    branch. On any other branch the user has already chosen where work
-   goes, so nightralph merges there as today. No flag to override the
+   goes, so redeye merges there as today. No flag to override the
    name yet.
-2. **Branch name.** `nightralph--<feature>`, or `nightralph--all` for
+2. **Branch name.** `redeye--<feature>`, or `redeye--all` for
    a multi-feature run. No date: a rerun the next day must find the
    same branch. `--` instead of `/` for the same ref-hierarchy reason
    as `buildBranchName`.
@@ -197,8 +197,8 @@ New in `src/worktree.ts`:
 The CLI calls `prepareIntegrationBranch` after its first ticket scan
 (so a run with no tickets creates nothing) and, when it resumed an
 existing branch, scans again so the tickets carry that branch's
-statuses. It logs one line, e.g. `Created branch nightralph--x from
-main` or `Resumed nightralph--x (main is 3 commits ahead)`.
+statuses. It logs one line, e.g. `Created branch redeye--x from
+main` or `Resumed redeye--x (main is 3 commits ahead)`.
 `runWavesIsolated` then simply runs on the current branch as today; it
 records the launch commit (`HEAD`) after its dirty-tree check, returns
 `{ allDone, branch }`, and logs `Work is on <branch>` after the finish
@@ -213,7 +213,7 @@ passes `review:{ reviewPath }`.
 Append-only, one entry per review pass:
 
 ```
-<!-- nightralph:review from=<sha> to=<sha> status=<status> -->
+<!-- redeye:review from=<sha> to=<sha> status=<status> -->
 ## 2026-10-07 03:40 -- review abc1234..def5678 -- 2 of 3 fixed
 - [x] finding one
     detail: file:line, failure scenario
@@ -260,7 +260,7 @@ Per attempt:
    command, names AGENTS.md and its contracts as the standard, asks
    for correctness bugs, missing tests, and contract violations ranked
    most severe first and no style preferences, and asks for
-   `.nightralph/findings.md`: one `- [ ] <one-line summary>` per
+   `.redeye/findings.md`: one `- [ ] <one-line summary>` per
    finding with indented detail (file:line, concrete failure
    scenario), or the single line `No findings.` It says not to edit
    code and not to push.
@@ -300,7 +300,7 @@ compared with the same whitespace-collapsed, case-insensitive
 normalization `checkItems` uses.
 
 Afterward the pass appends the entry and calls
-`commitProgress(repoRoot, reviewPath, 'nightralph: record review')`.
+`commitProgress(repoRoot, reviewPath, 'redeye: record review')`.
 Review attempts are not written to `learnings.md`.
 
 ### Shared retry helper: `src/retry.ts`
@@ -433,7 +433,7 @@ Done when: docs reflect the shipped behavior. Verifies: None.
 
 - Opening a draft PR or closing tickets in a tracker.
 - A flag to override the integration branch name.
-- A standalone `nightralph review` subcommand (easy to add on
+- A standalone `redeye review` subcommand (easy to add on
   `runReviewPass` later).
 - Rebasing a stale integration branch onto the default branch.
 - Review for the in-place `runWaves`.

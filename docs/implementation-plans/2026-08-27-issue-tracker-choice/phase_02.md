@@ -190,7 +190,7 @@ Create a markdown file documenting the scope and approach for Phase 2 -- orchest
 
 The note should cover:
 
-1. **Goal**: Enable `nightralph <provider>` to pull tickets from GitHub Issues instead of `.scratch/` when the project is configured for GitHub tracking.
+1. **Goal**: Enable `redeye <provider>` to pull tickets from GitHub Issues instead of `.scratch/` when the project is configured for GitHub tracking.
 
 2. **What changes in the orchestrator** (`src/orchestrator.ts`):
    - `scanTickets()` currently reads `.scratch/<feature>/issues/` for numbered markdown files. It needs a GitHub-aware variant that queries `gh issue list` with JSON output.

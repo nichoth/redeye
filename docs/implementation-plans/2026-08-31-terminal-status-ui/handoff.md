@@ -49,7 +49,7 @@ Per the `executing-an-implementation-plan` skill, the agent must:
    to update CLAUDE.md if contracts changed
 2. Run final code review (full diff from base `d5c7c1e` to HEAD)
 3. Run test analysis using `test-requirements.md` at
-   `/Users/nick/code/nightralph/docs/implementation-plans/2026-08-31-terminal-status-ui/test-requirements.md`
+   `/Users/nick/code/redeye/docs/implementation-plans/2026-08-31-terminal-status-ui/test-requirements.md`
 4. Write test plan to
    `docs/test-plans/2026-08-31-terminal-status-ui.md`
 5. Provide completion report

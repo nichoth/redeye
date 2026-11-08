@@ -2,13 +2,13 @@
 
 ## Introduction
 
-An audit of nightralph found that the merge-conflict path has correctness
+An audit of redeye found that the merge-conflict path has correctness
 bugs that can silently drop completed work. Tickets are marked `done`
 before their branches merge, the "respawn" strategy never actually
 re-runs the agent, and several minor gaps (missing conflict flags,
 no worktree cleanup, no failure entries in progress) reduce reliability
 and observability. This PRD covers fixing all five issues so that
-nightralph handles conflicts correctly and cleans up after itself.
+redeye handles conflicts correctly and cleans up after itself.
 
 ## Goals
 

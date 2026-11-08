@@ -24,7 +24,7 @@ const GIT_ENV = {
 }
 
 // `git add -A` on purpose: the orchestrator's
-// .nightralph/.gitignore must keep the notes out even when an
+// .redeye/.gitignore must keep the notes out even when an
 // agent stages everything. Retries past transient lock
 // contention from sibling agents, like mock-agent-pass.js.
 function commitEverything () {
@@ -65,9 +65,9 @@ function run (prompt) {
         join(recordDir, `${Date.now()}-${randomUUID()}.json`),
         JSON.stringify({ time:Date.now(), cwd, token, prompt })
     )
-    mkdirSync(join(cwd, '.nightralph'), { recursive:true })
+    mkdirSync(join(cwd, '.redeye'), { recursive:true })
     writeFileSync(
-        join(cwd, '.nightralph', 'notes.md'),
+        join(cwd, '.redeye', 'notes.md'),
         `notes-token ${token}\n`
     )
 

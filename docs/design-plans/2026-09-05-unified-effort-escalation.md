@@ -24,7 +24,7 @@ depth.
 
 ## Unified `--effort` Flag
 
-A single `--effort <level>` flag on the nightralph CLI replaces
+A single `--effort <level>` flag on the redeye CLI replaces
 `--thinking`. The level value is validated against the active
 provider's ladder at runtime. When omitted, the provider uses
 its own default.

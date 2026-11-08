@@ -21,8 +21,8 @@ export const DOC_TEMPLATES = [
     'domain.md',
 ] as const
 
-const START_MARKER = '<!-- nightralph:start -->'
-const END_MARKER = '<!-- nightralph:end -->'
+const START_MARKER = '<!-- redeye:start -->'
+const END_MARKER = '<!-- redeye:end -->'
 
 export function writeManagedSection (
     filePath:string,

@@ -37,7 +37,7 @@ This phase implements and tests:
 - **cli-audit-fixes.AC2.3 Success:** The fixer with `testCmd:''`
   writes no `review-fix.test.log`, and its branch merges when it
   has commits.
-- **cli-audit-fixes.AC2.4 Success:** `nightralph <agent> --test-cmd
+- **cli-audit-fixes.AC2.4 Success:** `redeye <agent> --test-cmd
   ""` on a project whose `package.json` has no `test` script
   completes the ticket and merges it.
 - **cli-audit-fixes.AC2.5 Success:** The same project with no
@@ -56,7 +56,7 @@ This phase implements and tests:
 
 ## Project conventions the executor must follow
 
-Same as phase 1: read `/Users/nick/code/nightralph/AGENTS.md`;
+Same as phase 1: read `/Users/nick/code/redeye/AGENTS.md`;
 4-space indent, single quotes, no semicolons, `name:type` with no
 space, 80 columns, `.js` import suffixes, tapzero tests with
 `t.ok` / `t.equal`, temp dirs removed in `finally`, no em dashes.

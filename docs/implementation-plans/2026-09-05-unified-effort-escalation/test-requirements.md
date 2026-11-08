@@ -182,7 +182,7 @@ and cleanup in `finally` blocks.
 - **Why partial automation:** The yargs option definition is
   declarative wiring -- it compiles or it does not, and the test
   for `ALL_EFFORT_LEVELS` verifies the choices array. But the
-  full user-facing behavior (running `nightralph pi --effort high`
+  full user-facing behavior (running `redeye pi --effort high`
   from a shell and seeing it accepted, or `--thinking` being
   rejected as unknown) is best confirmed manually once.
 - **How to verify:**
@@ -206,7 +206,7 @@ and cleanup in `finally` blocks.
 - **How to verify:**
   1. Set up a project with two local tickets where ticket 02
      depends on ticket 01 (different waves)
-  2. Run `nightralph pi --effort medium --retries 1`
+  2. Run `redeye pi --effort medium --retries 1`
   3. Observe the display output: ticket 01's retry should show
      `effort high`; ticket 02's first attempt should show
      `effort medium`
@@ -215,19 +215,19 @@ and cleanup in `finally` blocks.
 
 - **Why partial automation:** The unit-level integration tests
   above use mock agent scripts and `spawnAgent` directly. The
-  full CLI path (`nightralph claude --effort high`) involves
+  full CLI path (`redeye claude --effort high`) involves
   yargs parsing, the orchestrator, and real provider binaries.
   This end-to-end path does not lend itself to automated testing
   without installing all three provider CLIs.
 - **How to verify:**
   1. With `claude` installed: run
-     `nightralph claude --effort high --dry-run` -- dry-run
+     `redeye claude --effort high --dry-run` -- dry-run
      output should show `Effort: high`
   2. With `pi` installed: run
-     `nightralph pi --effort high --dry-run` -- output should
+     `redeye pi --effort high --dry-run` -- output should
      show `Effort: high`
   3. With `codex` installed: run
-     `nightralph codex --effort high --dry-run` -- output
+     `redeye codex --effort high --dry-run` -- output
      should show `Effort: high`
 
 ---

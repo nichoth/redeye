@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { resolveExecutable } from '../src/preflight.js'
 
 function tmp ():string {
-    return mkdtempSync(join(tmpdir(), 'nightralph-preflight-'))
+    return mkdtempSync(join(tmpdir(), 'redeye-preflight-'))
 }
 
 function makeFixtures (root:string):{ a:string, b:string } {

@@ -1,5 +1,5 @@
 {
-  "project": "nightralph",
+  "project": "redeye",
   "branchName": "ralph/overnight-robustness",
   "description": "Make unattended overnight runs survive repeated failures, timed-out agents, EPIPE, worktree races, Ctrl-C, and provider outages",
   "userStories": [

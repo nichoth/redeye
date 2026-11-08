@@ -1842,7 +1842,7 @@ class RecordingDisplay implements Display {
 // Helper to create a temp git repo and ticket files
 function initTempGitRepo ():string {
     const dir = mkdtempSync(
-        join(tmpdir(), 'nightralph-display-test-')
+        join(tmpdir(), 'redeye-display-test-')
     )
     execSync('git init', { cwd: dir })
     execSync(

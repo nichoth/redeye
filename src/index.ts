@@ -54,7 +54,7 @@ export { findFeatureDirs, resolveIssuesDir }
 const scriptDir = getScriptDir(import.meta.url)
 
 yargs(hideBin(process.argv))
-    .scriptName('nightralph')
+    .scriptName('redeye')
     .usage('$0 <command>')
     .command('init', 'Install bundled skills and doc templates', y => y,
         async () => {

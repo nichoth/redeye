@@ -2,7 +2,7 @@
 
 ## Summary
 
-Nightralph runs agents against tickets grouped into "features" (folders
+Redeye runs agents against tickets grouped into "features" (folders
 under `.scratch/`). A ticket in one feature can declare that it is
 blocked by a ticket in another feature. Today the feature picker counts
 a feature's tickets as "ready if run alone", so a feature whose work all
@@ -18,7 +18,7 @@ and repeat until the set stops growing. The result is then checked by
 simulating the combined run with the same wave logic that `--dry-run`
 uses, through one new shared function, `simulateRun`, so readiness
 cannot drift between the dry run and the graph. Three thin consumers sit
-on top: a new read-only `nightralph graph [--spec <name>]` subcommand
+on top: a new read-only `redeye graph [--spec <name>]` subcommand
 that prints the report, an extra "waits on ..." suffix on the picker
 label, and updated docs. The loader is passed into the graph module as a
 function rather than imported, which avoids an import cycle with
@@ -32,7 +32,7 @@ function rather than imported, which avoids an import cycle with
    changes for features with no such blockers. Every upstream feature
    is named, not truncated.
 
-2. `nightralph graph [--spec <name>]` prints terminal text. For each
+2. `redeye graph [--spec <name>]` prints terminal text. For each
    feature with unsatisfied cross-feature refs, it prints the upstream
    features, and under each one the ticket refs and their statuses
    (e.g. `held-import-review/01 waits on crop-dialog-modal/03
@@ -73,7 +73,7 @@ current checkout, like the picker).
   is `R/T ready, N bad blocker(s), waits on ...`
 
 ### feature-graph.AC2: `graph` command output
-- **feature-graph.AC2.1 Success:** `nightralph graph` exits 0 and prints
+- **feature-graph.AC2.1 Success:** `redeye graph` exits 0 and prints
   one block per picker feature that has cross-feature edges
 - **feature-graph.AC2.2 Success:** Each block groups edges by upstream
   feature, with ticket-level refs and their statuses
@@ -160,7 +160,7 @@ current checkout, like the picker).
   transitively need, iterated until the set stops growing.
 - **`--dry-run`**: Existing CLI mode that prints the simulated wave
   order without running agents.
-- **Integration branch**: The `nightralph--<feature>` git branch a run
+- **Integration branch**: The `redeye--<feature>` git branch a run
   works on. Out of scope; `graph` reads the current checkout only.
 - **FCIS (pure core / thin shell)**: Pattern of putting logic in pure
   functions and keeping I/O in a thin outer layer. Here `graph.ts` is
@@ -411,7 +411,7 @@ verified suggestion.
 
 <!-- START_PHASE_5 -->
 ### Phase 5: `graph` command
-**Goal:** `nightralph graph [--spec <name>]` prints the report.
+**Goal:** `redeye graph [--spec <name>]` prints the report.
 
 **Components:**
 - `.command('graph', ...)` in `src/index.ts`
@@ -443,7 +443,7 @@ pass.
 
 **Cost:** `suggestSelection` makes one `loadSelection` call per closure
 round per feature. The picker already makes one per feature, so this is
-the same order of work for the repos nightralph targets.
+the same order of work for the repos redeye targets.
 
 **Limits:** "Run together" can only be acted on through the picker,
 since `--spec` takes one name. `graph` reads the current checkout, not

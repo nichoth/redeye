@@ -5,7 +5,7 @@ Tickets: `.scratch/overnight-robustness/issues/`
 
 ## Problem Statement
 
-An operator who kicks off an overnight nightralph run expects to wake up to a
+An operator who kicks off an overnight redeye run expects to wake up to a
 completed feature. Instead, the run is fragile in ways that only surface when
 nobody is watching: a progress commit that throws on a no-op crashes the wave;
 an agent that dies before reading its prompt takes down the whole orchestrator

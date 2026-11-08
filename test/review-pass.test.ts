@@ -37,9 +37,9 @@ function git (cwd:string, args:string[]):string {
 function withRepo (
     fn:(repoRoot:string) => Promise<void>
 ):Promise<void> {
-    const templateDir = mkdtempSync(join(tmpdir(), 'nightralph-tpl-'))
+    const templateDir = mkdtempSync(join(tmpdir(), 'redeye-tpl-'))
     const repoRoot = realpathSync(
-        mkdtempSync(join(tmpdir(), 'nightralph-review-'))
+        mkdtempSync(join(tmpdir(), 'redeye-review-'))
     )
     execFileSync('git', ['init', `--template=${templateDir}`],
         { cwd: repoRoot, stdio: 'ignore' })
@@ -115,7 +115,7 @@ function fakeAgent (
 }
 
 function writeFindings (cwd:string, text:string):void {
-    mkdirSync(join(cwd, '.nightralph'), { recursive: true })
+    mkdirSync(join(cwd, '.redeye'), { recursive: true })
     writeFileSync(join(cwd, FINDINGS_PATH), text)
 }
 
@@ -356,10 +356,10 @@ test('runFixer - AC6.4 a retry sees the previous attempt\'s notes',
         await withRepo(async repoRoot => {
             const agent = fakeAgent((cwd, call) => {
                 if (call === 1) {
-                    mkdirSync(join(cwd, '.nightralph'),
+                    mkdirSync(join(cwd, '.redeye'),
                         { recursive: true })
                     writeFileSync(
-                        join(cwd, '.nightralph', 'notes.md'),
+                        join(cwd, '.redeye', 'notes.md'),
                         'NOTES-TOKEN'
                     )
                     return { exitCode: 1 }

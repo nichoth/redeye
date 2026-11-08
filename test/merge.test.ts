@@ -17,7 +17,7 @@ import {
 
 function initTempRepo ():string {
     const dir = mkdtempSync(
-        join(tmpdir(), 'nightralph-merge-test-')
+        join(tmpdir(), 'redeye-merge-test-')
     )
     execSync('git init', { cwd: dir })
     execSync('git config core.hooksPath /dev/null', {
@@ -90,7 +90,7 @@ function installMergeFailingGit (failBranch:string):{
     const realGit = execSync('command -v git')
         .toString().trim()
     const binDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-fake-git-')
+        join(tmpdir(), 'redeye-fake-git-')
     )
     writeFileSync(
         join(binDir, 'git'),

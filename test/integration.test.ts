@@ -40,15 +40,15 @@ import { renderRunStats } from '../src/stats.js'
 
 function tmp ():string {
     return mkdtempSync(
-        join(tmpdir(), 'nightralph-int-test-')
+        join(tmpdir(), 'redeye-int-test-')
     )
 }
 
 test('getScriptDir - derives dir from a file:// module URL', t => {
     const result = getScriptDir(
-        'file:///opt/nightralph/dist/index.js'
+        'file:///opt/redeye/dist/index.js'
     )
-    t.equal(result, '/opt/nightralph/dist',
+    t.equal(result, '/opt/redeye/dist',
         'strips the filename, keeping the containing dir')
 })
 
@@ -1096,7 +1096,7 @@ test('runWavesIsolated - passing test command runs in the ' +
 
 test('runWavesIsolated - an empty test command writes no test ' +
     'log and merges the branch', async t => {
-    const templateDir = mkdtempSync(join(tmpdir(), 'nightralph-tpl-'))
+    const templateDir = mkdtempSync(join(tmpdir(), 'redeye-tpl-'))
     const projectDir = initTempGitRepo({ templateDir })
     try {
         const issuesDir = join(projectDir, 'issues')
@@ -1709,7 +1709,7 @@ test('runWavesIsolated - progress.md committed after each ticket',
                 ).toString()
 
                 t.ok(
-                    logOutput.includes('nightralph: start'),
+                    logOutput.includes('redeye: start'),
                     'should have initial progress commit'
                 )
                 t.ok(
@@ -2217,7 +2217,7 @@ function installMergeFailingGit (failBranch:string):{
     const realGit = execSync('command -v git')
         .toString().trim()
     const binDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-fake-git-')
+        join(tmpdir(), 'redeye-fake-git-')
     )
     writeFileSync(
         join(binDir, 'git'),
@@ -2851,7 +2851,7 @@ function installMergeFailOnceGit (failBranch:string):{
     const realGit = execSync('command -v git')
         .toString().trim()
     const binDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-fake-git-once-')
+        join(tmpdir(), 'redeye-fake-git-once-')
     )
     const counterFile = join(binDir, 'calls')
     writeFileSync(
@@ -3046,7 +3046,7 @@ test('runWavesIsolated - test gate runs again after a ' +
     // Lives outside the worktree so the gate cannot dirty
     // the tree it is judging.
     const counter = join(
-        mkdtempSync(join(tmpdir(), 'nightralph-gate-')),
+        mkdtempSync(join(tmpdir(), 'redeye-gate-')),
         'count'
     )
     try {
@@ -3227,10 +3227,10 @@ test('setup-then-execute composition', async t => {
 test('spawnAgent - claude provider prepends --print ' +
     'to spawned process args', async t => {
     const binDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-provider-test-')
+        join(tmpdir(), 'redeye-provider-test-')
     )
     const logDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-provider-log-')
+        join(tmpdir(), 'redeye-provider-log-')
     )
     try {
         symlinkSync(MOCK_ECHO, join(binDir, 'claude'))
@@ -3267,10 +3267,10 @@ test('spawnAgent - claude provider prepends --print ' +
 test('spawnAgent - codex provider prepends exec ' +
     'to spawned process args', async t => {
     const binDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-provider-test-')
+        join(tmpdir(), 'redeye-provider-test-')
     )
     const logDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-provider-log-')
+        join(tmpdir(), 'redeye-provider-log-')
     )
     try {
         symlinkSync(MOCK_ECHO, join(binDir, 'codex'))
@@ -3302,7 +3302,7 @@ test('spawnAgent - codex provider prepends exec ' +
 test('spawnAgent - agent that never exits is killed at ' +
     'the timeout and the timeout is reported', async t => {
     const logDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-timeout-log-')
+        join(tmpdir(), 'redeye-timeout-log-')
     )
     try {
         const logPath = join(logDir, 'hang.log')
@@ -3342,7 +3342,7 @@ test('spawnAgent - agent that never exits is killed at ' +
 test('spawnAgent - an agent that exits before reading ' +
     'stdin does not crash the run', async t => {
     const logDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-epipe-log-')
+        join(tmpdir(), 'redeye-epipe-log-')
     )
     const MOCK_EXIT_BEFORE_READING = join(
         process.cwd(), 'test',
@@ -3380,7 +3380,7 @@ test('spawnAgent - timeout kills the process group, ' +
     'so spawnAgent still resolves promptly when a ' +
     'grandchild holds the stdout pipe open', async t => {
     const logDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-grandchild-log-')
+        join(tmpdir(), 'redeye-grandchild-log-')
     )
     try {
         const logPath = join(logDir, 'grandchild.log')
@@ -3423,7 +3423,7 @@ test('spawnAgent - timeout kills the process group, ' +
 test('killRunningAgents - kills a tracked agent\'s ' +
     'process group and lets spawnAgent resolve', async t => {
     const logDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-killrunning-log-')
+        join(tmpdir(), 'redeye-killrunning-log-')
     )
     try {
         const logPath = join(logDir, 'hang.log')
@@ -3501,7 +3501,7 @@ test('killProcessGroup - falls back to a direct kill ' +
 test('spawnAgent - unknown provider passes through ' +
     'with no extra args', async t => {
     const logDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-provider-log-')
+        join(tmpdir(), 'redeye-provider-log-')
     )
     try {
         const logPath = join(logDir, 'unknown.log')
@@ -3653,10 +3653,10 @@ test('CLI subprocess exits 0 when all tickets complete',
 test('spawnAgent - effort maps to --thinking for pi provider',
     async t => {
         const binDir = mkdtempSync(
-            join(tmpdir(), 'nightralph-provider-test-')
+            join(tmpdir(), 'redeye-provider-test-')
         )
         const logDir = mkdtempSync(
-            join(tmpdir(), 'nightralph-provider-log-')
+            join(tmpdir(), 'redeye-provider-log-')
         )
         try {
             symlinkSync(MOCK_ECHO, join(binDir, 'pi'))
@@ -3692,10 +3692,10 @@ test('spawnAgent - codex provider receives ' +
     'model_reasoning_effort via -c flag',
 async t => {
     const binDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-provider-test-')
+        join(tmpdir(), 'redeye-provider-test-')
     )
     const logDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-provider-log-')
+        join(tmpdir(), 'redeye-provider-log-')
     )
     try {
         symlinkSync(MOCK_ECHO, join(binDir, 'codex'))
@@ -3751,7 +3751,7 @@ test('runWavesIsolated - a failed pi agent is retried with ' +
     'escalated effort and the retry can succeed', async t => {
     const projectDir = initTempGitRepo()
     const binDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-provider-test-')
+        join(tmpdir(), 'redeye-provider-test-')
     )
     try {
         symlinkSync(MOCK_FAIL_THEN_PASS, join(binDir, 'pi'))
@@ -3823,7 +3823,7 @@ test('runWavesIsolated - retries:0 disables the retry so the ' +
     'failure stands', async t => {
     const projectDir = initTempGitRepo()
     const binDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-provider-test-')
+        join(tmpdir(), 'redeye-provider-test-')
     )
     try {
         symlinkSync(MOCK_FAIL_THEN_PASS, join(binDir, 'pi'))
@@ -3879,7 +3879,7 @@ test('runWavesIsolated - omitting retryDelay does not ' +
     'wait between retries', async t => {
     const projectDir = initTempGitRepo()
     const binDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-provider-test-')
+        join(tmpdir(), 'redeye-provider-test-')
     )
     try {
         symlinkSync(MOCK_FAIL_THEN_PASS, join(binDir, 'pi'))
@@ -3933,7 +3933,7 @@ test('CLI subprocess - --effort is forwarded to a pi agent',
     async t => {
         const projectDir = tmp()
         const binDir = mkdtempSync(
-            join(tmpdir(), 'nightralph-provider-test-')
+            join(tmpdir(), 'redeye-provider-test-')
         )
         try {
             symlinkSync(MOCK_ECHO, join(binDir, 'pi'))
@@ -3992,7 +3992,7 @@ test('CLI subprocess - --retries 0 disables the retry',
     async t => {
         const projectDir = tmp()
         const binDir = mkdtempSync(
-            join(tmpdir(), 'nightralph-provider-test-')
+            join(tmpdir(), 'redeye-provider-test-')
         )
         try {
             symlinkSync(MOCK_FAIL_THEN_PASS, join(binDir, 'pi'))
@@ -4027,7 +4027,7 @@ test('CLI subprocess - default retries recover a flaky pi agent',
     async t => {
         const projectDir = tmp()
         const binDir = mkdtempSync(
-            join(tmpdir(), 'nightralph-provider-test-')
+            join(tmpdir(), 'redeye-provider-test-')
         )
         try {
             symlinkSync(MOCK_FAIL_THEN_PASS, join(binDir, 'pi'))
@@ -4099,7 +4099,7 @@ test('runWavesIsolated - a red test gate on the first attempt ' +
     'is retried from a fresh worktree', async t => {
     const projectDir = initTempGitRepo()
     const markerDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-gate-marker-')
+        join(tmpdir(), 'redeye-gate-marker-')
     )
     try {
         const issuesDir = join(projectDir, 'issues')
@@ -4224,7 +4224,7 @@ test('runWavesIsolated - agent that deletes its worktree ' +
 test('spawnAgent - grace timer kills process group ' +
     'when agent exits but grandchild holds stdout', async t => {
     const logDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-grandchild-exit-')
+        join(tmpdir(), 'redeye-grandchild-exit-')
     )
     try {
         const logPath = join(logDir, 'exit.log')
@@ -4622,8 +4622,8 @@ type NotesRepo = {
 async function withNotesRepo (
     fn:(repo:NotesRepo) => Promise<void>
 ):Promise<void> {
-    const templateDir = mkdtempSync(join(tmpdir(), 'nightralph-tpl-'))
-    const recordDir = mkdtempSync(join(tmpdir(), 'nightralph-rec-'))
+    const templateDir = mkdtempSync(join(tmpdir(), 'redeye-tpl-'))
+    const recordDir = mkdtempSync(join(tmpdir(), 'redeye-rec-'))
     const originalCwd = process.cwd()
     const savedRecordDir = process.env.MOCK_RECORD_DIR
     const savedMode = process.env.MOCK_MODE
@@ -4746,9 +4746,9 @@ async t => {
             'the agent\'s `git add -A` commit is in the history'
         )
         t.deepEqual(
-            paths.filter(p => p.startsWith('.nightralph/')),
+            paths.filter(p => p.startsWith('.redeye/')),
             [],
-            'no commit on any ref contains a .nightralph/ path'
+            'no commit on any ref contains a .redeye/ path'
         )
 
         t.ok(
@@ -5049,7 +5049,7 @@ function cliGitRepo ():{
     issuesDir:string
     templateDir:string
 } {
-    const templateDir = mkdtempSync(join(tmpdir(), 'nightralph-tpl-'))
+    const templateDir = mkdtempSync(join(tmpdir(), 'redeye-tpl-'))
     const projectDir = initTempGitRepo({ templateDir })
     execSync('git branch -M main', { cwd: projectDir })
     writeFileSync(
@@ -5086,7 +5086,7 @@ function twoFeatureRepo (ticket01Body:string, otherStatus:string):{
 function integrationBranches (projectDir:string):string {
     return gitOut(projectDir, [
         'branch', '--list', '--format=%(refname:short)',
-        'nightralph--*',
+        'redeye--*',
     ]).trim()
 }
 
@@ -5120,7 +5120,7 @@ test('CLI subprocess - AC3.2 nothing ready stops before provider ' +
         twoFeatureRepo(BLOCKED_BODY, 'ready-for-agent')
     try {
         const { code } = await spawnCli([
-            'nightralph-no-such-provider', '--spec', FEAT,
+            'redeye-no-such-provider', '--spec', FEAT,
         ], { cwd: projectDir })
 
         t.equal(code, 0, 'exit 0 with an unknown provider')
@@ -5154,7 +5154,7 @@ test('CLI subprocess - AC3.4 a resumed branch with nothing ready ' +
         makeTicketBody({ status: 'ready-for-agent' }), 'ready-for-agent'
     )
     try {
-        execSync('git checkout -q -b nightralph--test-feat', {
+        execSync('git checkout -q -b redeye--test-feat', {
             cwd: projectDir,
         })
         writeFileSync(join(issuesDir, '01-first.md'), BLOCKED_BODY)
@@ -5168,7 +5168,7 @@ test('CLI subprocess - AC3.4 a resumed branch with nothing ready ' +
         t.equal(code, 0, 'exit 0')
         t.equal(headBranch(projectDir), 'main', 'back on main')
         t.equal(
-            integrationBranches(projectDir), 'nightralph--test-feat',
+            integrationBranches(projectDir), 'redeye--test-feat',
             'the integration branch is kept'
         )
         t.ok(stdout.includes('other-feat/01'), 'names the blocker')
@@ -5183,7 +5183,7 @@ test('CLI subprocess - a resumed run leaves the zero-ready check to ' +
     const { projectDir, templateDir } =
         twoFeatureRepo(BLOCKED_BODY, 'ready-for-agent')
     try {
-        execSync('git branch nightralph--test-feat', { cwd: projectDir })
+        execSync('git branch redeye--test-feat', { cwd: projectDir })
 
         const { code, stdout } = await spawnCli([
             MOCK_AGENT, '--spec', FEAT,
@@ -5205,7 +5205,7 @@ test('CLI subprocess - AC3.5 a resumed branch with no open tickets ' +
         makeTicketBody({ status: 'ready-for-agent' }), 'ready-for-agent'
     )
     try {
-        execSync('git checkout -q -b nightralph--test-feat', {
+        execSync('git checkout -q -b redeye--test-feat', {
             cwd: projectDir,
         })
         writeFileSync(
@@ -5221,7 +5221,7 @@ test('CLI subprocess - AC3.5 a resumed branch with no open tickets ' +
 
         t.equal(code, 0, 'exit 0')
         t.equal(
-            headBranch(projectDir), 'nightralph--test-feat',
+            headBranch(projectDir), 'redeye--test-feat',
             'the run stayed on the integration branch'
         )
     } finally {
@@ -5241,13 +5241,13 @@ test('CLI subprocess - AC3.6 a ready ticket runs as before', async t => {
 
         t.equal(code, 0, 'exit 0')
         t.equal(
-            integrationBranches(projectDir), 'nightralph--test-feat',
+            integrationBranches(projectDir), 'redeye--test-feat',
             'the integration branch was created'
         )
         t.ok(
             gitOut(projectDir, [
                 'show',
-                'nightralph--test-feat:.scratch/test-feat/issues/' +
+                'redeye--test-feat:.scratch/test-feat/issues/' +
                     '01-first.md',
             ]).includes('**Status:** done'),
             'the ticket is done on the integration branch'
@@ -5268,7 +5268,7 @@ test('CLI subprocess - AC1.4 a provider not on PATH fails before ' +
         )
         commitAll(projectDir, 'add tickets')
 
-        const missing = 'nightralph-no-such-provider'
+        const missing = 'redeye-no-such-provider'
         const { code, stderr } = await spawnCli([
             missing, '--spec', FEAT,
         ], { cwd: projectDir })
@@ -5276,7 +5276,7 @@ test('CLI subprocess - AC1.4 a provider not on PATH fails before ' +
         t.equal(code, 2, 'exit 2')
         t.ok(stderr.includes(missing), 'stderr names the provider')
         t.equal(
-            gitOut(projectDir, ['branch', '--list', 'nightralph--*'])
+            gitOut(projectDir, ['branch', '--list', 'redeye--*'])
                 .trim(),
             '',
             'no integration branch created'
@@ -5328,7 +5328,7 @@ test('CLI subprocess - AC1.6 dry-run with a provider not on PATH',
             )
 
             const { code, stdout } = await spawnCli([
-                'nightralph-no-such-provider',
+                'redeye-no-such-provider',
                 '--spec', FEAT,
                 '--dry-run',
             ], { cwd: projectDir })
@@ -5426,7 +5426,7 @@ test('CLI subprocess - AC2.1 a run from main lands on the ' +
         t.equal(
             gitOut(projectDir, ['rev-parse', '--abbrev-ref', 'HEAD'])
                 .trim(),
-            `nightralph--${FEAT}`,
+            `redeye--${FEAT}`,
             'left on the integration branch'
         )
         t.equal(gitOut(projectDir, ['rev-parse', 'main']), mainBefore,
@@ -5440,7 +5440,7 @@ test('CLI subprocess - AC2.1 a run from main lands on the ' +
 test('CLI subprocess - AC2.2 a run from main resumes the ' +
     'integration branch without redoing done tickets', async t => {
     const { projectDir, issuesDir, templateDir } = cliGitRepo()
-    const recordDir = mkdtempSync(join(tmpdir(), 'nightralph-rec-'))
+    const recordDir = mkdtempSync(join(tmpdir(), 'redeye-rec-'))
     try {
         writeFileSync(
             join(issuesDir, '01-first.md'),
@@ -5451,7 +5451,7 @@ test('CLI subprocess - AC2.2 a run from main resumes the ' +
             makeTicketBody({ status: 'ready-for-agent' })
         )
         commitAll(projectDir, 'add tickets')
-        execSync(`git checkout -b nightralph--${FEAT}`,
+        execSync(`git checkout -b redeye--${FEAT}`,
             { cwd: projectDir })
         writeFileSync(
             join(issuesDir, '01-first.md'),
@@ -5746,7 +5746,7 @@ test('CLI subprocess - a stale integration branch is reported and ' +
         commitAll(projectDir, 'add tickets')
         // The branch forks before the tickets exist and has a commit
         // of its own, so it is neither current nor an ancestor of main
-        execSync(`git checkout -q -b nightralph--${FEAT} HEAD~1`,
+        execSync(`git checkout -q -b redeye--${FEAT} HEAD~1`,
             { cwd: projectDir })
         writeFileSync(join(projectDir, 'other.txt'), 'x')
         commitAll(projectDir, 'unrelated work')
@@ -5773,7 +5773,7 @@ test('CLI subprocess - a stale integration branch is reported and ' +
 test('CLI subprocess - a review runs once across a run and its ' +
     'resume', async t => {
     const { projectDir, issuesDir, templateDir } = cliGitRepo()
-    const recordDir = mkdtempSync(join(tmpdir(), 'nightralph-rec-'))
+    const recordDir = mkdtempSync(join(tmpdir(), 'redeye-rec-'))
     try {
         writeFileSync(
             join(issuesDir, '01-pass.md'),
@@ -5797,7 +5797,7 @@ test('CLI subprocess - a review runs once across a run and its ' +
 
         const first = await spawnCli(args, { cwd: projectDir, env })
         t.equal(first.code, 0, 'first run exits 0')
-        t.equal(headBranch(projectDir), `nightralph--${FEAT}`,
+        t.equal(headBranch(projectDir), `redeye--${FEAT}`,
             'left on the integration branch')
         const entries = parseReviewEntries(gitOut(projectDir, [
             'show', `HEAD:.scratch/${FEAT}/review.md`,
@@ -5839,7 +5839,7 @@ test('CLI subprocess - a dry run from main changes no branch',
             t.equal(code, 0, 'exit 0')
             t.equal(headBranch(projectDir), 'main', 'still on main')
             t.equal(
-                gitOut(projectDir, ['branch', '--list', 'nightralph--*'])
+                gitOut(projectDir, ['branch', '--list', 'redeye--*'])
                     .trim(),
                 '', 'no integration branch created'
             )
@@ -6203,7 +6203,7 @@ test('CLI subprocess - prefer-subagent AC1.6 AC1.7 isolated run ' +
 
 test('runWavesIsolated - prefer-subagent AC1.6 reaches ticket and ' +
     'merge-respawn agents', async t => {
-    const templateDir = mkdtempSync(join(tmpdir(), 'nightralph-tpl-'))
+    const templateDir = mkdtempSync(join(tmpdir(), 'redeye-tpl-'))
     const projectDir = initTempGitRepo({ templateDir })
     const logDir = tmp()
     const repoName = basename(projectDir)
@@ -6328,7 +6328,7 @@ function logsOf (calls:ReadonlyArray<DisplayCall>):string[] {
 
 test('runWavesIsolated - logs the stats line after the finish summary',
     async t => {
-        const templateDir = mkdtempSync(join(tmpdir(), 'nightralph-tpl-'))
+        const templateDir = mkdtempSync(join(tmpdir(), 'redeye-tpl-'))
         const projectDir = initTempGitRepo({ templateDir })
         const dataDir = tmp()
         const originalCwd = process.cwd()
@@ -6386,7 +6386,7 @@ test('runWavesIsolated - logs the stats line after the finish summary',
 
 test('runWavesIsolated - the stats tally counts merge respawns',
     async t => {
-        const templateDir = mkdtempSync(join(tmpdir(), 'nightralph-tpl-'))
+        const templateDir = mkdtempSync(join(tmpdir(), 'redeye-tpl-'))
         const projectDir = initTempGitRepo({ templateDir })
         const dataDir = tmp()
         const repoName = basename(projectDir)
@@ -6448,7 +6448,7 @@ test('runWavesIsolated - the stats tally counts merge respawns',
 
 test('runWavesIsolated - a ticket row shows the total across attempts',
     async t => {
-        const templateDir = mkdtempSync(join(tmpdir(), 'nightralph-tpl-'))
+        const templateDir = mkdtempSync(join(tmpdir(), 'redeye-tpl-'))
         const projectDir = initTempGitRepo({ templateDir })
         const dataDir = tmp()
         const originalCwd = process.cwd()
@@ -6770,7 +6770,7 @@ test('graph - read-only, git-free, no provider or branch output',
             t.equal(code, 0, 'exits 0 outside a git repo')
             const all = stdout + stderr
             t.ok(!all.includes('Provider'), 'no provider preflight line')
-            t.ok(!all.includes('nightralph--'),
+            t.ok(!all.includes('redeye--'),
                 'no integration branch name')
         } finally {
             rmSync(cwd, { recursive: true, force: true })

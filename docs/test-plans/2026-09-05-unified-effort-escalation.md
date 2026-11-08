@@ -24,7 +24,7 @@ Purpose: Confirm that effort escalation from retrying one ticket does not leak i
 | Step | Action | Expected |
 |------|--------|----------|
 | 1 | Create a test project with local issue tracking (two tickets: `01-first.md` wave 1, `02-second.md` wave 2, where 02 depends on 01) | Two markdown ticket files under `.scratch/<feature>/` with appropriate `status: ready-for-agent` and blockers |
-| 2 | Run `nightralph pi --effort medium --retries 1 --timeout 120` | Orchestrator starts, processes tickets in waves |
+| 2 | Run `redeye pi --effort medium --retries 1 --timeout 120` | Orchestrator starts, processes tickets in waves |
 | 3 | Observe ticket 01: if it fails on first attempt, watch for retry | Retry attempt should show escalated effort (e.g. `high`) in the display or logs |
 | 4 | Observe ticket 02: watch the first attempt's effort level | First attempt should show `medium` (the starting level), not `high` from ticket 01's retry |
 
@@ -34,17 +34,17 @@ Purpose: Confirm the full CLI path (yargs parsing through orchestrator through s
 
 | Step | Action | Expected |
 |------|--------|----------|
-| 1 | With `claude` installed, set up a single-ticket project and run `nightralph claude --effort high --timeout 60` | The spawned claude process receives `--effort high` in its arguments (visible in the agent's log or by checking `.scratch/<feature>/logs/`) |
-| 2 | With `pi` installed, run the same setup with `nightralph pi --effort high --timeout 60` | The spawned pi process receives `--thinking high` (not `--effort`) |
-| 3 | With `codex` installed, run the same setup with `nightralph codex --effort high --timeout 60` | The spawned codex process receives `-e high` (not `--effort` or `--thinking`) |
+| 1 | With `claude` installed, set up a single-ticket project and run `redeye claude --effort high --timeout 60` | The spawned claude process receives `--effort high` in its arguments (visible in the agent's log or by checking `.scratch/<feature>/logs/`) |
+| 2 | With `pi` installed, run the same setup with `redeye pi --effort high --timeout 60` | The spawned pi process receives `--thinking high` (not `--effort`) |
+| 3 | With `codex` installed, run the same setup with `redeye codex --effort high --timeout 60` | The spawned codex process receives `-e high` (not `--effort` or `--thinking`) |
 
 ## End-to-End: Full Retry Cycle with Effort Escalation
 
 Purpose: Validates the complete flow -- CLI flag parsing, provider dispatch, effort escalation on retry, and effort reset across tickets -- in a single run.
 
-1. Initialize a project: `nightralph init`, select local tracker
+1. Initialize a project: `redeye init`, select local tracker
 2. Create a feature spec under `.scratch/myfeature/` with 3 tickets (01 in wave 1, 02-03 in wave 2)
-3. Run `nightralph pi --effort low --retries 2 --retry-delay 0 --timeout 120`
+3. Run `redeye pi --effort low --retries 2 --retry-delay 0 --timeout 120`
 4. If ticket 01 fails: first retry should use `medium`, second retry should use `high`
 5. Tickets 02 and 03 (wave 2) should each start at `low` regardless of 01's escalation
 6. Check `progress.md` after the run: completed tickets are checked, failed tickets show `done: false`

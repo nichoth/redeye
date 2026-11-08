@@ -7,9 +7,9 @@ by hand below. Validated at `6bbeddd`.
 
 ## Prerequisites
 
-- Node >= 24, repo at `/Users/nick/code/nightralph` on `feature-graph`.
+- Node >= 24, repo at `/Users/nick/code/redeye` on `feature-graph`.
 - `npm run build && npm test` passes (several minutes).
-- `NR=/Users/nick/code/nightralph/dist/index.js`
+- `NR=/Users/nick/code/redeye/dist/index.js`
 - A scratch fixture outside any git repo, and a helper to write
   tickets:
 
@@ -76,8 +76,8 @@ Marking `finished` complete:
 ```sh
 node --input-type=module -e "
 import { generateProgress, checkTicket, writeProgress }
-    from '/Users/nick/code/nightralph/dist/progress.js'
-import { scanTickets } from '/Users/nick/code/nightralph/dist/orchestrator.js'
+    from '/Users/nick/code/redeye/dist/progress.js'
+import { scanTickets } from '/Users/nick/code/redeye/dist/orchestrator.js'
 const d = generateProgress('finished',
     scanTickets('.scratch/finished/issues', 'finished'))
 checkTicket(d, 1, { branch:'b', exitCode:0, done:true })
@@ -88,8 +88,8 @@ writeProgress('.scratch/finished/progress.md', d)"
 
 | Step | Action | Expected |
 |------|--------|----------|
-| 1 | In `$FX`: `find . -type f \| sort > "$TMPDIR/before.txt"; node $NR graph > /dev/null; find . -type f \| sort > "$TMPDIR/after.txt"; diff "$TMPDIR/before.txt" "$TMPDIR/after.txt"` | No diff; no `.nightralph/`, `progress.md`, `learnings.md` or `review.md` appears. |
-| 2 | `node $NR graph 2>&1` | No Provider line, no `nightralph--` branch name, no git mention. |
+| 1 | In `$FX`: `find . -type f \| sort > "$TMPDIR/before.txt"; node $NR graph > /dev/null; find . -type f \| sort > "$TMPDIR/after.txt"; diff "$TMPDIR/before.txt" "$TMPDIR/after.txt"` | No diff; no `.redeye/`, `progress.md`, `learnings.md` or `review.md` appears. |
+| 2 | `node $NR graph 2>&1` | No Provider line, no `redeye--` branch name, no git mention. |
 | 3 | Optional: `git init -q` in `$FX`, commit everything, `node $NR graph`, then `git status --porcelain` and `git branch` | Clean tree; no new branch or worktree. Delete `$FX/.git` afterwards. |
 
 ## End to end: dead ends and deadlock
@@ -114,7 +114,7 @@ cannot run fully (AC3.4-AC3.6) in a form a person can act on.
 
 ## End to end: suggestion matches a real run
 
-Checks that the Run together set and count agree with what nightralph
+Checks that the Run together set and count agree with what redeye
 would run (AC3.1 with AC3.7).
 
 1. In the rebase.blog fixture, `node $NR graph`; note the suggested
@@ -129,7 +129,7 @@ would run (AC3.1 with AC3.7).
 | Criterion | Why manual | Steps |
 |-----------|------------|-------|
 | AC4.1 | Build and test wiring; a test reading package.json or scripts/test.sh would pin config text | 1. `npm run build && ls dist/graph.js` lists the file. 2. `npm test` output includes graph suite tests (e.g. "AC3.1: rebase.blog suggests both features", the "Run together hint" tests) and no line starts with `not ok`. |
-| AC4.2 | Docs only; no tests for docs | AGENTS.md was rewritten (3d3293c) into Project Structure plus cross-module Invariants, so it has no per-module contract sections. Check: 1. Project Structure lists `src/graph.ts`. 2. Invariants say `nightralph graph` is read-only; the `blockerSatisfied` bullet says `graph` checks its suggestion through `simulateRun`, which wraps the `simulateWaves` that `--dry-run` prints; the `renderTypoWarnings` bullet names the finish summary, the nothing-ready explanation and `graph`; Module boundaries explain the injected `LoadFn` and why (`resolve` imports `upstreamOf` from `graph`); the exit-code bullet says every command handler returns a promise. 3. README has a `graph` section after `--spec` and an example after `--dry-run`; its sample matches a real `node $NR graph` run in structure; it covers `--spec` (nested and complete names), Run together (dry-run wave logic, the unlisted-feature hint), the ready-for-agent denominator, stays blocked, deadlocked, the picker label and the limits. 4. `perl -CSD -ne 'print "$.: $_" if /[\x{2014}\x{2192}]/' AGENTS.md README.md` prints nothing. |
+| AC4.2 | Docs only; no tests for docs | AGENTS.md was rewritten (3d3293c) into Project Structure plus cross-module Invariants, so it has no per-module contract sections. Check: 1. Project Structure lists `src/graph.ts`. 2. Invariants say `redeye graph` is read-only; the `blockerSatisfied` bullet says `graph` checks its suggestion through `simulateRun`, which wraps the `simulateWaves` that `--dry-run` prints; the `renderTypoWarnings` bullet names the finish summary, the nothing-ready explanation and `graph`; Module boundaries explain the injected `LoadFn` and why (`resolve` imports `upstreamOf` from `graph`); the exit-code bullet says every command handler returns a promise. 3. README has a `graph` section after `--spec` and an example after `--dry-run`; its sample matches a real `node $NR graph` run in structure; it covers `--spec` (nested and complete names), Run together (dry-run wave logic, the unlisted-feature hint), the ready-for-agent denominator, stays blocked, deadlocked, the picker label and the limits. 4. `perl -CSD -ne 'print "$.: $_" if /[\x{2014}\x{2192}]/' AGENTS.md README.md` prints nothing. |
 
 ## Traceability
 

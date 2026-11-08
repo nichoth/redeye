@@ -38,7 +38,7 @@ createWorktree(opts:{
 
 Creates a git worktree for a single ticket:
 - Branch name: `<repoName>/<NN>-<slug>`
-  (e.g. `nightralph/01-add-auth`)
+  (e.g. `redeye/01-add-auth`)
 - Worktree path: `../<repoName>.<NN>-<slug>`
   (sibling of repo root, so sorted near it in the filesystem)
 - Command: `git worktree add -b <branch> <path> <baseBranch>`

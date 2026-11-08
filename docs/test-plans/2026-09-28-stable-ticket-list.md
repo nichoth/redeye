@@ -10,15 +10,15 @@ how the display looks and behaves in a real terminal, and full CLI runs.
 
 ## Prerequisites
 
-1. `cd /Users/nick/code/nightralph && npm test` passes. `npm run lint`
+1. `cd /Users/nick/code/redeye && npm test` passes. `npm run lint`
    is clean.
-2. `npm run build`, then use `node /Users/nick/code/nightralph/dist/index.js`
-   as `NR` below (or run `npm link` and use `nightralph`).
+2. `npm run build`, then use `node /Users/nick/code/redeye/dist/index.js`
+   as `NR` below (or run `npm link` and use `redeye`).
 3. The `claude` CLI is installed and logged in. Each fixture costs a few
    agent turns, so keep tickets trivial and always pass `--retries 0`.
 4. A real terminal window you can resize, and both a light and a dark
    color theme.
-5. For the AC4.5 baseline: `npx nightralph@0.0.52` or a separately built
+5. For the AC4.5 baseline: `npx redeye@0.0.52` or a separately built
    checkout of `main`. `package.json` on this branch also says 0.0.52, so
    do not rely on the version string.
 
@@ -46,7 +46,7 @@ Scratch repo setup, used by every git fixture:
 
 | Step | Action | Expected |
 |------|--------|----------|
-| 1 | In a TTY at 80x24 or larger, run `cd /Users/nick/code/nightralph && npm run demo` | Header reads `Wave 1/2 - 0/5 done - 0%`. All 5 tickets are listed in order 01..05. 04 and 05 are not in the wave but still appear, with dim empty dots |
+| 1 | In a TTY at 80x24 or larger, run `cd /Users/nick/code/redeye && npm run demo` | Header reads `Wave 1/2 - 0/5 done - 0%`. All 5 tickets are listed in order 01..05. 04 and 05 are not in the wave but still appear, with dim empty dots |
 | 2 | Watch the first ~8 seconds | 01 turns yellow, then green. Header goes to `1/5 done - 20%`. No row moves |
 | 3 | Watch until 03 fails (~6s in) | 03 turns red. 05 gets a dim filled dot and the suffix `(blocked by 03-dashboard-ui.md)`. 04 keeps its dim empty dot. Header shows `2/5 done - 40%`: failed and blocked rows are not counted |
 | 4 | Compare the 05 row (blocked) with the 04 row (pending) | The dim filled dot and the dim empty dot are easy to tell apart at a glance (AC2.5) |
@@ -136,7 +136,7 @@ previous release, and nothing extra for `startRun` or `setBlocked`.
 1. Create two identical copies of Fixture B: `/tmp/nr-b-new` and
    `/tmp/nr-b-old`.
 2. `cd /tmp/nr-b-new && NR claude --spec demo --retries 0 --test-cmd '<fixture B cmd>' 2>&1 | cat > /tmp/new.txt`
-3. `cd /tmp/nr-b-old && npx nightralph@0.0.52 claude --spec demo --retries 0 --test-cmd '<fixture B cmd>' 2>&1 | cat > /tmp/old.txt`
+3. `cd /tmp/nr-b-old && npx redeye@0.0.52 claude --spec demo --retries 0 --test-cmd '<fixture B cmd>' 2>&1 | cat > /tmp/old.txt`
 4. Remove agent output lines from both files, for example
    `grep -vE '^\[' /tmp/new.txt > /tmp/new.f` (adjust the filter to the
    prefix agent lines carry), then `diff /tmp/old.f /tmp/new.f`.

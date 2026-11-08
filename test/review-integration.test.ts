@@ -104,9 +104,9 @@ async function withHarness (
     env:Partial<Record<typeof ENV_KEYS[number], string>>,
     fn:(h:Harness) => Promise<void>
 ):Promise<void> {
-    const templateDir = mkdtempSync(join(tmpdir(), 'nightralph-tpl-'))
-    const projectDir = mkdtempSync(join(tmpdir(), 'nightralph-ri-'))
-    const recordDir = mkdtempSync(join(tmpdir(), 'nightralph-rec-'))
+    const templateDir = mkdtempSync(join(tmpdir(), 'redeye-tpl-'))
+    const projectDir = mkdtempSync(join(tmpdir(), 'redeye-ri-'))
+    const recordDir = mkdtempSync(join(tmpdir(), 'redeye-rec-'))
     const saved = Object.fromEntries(
         ENV_KEYS.map(k => [k, process.env[k]])
     )
@@ -218,7 +218,7 @@ test('review pass - AC6.1 AC7.1 a fix merges and the log is ' +
 
 test('review pass - prefer-subagent AC1.6 reaches the reviewer ' +
     'and the fixer', async t => {
-    const logDir = mkdtempSync(join(tmpdir(), 'nightralph-envlog-'))
+    const logDir = mkdtempSync(join(tmpdir(), 'redeye-envlog-'))
     const envLog = join(logDir, 'env.log')
     try {
         await withHarness({
@@ -354,7 +354,7 @@ test('review pass - a reviewer that writes no findings file is ' +
         MOCK_REVIEW: 'none', MOCK_FIX: 'pass', MOCK_TICKET: 'pass',
     }, async h => {
         // As on an integration branch: the fork point is the floor
-        git(h.projectDir, ['checkout', '-b', 'nightralph--feat'])
+        git(h.projectDir, ['checkout', '-b', 'redeye--feat'])
         await h.run(true, undefined, 'main')
         const counts = countRoles(h.recordDir)
         t.equal(counts.reviewer, 1, 'reviewed once')
@@ -371,7 +371,7 @@ test('review pass - a reviewer that writes no findings file is ' +
 
 test('review pass - prefer-subagent AC6.4 the stats tally counts ' +
     'the reviewer and the fixer', async t => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'nightralph-stream-'))
+    const dataDir = mkdtempSync(join(tmpdir(), 'redeye-stream-'))
     const streamFile = join(dataDir, 'stream.jsonl')
     writeFileSync(streamFile, [
         {

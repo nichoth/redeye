@@ -61,7 +61,7 @@ import { renderRunStats } from '../src/stats.js'
 
 function tmp ():string {
     return mkdtempSync(
-        join(tmpdir(), 'nightralph-orch-test-')
+        join(tmpdir(), 'redeye-orch-test-')
     )
 }
 
@@ -2551,7 +2551,7 @@ test('spawnAgent reports spawn errors through onLine and the log',
 
             const result = await spawnAgent({
                 prompt: 'x',
-                agentCmd: join(tmpDir, 'nightralph-no-such-agent'),
+                agentCmd: join(tmpDir, 'redeye-no-such-agent'),
                 model: null,
                 timeout: 10,
                 logPath,
@@ -4416,7 +4416,7 @@ test('runWaves retries a failed agent with escalated effort',
     async t => {
         const base = initTempGitRepo()
         const binDir = mkdtempSync(
-            join(tmpdir(), 'nightralph-provider-test-')
+            join(tmpdir(), 'redeye-provider-test-')
         )
         const issuesDir = join(base, 'issues')
         const logsDir = join(base, 'logs')
@@ -4457,7 +4457,7 @@ test('runWaves retries a failed agent with escalated effort',
 test('runWaves waits retryDelay seconds before a retry', async t => {
     const base = initTempGitRepo()
     const binDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-provider-test-')
+        join(tmpdir(), 'redeye-provider-test-')
     )
     const issuesDir = join(base, 'issues')
     const logsDir = join(base, 'logs')
@@ -4833,7 +4833,7 @@ test('AC2.3 - Effort resets to starting level for each ' +
     const originalCwd = process.cwd()
     const base = initTempGitRepo()
     const binDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-effort-reset-test-')
+        join(tmpdir(), 'redeye-effort-reset-test-')
     )
     const issuesDir = join(base, '.scratch', 'feature')
     const logsDir = join(base, 'logs')
@@ -4941,7 +4941,7 @@ test('AC2.3 - Effort resets to starting level for each ' +
         > = {}
         for (const log of argsLines) {
             // worktree paths are like
-            // .../nightralph-orch-test-Pvx0hc.01-ticket1
+            // .../redeye-orch-test-Pvx0hc.01-ticket1
             const ticketMatch = log.cwd
                 .match(/\.(\d+)-/)
             if (ticketMatch) {
@@ -5363,7 +5363,7 @@ test(
             'blocked ticket listed after the human one')
         t.ok(!out.includes('10-free.md'),
             'unblocked ticket is not listed as blocked')
-        t.ok(out.includes('run nightralph again'),
+        t.ok(out.includes('run redeye again'),
             'tells the user to rerun')
     }
 )

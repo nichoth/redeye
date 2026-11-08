@@ -1,7 +1,7 @@
-# `nightralph`
-[![tests](https://img.shields.io/github/actions/workflow/status/nichoth/nightralph/nodejs.yml?style=flat-square)](https://github.com/nichoth/nightralph/actions/workflows/nodejs.yml)
+# `redeye`
+[![tests](https://img.shields.io/github/actions/workflow/status/nichoth/redeye/nodejs.yml?style=flat-square)](https://github.com/nichoth/redeye/actions/workflows/nodejs.yml)
 [![semantic versioning](https://img.shields.io/badge/semver-2.0.0-blue?logo=semver&style=flat-square)](https://semver.org/)
-[![install size](https://flat.badgen.net/packagephobia/install/nightralph)](https://packagephobia.com/result?p=nightralph)
+[![install size](https://flat.badgen.net/packagephobia/install/redeye)](https://packagephobia.com/result?p=redeye)
 [![license](https://img.shields.io/badge/license-Big_Time-blue?style=flat-square)](LICENSE)
 
 This is a minimal Node-based AI orchestrator. It reads local markdown tickets
@@ -53,7 +53,7 @@ so they can't drift as long as you install the skills with this package.
 ## Install
 
 ```bash
-npm i -S nightralph
+npm i -S redeye
 ```
 
 ### Requirements
@@ -61,13 +61,13 @@ npm i -S nightralph
 - Node 24 or newer (see `engines` in `package.json`) and git.
 - The agent CLI you name on the command line (`claude`, `codex` or `pi`)
   installed and in your `PATH`. A run with no
-- macOS or Linux. `nightralph` runs agents in their own process group
+- macOS or Linux. `redeye` runs agents in their own process group
   and uses `sh -c` for test and install commands. Does not run on Windows.
 
 ### Install Dependency Skills
 
 ```sh
-npx nightralph init
+npx redeye init
 ```
 
 Use the `init` subcommand in this package to add the required
@@ -100,7 +100,7 @@ grill -> to-spec -> to-tickets -> tdd
 > [!NOTE]  
 > The `grill` step can be changed to something else. Output from step 1
 > needs to be a prose description in a locall markdown file.
-> The `nightralph` CLI does the `tdd` part of the workflow.
+> The `redeye` CLI does the `tdd` part of the workflow.
 >
 
 ### Create Issues
@@ -125,8 +125,8 @@ a spec text description.
 
 ## Examples
 
-After you have the tickets, use the `nightralph` loop to execute.
-`nightralph` will executre the tickets in the most efficient, parallel way
+After you have the tickets, use the `redeye` loop to execute.
+`redeye` will executre the tickets in the most efficient, parallel way
 possible, with respect to the ticket dependencies.
 
 ### Keep Your Machine Awake
@@ -141,53 +141,53 @@ keep the machine awake, but the display can still go dark.
 ### Claude Opus 4.6
 
 ```sh
-caffeinate -i npx nightralph claude -m claude-opus-4-6 --effort medium --prefer-subagent claude-haiku-5-5
+caffeinate -i npx redeye claude -m claude-opus-4-6 --effort medium --prefer-subagent claude-haiku-5-5
 ```
 
 ### Claude Opus 5.5
 
 ```sh
-caffeinate -i npx nightralph claude -m claude-opus-5-5 --effort medium --prefer-subagent claude-haiku-5-5
+caffeinate -i npx redeye claude -m claude-opus-5-5 --effort medium --prefer-subagent claude-haiku-5-5
 ```
 
 ### Claude Sonnet 5.5
 
 ```sh
-caffeinate -i npx nightralph claude -m claude-sonnet-5-5 --effort medium
+caffeinate -i npx redeye claude -m claude-sonnet-5-5 --effort medium
 ```
 
 ### Claude Haiku 5.5
 
 ```sh
-caffeinate -i npx nightralph claude -m claude-haiku-5-5 --effort high
+caffeinate -i npx redeye claude -m claude-haiku-5-5 --effort high
 ```
 
 ### Claude Fable 5.1
 
 ```sh
-caffeinate -i npx nightralph claude -m claude-fable-5-1 --effort medium
+caffeinate -i npx redeye claude -m claude-fable-5-1 --effort medium
 ```
 
 ### `pi` + OpenRouter model
 
 ```sh
-caffeinate -i npx nightralph pi -m openrouter/z-ai/glm-5.3-flash --effort high
+caffeinate -i npx redeye pi -m openrouter/z-ai/glm-5.3-flash --effort high
 ```
 
 ```sh
-caffeinate -i npx nightralph pi -m openrouter/inception/mercury-2.5 --effort high
+caffeinate -i npx redeye pi -m openrouter/inception/mercury-2.5 --effort high
 ```
 
 ### `codex` + Luna
 
 ```sh
-caffeinate -i npx nightralph codex -m gpt-6-luna --effort high
+caffeinate -i npx redeye codex -m gpt-6-luna --effort high
 ```
 
 ### `codex` + Terra
 
 ```sh
-caffeinate -i npx nightralph codex -m gpt-6.1-terra --effort medium
+caffeinate -i npx redeye codex -m gpt-6.1-terra --effort medium
 ```
 
 ## Command Line Arguments
@@ -208,7 +208,7 @@ Flags:
 | `--install-cmd <cmd>` | no | auto | Run in each fresh worktree before the agent starts, and again after a merge-conflict rebase; non-zero exit fails the attempt (it is retried like any other failure). Auto-detects from the lockfile: `pnpm-lock.yaml` -> `pnpm install --prefer-offline --frozen-lockfile`, `package-lock.json` -> `npm ci --prefer-offline --no-audit --no-fund`, a `package.json` with no lockfile -> `npm install --prefer-offline --no-audit --no-fund --no-package-lock`, no `package.json` -> no install. Pass `""` to disable. Shares the agent's `--timeout`. Output goes to `<ticket>.install.log` |
 | `--max-turns <n>` | no | -- | Max agentic turns per agent run. Forwarded as `--max-turns <n>` to `claude` only; for `codex` and `pi` the flag is skipped with a warning and the agent runs with no turn limit. The limit is per spawn, not a total for the ticket: every retry and every re-spawn after a merge conflict starts with a fresh budget of `n` turns, so with `--retries 3` one ticket can use up to 4 x `n`. When omitted (or `0`), no limit is passed, so `--timeout` is the only cap. Takes precedence over the `[turns]` positional when both are given. Reaching the limit is an error exit, so the attempt fails and is retried like any other failure |
 | `--effort <level>` | no | -- | Starting effort/reasoning level. Each provider has its own ladder: `claude` supports `low`, `medium`, `high`, `xhigh`, `max` (forwarded as `--effort`); `codex` supports `low`, `medium`, `high` (forwarded as `-c model_reasoning_effort=<level>`); `pi` supports `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` (forwarded as `--thinking`). Omitted = provider default. Each retry steps up from here (see `--retries`) |
-| `--prefer-subagent <model>` | no | -- | `claude` only. Sets `CLAUDE_CODE_SUBAGENT_MODEL=<model>` for every claude agent nightralph spawns (tickets, merge-conflict re-spawns, the reviewer and the fixer) and adds a prompt rule: hand read-only work (exploring the codebase, searching code, test runs with long output) to subagents, and make every edit and commit yourself. The reviewer gets the rule without the edit and commit line, since it never edits. `""` is the same as omitting the flag. For `codex` and `pi` it is skipped with one warning at startup (`--prefer-subagent not supported by <provider>, skipping`). `--dry-run` prints `Prefer subagent: <model>`, or `(none)`. See [`--prefer-subagent` option](#--prefer-subagent-option) |
+| `--prefer-subagent <model>` | no | -- | `claude` only. Sets `CLAUDE_CODE_SUBAGENT_MODEL=<model>` for every claude agent redeye spawns (tickets, merge-conflict re-spawns, the reviewer and the fixer) and adds a prompt rule: hand read-only work (exploring the codebase, searching code, test runs with long output) to subagents, and make every edit and commit yourself. The reviewer gets the rule without the edit and commit line, since it never edits. `""` is the same as omitting the flag. For `codex` and `pi` it is skipped with one warning at startup (`--prefer-subagent not supported by <provider>, skipping`). `--dry-run` prints `Prefer subagent: <model>`, or `(none)`. See [`--prefer-subagent` option](#--prefer-subagent-option) |
 | `--retries <n>` | no | `3` | Extra attempts per ticket after a failed run. Each retry starts from a fresh worktree and raises the effort level one rung (see Notes). `0` disables retries |
 | `--retry-delay <n>` | no | `30` | Seconds to wait before the first retry; doubles each further retry (30s, 60s, 120s, ...). `0` disables the wait |
 | `--concurrency <n>` | no | `5` | Max agents running at once within a wave. A wave with more ready tickets than this runs them through a pool: as one agent exits, the next ticket starts. The wave still finishes fully before its branches are merged |
@@ -237,7 +237,7 @@ Flags:
   Failed tickets (non-zero exit) keep their status and block
   dependents. The status display marks those dependents as blocked
   and names the failed ticket.
-* After an agent finishes, nightralph independently runs the test gate,
+* After an agent finishes, redeye independently runs the test gate,
   even if the agent already ran tests. Ticket gates and the final
   review-fix gate announce the command, worktree, and timeout, then
   report elapsed time every 15 seconds while waiting for it to finish.
@@ -272,9 +272,9 @@ Flags:
   recent entries for its own ticket and the last successful entry of
   each ticket that directly blocks it, so a retry can see why the
   previous attempt failed. Agents keep their notes in
-  `.nightralph/notes.md` inside the worktree. nightralph collects
+  `.redeye/notes.md` inside the worktree. redeye collects
   that file when the agent exits, and a self-ignoring
-  `.nightralph/.gitignore` keeps it out of the agent's commits.
+  `.redeye/.gitignore` keeps it out of the agent's commits.
 * A ticket that exhausts all its retry attempts is excluded from
   later waves in the same run. It stays `ready-for-agent` on disk
   so a future run can pick it up, but it will not be re-started
@@ -324,7 +324,7 @@ is `.scratch/<name>/issues/`.
 
 ### `graph` command
 
-`nightralph graph` lists the features whose tickets wait on tickets
+`redeye graph` lists the features whose tickets wait on tickets
 in other features, the tickets that wait, and the features to select
 together so the work can run.
 
@@ -339,7 +339,7 @@ The sample below is from a run with three features.
 blockers.
 
 ```bash
-npx nightralph graph
+npx redeye graph
 ```
 
 ```text
@@ -365,7 +365,7 @@ model to handle exploring the codebase, searching, and running
 tests whose output would flood the main agent's context. The subagent then
 reports back a short answer to the main agent.
 
-The flag does two things for every claude agent nightralph spawns.
+The flag does two things for every claude agent redeye spawns.
 
 1. It sets `CLAUDE_CODE_SUBAGENT_MODEL=<model>` in the agent's environment.
 2. It adds a rule to the prompt: hand read-only work to subagents,
@@ -380,20 +380,20 @@ summarizing long test output, but it is more likely to miss things.
 
 ```sh
 # Opus writes the code, Sonnet subagents explore and run tests
-npx nightralph claude -m claude-opus-4-6 --prefer-subagent sonnet
+npx redeye claude -m claude-opus-4-6 --prefer-subagent sonnet
 
 # Cheaper subagents for searches and noisy test runs
-npx nightralph claude -m claude-opus-4-6 --prefer-subagent haiku
+npx redeye claude -m claude-opus-4-6 --prefer-subagent haiku
 
 # A Sonnet main agent with Haiku subagents
-npx nightralph claude -m claude-sonnet-5-5 --prefer-subagent haiku
+npx redeye claude -m claude-sonnet-5-5 --prefer-subagent haiku
 
 # Pin an exact model ID instead of an alias
-npx nightralph claude -m claude-opus-5-5 --prefer-subagent claude-sonnet-5-5
+npx redeye claude -m claude-opus-5-5 --prefer-subagent claude-sonnet-5-5
 
 # dry run
 # Check the setting and the prompt rule without running anything
-npx nightralph claude --prefer-subagent claude-haiku-5-5 --dry-run
+npx redeye claude --prefer-subagent claude-haiku-5-5 --dry-run
 ```
 
 Only the `claude` provider supports the `--prefer-subagent` flag.
@@ -407,7 +407,7 @@ timeout covers the whole agent process.
 ### Environment Settings
 
 Spawned agents load your global `~/.claude` plugins and hooks. Those
-can spend turns and steer delegation their own way, and nightralph does
+can spend turns and steer delegation their own way, and redeye does
 not isolate agents from them.
 
 ---
@@ -417,7 +417,7 @@ not isolate agents from them.
 Tickets run in "waves". A wave is a batch of tickets whose blockers are
 all done. The tickets in a wave run in parallel, up to `--concurrency`
 at once, and each ticket gets a worktree named after the ticket slug.
-`nightralph` waits for the whole batch to finish, merges the branches of
+`redeye` waits for the whole batch to finish, merges the branches of
 the tickets that succeeded, and marks them `done`. Then it looks for
 tickets that are newly unblocked. Those form the next wave. This
 continues until no ticket is ready to run.
@@ -461,8 +461,8 @@ another terminal by reading the file.
 
 ### Integration branch
 
-Launched from your default branch (`main`), nightralph does not merge
-into it. It creates `nightralph--<feature>` (or `nightralph--all` for
+Launched from your default branch (`main`), redeye does not merge
+into it. It creates `redeye--<feature>` (or `redeye--all` for
 several features), merges every ticket there, and leaves you on that
 branch. Running again from `main` resumes the same branch. Finished
 tickets stay finished. Launched from any other branch, it merges into
@@ -470,7 +470,7 @@ that branch.
 
 After you merge the integration branch into `main`, the next run
 fast-forwards it to `main` and resumes. If the branch has commits `main`
-lacks, nightralph reports how far behind it is; merge `main` into it or
+lacks, redeye reports how far behind it is; merge `main` into it or
 delete it with `git branch -D`.
 
 ### `.scratch/` in git
@@ -491,7 +491,7 @@ Skip this with `--no-review`.
 
 ### Status display
 
-In a terminal, nightralph shows a header line, one row per ticket, and
+In a terminal, redeye shows a header line, one row per ticket, and
 a log of recent messages. The ticket list holds every ticket that was
 `ready-for-agent` when the run started, and it stays the same for the
 whole run. Rows do not move, disappear, or reappear between waves.
@@ -539,7 +539,7 @@ with its elapsed time and, for claude, how many tools it has called
 so far. These lines also appear when stdout is not a terminal.
 
 When stdout is not a terminal, for example when it is piped to a file,
-nightralph prints one line per wave that names the wave's tickets,
+redeye prints one line per wave that names the wave's tickets,
 followed by plain log lines.
 
 Known limit: with `-X`, the run stops at the first merge conflict. A

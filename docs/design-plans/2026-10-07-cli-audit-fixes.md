@@ -3,7 +3,7 @@
 ## Summary
 
 This design fixes five rough edges at the boundaries of the
-nightralph CLI, which runs one coding agent per ticket in its own
+redeye CLI, which runs one coding agent per ticket in its own
 git worktree and merges the results. An audit of the built tool
 found that a mistyped agent name only failed after the tool had
 already created and checked out a git branch, that projects with no
@@ -60,7 +60,7 @@ subprocess against a temporary project.
   and an existing file without execute permission. It never throws.
 - **cli-audit-fixes.AC1.4 Success:** The CLI given a bare provider
   name that is not on PATH exits 2, stderr names the provider, no
-  `nightralph--*` branch exists afterwards, and the current branch
+  `redeye--*` branch exists afterwards, and the current branch
   is unchanged.
 - **cli-audit-fixes.AC1.5 Success:** The CLI given an absolute path
   to a mock agent runs it as before.
@@ -82,7 +82,7 @@ subprocess against a temporary project.
 - **cli-audit-fixes.AC2.3 Success:** The fixer with `testCmd:''`
   writes no `review-fix.test.log`, and its branch merges when it
   has commits.
-- **cli-audit-fixes.AC2.4 Success:** `nightralph <agent> --test-cmd
+- **cli-audit-fixes.AC2.4 Success:** `redeye <agent> --test-cmd
   ""` on a project whose `package.json` has no `test` script
   completes the ticket and merges it.
 - **cli-audit-fixes.AC2.5 Success:** The same project with no
@@ -137,10 +137,10 @@ subprocess against a temporary project.
 - **Wave**: A batch of tickets with no unfinished blockers that run
   in parallel. A wave finishes fully before its branches merge.
 - **Worktree**: A separate git working directory for a branch.
-  nightralph creates one per ticket as a sibling directory of the
+  redeye creates one per ticket as a sibling directory of the
   repo, named `<repo>.<num>-<slug>`.
-- **Integration branch**: `nightralph--<feature>` (or
-  `nightralph--all`), created when a run is launched from the
+- **Integration branch**: `redeye--<feature>` (or
+  `redeye--all`), created when a run is launched from the
   default branch. Ticket branches merge into it.
 - **Test gate**: After an agent exits, the orchestrator runs the
   test command in the ticket's worktree. A non-zero exit rejects the

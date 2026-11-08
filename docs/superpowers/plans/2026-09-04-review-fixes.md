@@ -287,7 +287,7 @@ test(
         const logDir = mkdtempSync(
             join(
                 tmpdir(),
-                'nightralph-grandchild-exit-'
+                'redeye-grandchild-exit-'
             )
         )
         try {
@@ -578,7 +578,7 @@ test(
     'createWorktree',
     async t => {
         const repoDir = mkdtempSync(
-            join(tmpdir(), 'nightralph-wt-serial-')
+            join(tmpdir(), 'redeye-wt-serial-')
         )
         execSync('git init', { cwd:repoDir })
         execSync(
@@ -861,7 +861,7 @@ In `runWavesIsolated` (around line 1637), after the existing `d.log(...)` call i
                     repoRoot,
                     progressPath,
                     progress,
-                    'nightralph: ' +
+                    'redeye: ' +
                     `${ticket.filename} ` +
                     'worktree error',
                     d,
@@ -892,7 +892,7 @@ In the `error` block (around line 1647), add after the existing `d.log(...)`:
                     repoRoot,
                     progressPath,
                     progress,
-                    'nightralph: ' +
+                    'redeye: ' +
                     `${ticket.filename} error`,
                     d,
                 )
@@ -922,7 +922,7 @@ In the `no-commits` block (around line 1657), add after the existing `d.log(...)
                     repoRoot,
                     progressPath,
                     progress,
-                    'nightralph: ' +
+                    'redeye: ' +
                     `${ticket.filename} no commits`,
                     d,
                 )

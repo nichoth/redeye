@@ -1,10 +1,10 @@
 {
-  "name": "nightralph",
+  "name": "@substrate-system/redeye",
   "version": "0.1.6",
   "type": "module",
   "description": "Orchestrator that runs a single-agent session per issue.",
   "bin": {
-    "nightralph": "dist/index.js"
+    "redeye": "dist/index.js"
   },
   "files": [
     "dist/**",

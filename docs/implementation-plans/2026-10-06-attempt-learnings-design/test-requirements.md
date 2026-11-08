@@ -21,8 +21,8 @@ Decisions from planning that shape these tests:
    integration test. `MOCK_MODE` is `pass`, `fail`, `fail-once`, or
    `hang`. Each invocation writes a JSON record (time, cwd, token,
    prompt) to `MOCK_RECORD_DIR` and writes its token to
-   `.nightralph/notes.md`. In `pass` mode it commits with `git add -A`,
-   so the `.nightralph/.gitignore` safety net is exercised.
+   `.redeye/notes.md`. In `pass` mode it commits with `git add -A`,
+   so the `.redeye/.gitignore` safety net is exercised.
 4. No test asserts on prose copy. Tests check random `randomUUID()`
    tokens, parsed fields (`key`, `attempt`, `outcome`, `timedOut`),
    lengths, equality between two renders, `indexOf` ordering, or git
@@ -142,13 +142,13 @@ Phase 2, Task 2. Unit tests in `test/learnings.test.ts`, using
 like `initTempRepo` in `test/progress.test.ts`.
 
 - **attempt-learnings-design.AC3.1 Success:** `collectNotes` returns
-  the notes file's contents and removes the `.nightralph/` directory,
+  the notes file's contents and removes the `.redeye/` directory,
   also when there is no notes file.
   - Type: unit (temp dir)
   - Asserts: with a random token written at `join(dir, NOTES_PATH)`,
     the result contains the token, and afterwards neither the file nor
-    its `.nightralph` directory exists. With only a
-    `.nightralph/.gitignore` present (no notes), the result is `null`
+    its `.redeye` directory exists. With only a
+    `.redeye/.gitignore` present (no notes), the result is `null`
     and the directory is gone.
 - **attempt-learnings-design.AC3.2 Edge:** `collectNotes` returns
   `null` when there is no notes file.
@@ -157,13 +157,13 @@ like `initTempRepo` in `test/progress.test.ts`.
     also returns `null`.
 - **attempt-learnings-design.AC3.3 Success:** After
   `ensureNotesIgnored(worktreePath)`, git ignores everything under
-  `.nightralph/` in that worktree (including its own `.gitignore`), and
+  `.redeye/` in that worktree (including its own `.gitignore`), and
   nothing under the repo's git dir is written.
   - Type: unit (hermetic temp git repo: `git init --template=<empty
     temp dir>` and `core.excludesFile=/dev/null`, so the user's git
     template and global excludes cannot affect or be affected by it)
   - Asserts: after `ensureNotesIgnored` (called twice) and writing
-    `.nightralph/notes.md`, `git check-ignore -q .nightralph/notes.md`
+    `.redeye/notes.md`, `git check-ignore -q .redeye/notes.md`
     exits 0, and `git status --porcelain` is empty (so the
     `.gitignore` ignores itself). The repo's `<git dir>/info/exclude`
     is unchanged. A second case does the same inside a linked
@@ -195,7 +195,7 @@ Phase 3. AC4.1 and AC4.2 are unit tests in `test/orchestrator.test.ts`
   - Asserts: `renderPrompt(spec, ticket, { testCmd })` `t.equal`s
     `renderPrompt(spec, ticket, { testCmd, history:'' })`.
 - **attempt-learnings-design.AC4.3 Human:** The prompt tells the agent
-  to keep `.nightralph/notes.md` current and never commit it, splits
+  to keep `.redeye/notes.md` current and never commit it, splits
   reusable patterns (AGENTS.md) from ticket notes, and allows skipping
   test-first for pure scaffolding, config, or docs items.
   - Type: human verification (see below)
@@ -230,7 +230,7 @@ console.log(renderPrompt('spec', {
 
 Read the `AGENT INSTRUCTIONS` section and confirm:
 
-1. A rule tells the agent to keep `.nightralph/notes.md` (creating the
+1. A rule tells the agent to keep `.redeye/notes.md` (creating the
    directory), update it after each checklist item and as soon as it
    hits a blocker, and never commit, `git add`, or delete it. The
    commit rule excepts the notes file, and the INTEGRITY rule says to
@@ -308,11 +308,11 @@ a unit test of the commit mechanism in `test/progress.test.ts`
 (Task 1).
 
 - **attempt-learnings-design.AC7.1 Success:** No commit on any ref
-  contains a `.nightralph/` path.
+  contains a `.redeye/` path.
   - Type: integration (same test as AC5.1)
   - Asserts: `git log --all --name-only --format=` has no line starting
-    with `.nightralph/`. The mock commits with `git add -A`, so this
-    proves `collectNotes` plus `.nightralph/.gitignore` keep the notes
+    with `.redeye/`. The mock commits with `git add -A`, so this
+    proves `collectNotes` plus `.redeye/.gitignore` keep the notes
     out.
 - **attempt-learnings-design.AC7.2 Success:** `learnings.md` is
   committed and has no uncommitted changes when the run ends.

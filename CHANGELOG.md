@@ -5,8 +5,8 @@
 ### Added
 
 - **Integration branch.** A run launched from the default branch
-  (`main`) no longer merges into it. nightralph creates
-  `nightralph--<feature>` (`nightralph--all` for several features),
+  (`main`) no longer merges into it. redeye creates
+  `redeye--<feature>` (`redeye--all` for several features),
   merges every ticket there, and leaves you on that branch. Running
   again from `main` resumes the same branch, so finished tickets stay
   finished. After you merge the branch into `main`, the next run
@@ -31,10 +31,10 @@
   own notes. The prompt for a retry includes the ticket's recent
   entries and the last successful entry of each ticket that directly
   blocks it, so the agent can see why the previous attempt failed.
-  Agents write their notes to `.nightralph/notes.md` in the worktree;
-  a self-ignoring `.nightralph/.gitignore` keeps the file out of the
+  Agents write their notes to `.redeye/notes.md` in the worktree;
+  a self-ignoring `.redeye/.gitignore` keeps the file out of the
   agent's commits.
-- **Provider check.** After it finds tickets, nightralph checks that
+- **Provider check.** After it finds tickets, redeye checks that
   the provider command exists and is executable before it touches
   git. A missing provider exits 2 without creating or checking out a
   branch. `--dry-run` prints a `Provider:` line instead and keeps

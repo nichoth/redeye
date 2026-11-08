@@ -2,7 +2,7 @@
 
 ## Summary
 
-Today the terminal status list in nightralph rebuilds itself at the
+Today the terminal status list in redeye rebuilds itself at the
 start of every wave. Tickets that finished drop out, the current
 wave's tickets jump to the top, and a ticket that failed comes back
 as an empty dot. This change makes the list fixed for the whole

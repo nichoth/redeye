@@ -1,7 +1,7 @@
 # Cross-Feature Blockers Design
 
 ## Summary
-nightralph runs one agent per ticket, where each ticket is a markdown
+redeye runs one agent per ticket, where each ticket is a markdown
 file under `.scratch/<feature>/issues/` with a `**Blocked by:**` field
 naming the tickets that must finish first. Today that field is read
 as a list of bare numbers and every number is assumed to belong to the
@@ -115,7 +115,7 @@ Out of scope: editing the rebase.blog ticket files themselves.
 ### cross-feature-blockers.AC3: Zero-ready stop
 - **cross-feature-blockers.AC3.1 Success:** when the first scan
   finds nothing ready, the run prints why and exits 0, and the
-  branch is unchanged, with no `nightralph--*` branch created
+  branch is unchanged, with no `redeye--*` branch created
 - **cross-feature-blockers.AC3.2 Edge:** the stop happens before
   provider preflight, so an unknown provider with nothing ready
   still exits 0
@@ -165,8 +165,8 @@ Out of scope: editing the rebase.blog ticket files themselves.
 - **Wave**: A batch of tickets whose blockers are all satisfied, run
   in parallel. A later wave starts only after the earlier one is
   merged.
-- **Integration branch**: The `nightralph--<feature>` branch (or
-  `nightralph--all`) that a run creates or resumes from the default
+- **Integration branch**: The `redeye--<feature>` branch (or
+  `redeye--all`) that a run creates or resumes from the default
   branch and merges ticket work into.
 - **Launch branch**: The branch the user ran the CLI from, which is
   checked back out when a run stops early on a resumed integration

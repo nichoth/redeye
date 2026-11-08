@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make an unattended run such as `caffeinate -i npx nightralph pi -m openrouter/z-ai/glm-5.3-flash` survive the night: no crash from a repeated failure, no hang on a timed-out agent, no crash from a fast-exiting agent, no random worktree failure, orderly shutdown on Ctrl-C, and a backoff between retries so a provider outage is waited out instead of burning every attempt.
+**Goal:** Make an unattended run such as `caffeinate -i npx redeye pi -m openrouter/z-ai/glm-5.3-flash` survive the night: no crash from a repeated failure, no hang on a timed-out agent, no crash from a fast-exiting agent, no random worktree failure, orderly shutdown on Ctrl-C, and a backoff between retries so a provider outage is waited out instead of burning every attempt.
 
 **Architecture:** Every fix lives in the module that owns the behavior. `src/progress.ts` stops committing when nothing changed. `src/orchestrator.ts` contains the retry loop, so it gets the backoff, the failed-ticket exclusion, the attempt error containment, the process-group kill, the stdin error guard, and a registry of running agents. `src/worktree.ts` serializes worktree creation. `src/display.ts` gives up its process signal handlers and `src/index.ts` installs one that kills agents and exits. Each task is verified by a test against a mock agent that reproduces the failure.
 
@@ -53,7 +53,7 @@ Written 2026-09-03 against the working tree after commit `f5b448f` (0.0.19, with
 
 ### Seen in a real run
 
-12. **A failed agent's dirty worktree cannot be removed, and the reason is cut off.** A run of `nightralph pi -m openrouter/z-ai/glm-5.3-flash` in a sibling project (16 tickets, 11 waves) ended after wave 1 with `agent exited 1`, then `Failed to remove worktree ...: Command failed: git -C /Users/ni` truncated by the status display, then `No tickets completed this wave. Stopping.` The agent was mid-rewrite of a tracked file when it exited, and `removeWorktree` (`src/worktree.ts:122`) runs `git worktree remove` without `--force`, which git refuses for a worktree with modified or untracked files. The leftover directory is harmless (the next `createWorktree` force-removes it) but the truncated line hides the cause. That run also used the published 0.0.17, which has no retries; the retry work in this tree must be published before the README command benefits from it.
+12. **A failed agent's dirty worktree cannot be removed, and the reason is cut off.** A run of `redeye pi -m openrouter/z-ai/glm-5.3-flash` in a sibling project (16 tickets, 11 waves) ended after wave 1 with `agent exited 1`, then `Failed to remove worktree ...: Command failed: git -C /Users/ni` truncated by the status display, then `No tickets completed this wave. Stopping.` The agent was mid-rewrite of a tracked file when it exited, and `removeWorktree` (`src/worktree.ts:122`) runs `git worktree remove` without `--force`, which git refuses for a worktree with modified or untracked files. The leftover directory is harmless (the next `createWorktree` force-removes it) but the truncated line hides the cause. That run also used the published 0.0.17, which has no retries; the retry work in this tree must be published before the README command benefits from it.
 
 ### Documentation
 
@@ -355,7 +355,7 @@ async t => {
 - [ ] **Step 3: Run the test to verify it fails**
 
 Run: `npm test 2>&1 | grep -B2 -A12 "exhausted its attempts"`
-Expected: the test rejects with `Command failed: git commit -m nightralph: 01-fail.md failed` (or, once Task 1 is in, `starts.length` is 2).
+Expected: the test rejects with `Command failed: git commit -m redeye: 01-fail.md failed` (or, once Task 1 is in, `starts.length` is 2).
 
 - [ ] **Step 4: Add `saveProgress` and use it inside the wave loop**
 
@@ -393,7 +393,7 @@ In `runWavesIsolated`, replace each of the four `writeProgress(progressPath, pro
                     repoRoot,
                     progressPath,
                     progress,
-                    message:`nightralph: ${ticket.filename} ` +
+                    message:`redeye: ${ticket.filename} ` +
                         (outcome.reason === 'tests' ?
                             'tests failed' :
                             'failed'),
@@ -401,7 +401,7 @@ In `runWavesIsolated`, replace each of the four `writeProgress(progressPath, pro
                 })
 ```
 
-Do the same for the `done`, `done (respawn)`, and `merge failed` pairs. Leave the `nightralph: start` commit before the loop as it is.
+Do the same for the `done`, `done (respawn)`, and `merge failed` pairs. Leave the `redeye: start` commit before the loop as it is.
 
 - [ ] **Step 5: Exclude exhausted tickets from later waves**
 
@@ -501,7 +501,7 @@ const MOCK_EXIT_BEFORE_READING = join(
 test('spawnAgent - an agent that exits before reading a large ' +
     'prompt does not crash the orchestrator', async t => {
     const logDir = mkdtempSync(
-        join(tmpdir(), 'nightralph-epipe-log-')
+        join(tmpdir(), 'redeye-epipe-log-')
     )
     try {
         const result = await spawnAgent({
@@ -535,7 +535,7 @@ In `spawnAgent`, directly above `if (!promptFile) {`:
     // uncaught exception and takes the whole run down.
     proc.stdin.on('error', err => {
         logStream.write(
-            `nightralph: stdin error: ${formatErrorMessage(err)}\n`
+            `redeye: stdin error: ${formatErrorMessage(err)}\n`
         )
     })
 ```
@@ -619,7 +619,7 @@ async function waitForExit (pid:number, ms:number):Promise<boolean> {
 test('spawnAgent - the timeout kill takes a child that holds ' +
     'the stdout pipe with it and still resolves', async t => {
     const dir = mkdtempSync(
-        join(tmpdir(), 'nightralph-grandchild-')
+        join(tmpdir(), 'redeye-grandchild-')
     )
     let childPid = 0
     let guard:NodeJS.Timeout|null = null
@@ -992,7 +992,7 @@ In `src/index.ts`, import `killRunningAgents` from `'./orchestrator.js'`. In `ru
         const killed = killRunningAgents()
         display.cleanup()
         console.error(
-            `\nnightralph: received ${signal}, ` +
+            `\nredeye: received ${signal}, ` +
             `stopped ${killed} agent(s)`
         )
         process.exit(signal === 'SIGINT' ? 130 : 143)
@@ -1047,7 +1047,7 @@ test('runWavesIsolated - retryDelay waits before the retry',
     async t => {
         const projectDir = initTempGitRepo()
         const binDir = mkdtempSync(
-            join(tmpdir(), 'nightralph-provider-test-')
+            join(tmpdir(), 'redeye-provider-test-')
         )
         try {
             symlinkSync(MOCK_FAIL_THEN_PASS, join(binDir, 'pi'))
@@ -1642,7 +1642,7 @@ Add these bullets to Notes:
 ```
 * Agents run in their own process group. The `--timeout` kill and
   Ctrl-C (SIGINT) or SIGTERM kill the agent and every process it
-  started, then nightralph exits with 130 or 143. Worktrees of
+  started, then redeye exits with 130 or 143. Worktrees of
   interrupted tickets are left in place and replaced on the next run.
 * With a fast model the default hour is generous. A ticket that
   times out with no commits is retried from scratch, so with two
@@ -1666,7 +1666,7 @@ Change the `pi` provider bullet:
 Add to the `pi` example in `## Keep Your Machine Awake`:
 
 ```sh
-caffeinate -i npx nightralph pi -m openrouter/z-ai/glm-5.3-flash --timeout 900
+caffeinate -i npx redeye pi -m openrouter/z-ai/glm-5.3-flash --timeout 900
 ```
 
 - [ ] **Step 2: AGENTS.md contracts**
@@ -1715,14 +1715,14 @@ Orchestrator `Guarantees`: append
   attempt after worktree creation is caught and counts as
   a failed attempt; a progress commit inside the wave loop
   never throws (failures are logged); the initial
-  `nightralph: start` commit still throws
+  `redeye: start` commit still throws
 ```
 
 Progress section: change `commitProgress` to `commitProgress(repoRoot, path, message):Promise<boolean>` and add to Guarantees: `commitProgress resolves false without committing when the staged file matches HEAD`.
 
 Worktree section: change the `Exposes` entry to `removeWorktree(path, opts?)` and add to Guarantees: `createWorktree calls are serialized module-wide; concurrent calls run one at a time`; `removeWorktree passes --force to git when opts.force is true; the orchestrator forces removal after a failed attempt`.
 
-Add to the README Notes: `Publish and reinstall after upgrading: npx nightralph runs the version in the project's node_modules, so a project pinned to an older release gets none of the retry or timeout behavior described here.`
+Add to the README Notes: `Publish and reinstall after upgrading: npx redeye runs the version in the project's node_modules, so a project pinned to an older release gets none of the retry or timeout behavior described here.`
 
 Display section: remove any mention of signal handlers from `StatusDisplay` and `cleanup` guarantees; add `StatusDisplay never registers process signal listeners`.
 
