@@ -29,17 +29,17 @@
     "test": "bash scripts/test.sh"
   },
   "dependencies": {
-    "@inquirer/prompts": "^8.7.0",
-    "yargs": "^18.1.0"
+    "@inquirer/prompts": "^8.7.5",
+    "yargs": "^18.2.0"
   },
   "devDependencies": {
-    "@substrate-system/tapzero": "^0.10.16",
-    "@types/node": "^26.4.1",
+    "@substrate-system/tapzero": "^0.10.17",
+    "@types/node": "^26.6.6",
     "esbuild": "^0.28.2",
-    "eslint": "^10.9.1",
+    "eslint": "^10.14.0",
     "markdown-toc": "^1.2.0",
     "newneostandard": "^0.14.3",
-    "typescript-eslint": "^8.68.0"
+    "typescript-eslint": "^8.72.1"
   },
   "license": "SEE LICENSE IN LICENSE",
   "author": "nichoth"
