@@ -34,6 +34,8 @@ so they can't drift as long as you install the skills with this package.
   * [`pi` + OpenRouter model](#pi--openrouter-model)
   * [`codex` + Luna](#codex--luna)
   * [`codex` + Terra](#codex--terra)
+  * [Local Model With `pi`](#local-model-with-pi)
+    + [1. Load the right model](#1-load-the-right-model)
 - [Command Line Arguments](#command-line-arguments)
   * [Notes](#notes)
   * [`--spec ` option](#--spec--option)
