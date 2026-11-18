@@ -203,19 +203,19 @@ caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-Turbo
 
 #### 1. Load the right model
 
-94% NPU
+##### 94% NPU
 
 ```sh
 tiiny load Qwen/Qwen3-Coder-Next
 ```
 
-45% NPU
+##### 45% NPU
 
 ```sh
 tiiny load Qwen/Qwen3.6-35B-A3B-Turbo
 ```
 
-57% NPU
+##### 57% NPU
 
 ```sh
 tiiny load zai-org/GLM-4.7-Flash
