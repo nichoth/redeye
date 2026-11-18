@@ -3,6 +3,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
+import { homedir } from 'node:os'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
 import { select } from '@inquirer/prompts'
@@ -56,8 +57,18 @@ const scriptDir = getScriptDir(import.meta.url)
 yargs(hideBin(process.argv))
     .scriptName('redeye')
     .usage('$0 <command>')
-    .command('init', 'Install bundled skills and doc templates', y => y,
-        async () => {
+    .command(
+        'init',
+        'Install bundled skills and doc templates',
+        y => y.option('global', {
+            alias: 'g',
+            type: 'boolean',
+            default: false,
+            describe: 'Install skills in ~/.agents/skills (and ' +
+                'link them from ~/.claude/skills) instead of ' +
+                'this project',
+        }),
+        async argv => {
             const tracker = await select<TrackerKind>({
                 message: 'Issue tracker format',
                 choices: [
@@ -94,6 +105,7 @@ yargs(hideBin(process.argv))
                 ),
                 projectDir: process.cwd(),
                 tracker,
+                skillsRoot: argv.global ? homedir() : undefined,
             })
         }
     )

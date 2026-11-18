@@ -85,6 +85,9 @@ export type SetupOpts = {
     docsTemplatesDir:string
     projectDir:string
     tracker:TrackerKind
+    // Where `.agents/skills` and `.claude/skills` go. Defaults to
+    // projectDir; `init --global` passes the user's home dir.
+    skillsRoot?:string
 }
 
 const TRACKER_TEMPLATES:Record<TrackerKind, string> = {
@@ -99,15 +102,22 @@ export function setup (opts:SetupOpts):void {
         projectDir,
         tracker,
     } = opts
+    const skillsRoot = opts.skillsRoot ?? projectDir
+    const isGlobal = skillsRoot !== projectDir
     const agentsSkillsDir = join(
-        projectDir, '.agents', 'skills'
+        skillsRoot, '.agents', 'skills'
     )
+    const claudeSkillsDir = join(skillsRoot, '.claude', 'skills')
 
     const upstream = JSON.parse(
         readFileSync(join(bundledSkillsDir, 'upstream.json'), 'utf8')
     ) as { repo:string; commit:string }
 
-    console.log('Installing skills to .agents/skills/\n')
+    console.log(
+        `Installing skills to ${
+            isGlobal ? agentsSkillsDir : '.agents/skills'
+        }/\n`
+    )
 
     for (const skill of SKILL_DIRS) {
         const src = join(bundledSkillsDir, skill)
@@ -118,7 +128,6 @@ export function setup (opts:SetupOpts):void {
         console.log(`  ${skill}/ (${files.join(', ')})`)
     }
 
-    const claudeSkillsDir = join(projectDir, '.claude', 'skills')
     mkdirSync(claudeSkillsDir, { recursive: true })
 
     for (const skill of SKILL_DIRS) {
@@ -128,7 +137,11 @@ export function setup (opts:SetupOpts):void {
         symlinkSync(target, linkPath)
     }
 
-    console.log('\nCreated symlinks in .claude/skills/')
+    console.log(
+        `\nCreated symlinks in ${
+            isGlobal ? claudeSkillsDir : '.claude/skills'
+        }/`
+    )
 
     const docsAgentsDir = join(projectDir, 'docs', 'agents')
     mkdirSync(docsAgentsDir, { recursive: true })

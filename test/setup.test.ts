@@ -613,3 +613,56 @@ test('setup does not duplicate the .gitattributes rule', t => {
     ).length
     t.equal(count, 1, 'rule appears exactly once')
 })
+
+test('setup with skillsRoot installs skills there', t => {
+    const {
+        projectDir, bundledSkillsDir, docsTemplatesDir,
+    } = makeTempProject()
+    const skillsRoot = mkdtempSync(
+        join(tmpdir(), 'redeye-home-')
+    )
+
+    setup({
+        bundledSkillsDir,
+        docsTemplatesDir,
+        projectDir,
+        tracker: 'local',
+        skillsRoot,
+    })
+
+    for (const skill of SKILL_DIRS) {
+        t.ok(
+            existsSync(join(
+                skillsRoot, '.agents', 'skills', skill, 'SKILL.md'
+            )),
+            `${skill} should be copied under skillsRoot`
+        )
+        const link = join(skillsRoot, '.claude', 'skills', skill)
+        t.ok(
+            lstatSync(link).isSymbolicLink(),
+            `${skill} should be linked from skillsRoot/.claude`
+        )
+        t.ok(
+            existsSync(join(link, 'SKILL.md')),
+            `${skill} symlink should resolve`
+        )
+    }
+
+    t.ok(
+        !existsSync(join(projectDir, '.agents')),
+        'no .agents dir in the project'
+    )
+    t.ok(
+        !existsSync(join(projectDir, '.claude')),
+        'no .claude dir in the project'
+    )
+    t.ok(
+        existsSync(join(projectDir, 'docs', 'agents',
+            'issue-tracker.md')),
+        'doc templates still go in the project'
+    )
+    t.ok(
+        existsSync(join(projectDir, 'AGENTS.md')),
+        'AGENTS.md still goes in the project'
+    )
+})

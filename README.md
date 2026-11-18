@@ -80,6 +80,28 @@ in your repo. The upstream
 skill is exposed as `/grill`, along with its sub-skills `grilling`
 and `domain-modeling`.
 
+Pass `-g` (or `--global`) to install the skills in your home directory
+instead, at `~/.agents/skills/`, with symlinks in `~/.claude/skills/`. The
+doc templates and the `AGENTS.md` section still go in the current project.
+
+```sh
+npx redeye init
+```
+or for global skills:
+
+```sh
+npx redeye init -g
+```
+
+>
+> [!IMPORTANT]  
+> If you use the `pi` harness, `.agents/` must not be git ignored.
+> Each agent runs in a fresh git worktree, so ignored files are not
+> there, and `pi` stops looking for `.agents/skills/` at the worktree
+> root. Commit `.agents/`, or install the skills globally with
+> `npx redeye init -g`.
+>
+
 The Pocock skills are bundled with this git repo, at `./skills`.
 They are cloned with some metadata, visible in
 [skill/upstream.json](skills/upstream.json).
@@ -101,7 +123,7 @@ grill -> to-spec -> to-tickets -> tdd
 >
 > [!NOTE]  
 > The `grill` step can be changed to something else. Output from step 1
-> needs to be a prose description in a locall markdown file.
+> needs to be a prose description in a local markdown file.
 > The `redeye` CLI does the `tdd` part of the workflow.
 >
 
@@ -192,34 +214,80 @@ caffeinate -i npx redeye codex -m gpt-6-luna --effort high
 caffeinate -i npx redeye codex -m gpt-6.1-terra --effort medium
 ```
 
+---
+
 ### Local Model With `pi`
 
 The model passed in here (`tiiny/Qwen/Qwen3.6-35B-A3B-turbo`) corresponds to
 the model IDs in `~/.pi/agent/models.json`.
 
+>
+> [!TIP]
+> Export env variable `TIINY_API_KEY` in the shell that runs `redeye`.
+> 
+
+
 ```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-Turbo
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B --concurrency 1
 ```
+
+Or with `-turbo` model:
+
+>
+> [!NOTE]  
+> Turbo mode is only about 10% faster.
+>
+
+```sh
+tiiny load Qwen/Qwen3.6-35B-A3B-turbo
+```
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1
+```
+
 
 #### 1. Load the right model
 
-##### 94% NPU
+```sh
+tiiny load Qwen/Qwen3.6-35B-A3B
+```
+>
+> [!NOTE]  
+> In tests, `tiiny` answers one request at a time no matter which model
+> is loaded, so the `n%` NPU values don't really matter.
+>
+
+##### Qwen3 Coder Next -- 94% NPU
 
 ```sh
 tiiny load Qwen/Qwen3-Coder-Next
 ```
 
-##### 45% NPU
+##### Qwen3.6 35B A3B Turbo -- 45% NPU
 
 ```sh
-tiiny load Qwen/Qwen3.6-35B-A3B-Turbo
+tiiny load Qwen/Qwen3.6-35B-A3B-turbo
 ```
 
-##### 57% NPU
+##### GLM 4.7 flash -- 57% NPU
+
+> [!WARNING]  
+> Slow with `zai-org/GLM-4.7-Flash`.
+> About 8 times slower than Qwen 3.6.
 
 ```sh
 tiiny load zai-org/GLM-4.7-Flash
 ```
+
+#### 2. Run the Loop
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1
+```
+
+Note `--concurrency 1`. The `tiiny` answers one request at a time, so extra
+agents only slow each other down.
 
 
 ## Command Line Arguments
