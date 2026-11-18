@@ -190,6 +190,36 @@ caffeinate -i npx redeye codex -m gpt-6-luna --effort high
 caffeinate -i npx redeye codex -m gpt-6.1-terra --effort medium
 ```
 
+### Local Model With `pi`
+
+The model passed in here (`tiiny/Qwen/Qwen3.6-35B-A3B-turbo`) corresponds to
+the model IDs in `~/.pi/agent/models.json`.
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-Turbo
+```
+
+#### 1. Load the right model
+
+94% NPU
+
+```sh
+tiiny load Qwen/Qwen3-Coder-Next
+```
+
+45% NPU
+
+```sh
+tiiny load Qwen/Qwen3.6-35B-A3B-Turbo
+```
+
+57% NPU
+
+```sh
+tiiny load zai-org/GLM-4.7-Flash
+```
+
+
 ## Command Line Arguments
 
 Flags:
