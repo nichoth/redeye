@@ -1,12 +1,13 @@
 import { test } from '@substrate-system/tapzero'
 import {
     mkdtempSync, mkdirSync, writeFileSync, existsSync,
-    lstatSync, readlinkSync, readFileSync,
+    lstatSync, readlinkSync, readFileSync, symlinkSync,
 } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
     setup, SKILL_DIRS, DOC_TEMPLATES, checkGhAuth,
+    findSkillCollisions,
 } from '../src/setup.js'
 
 function makeTempProject ():{
@@ -664,5 +665,163 @@ test('setup with skillsRoot installs skills there', t => {
     t.ok(
         existsSync(join(projectDir, 'AGENTS.md')),
         'AGENTS.md still goes in the project'
+    )
+})
+
+// A skills root shaped like a real home dir: the user's own skills
+// under .claude, linked (or broken-linked) from .agents, plus a
+// .agents link to a folder that lives somewhere else entirely.
+function makeCrowdedRoot ():{ root:string; external:string } {
+    const root = mkdtempSync(join(tmpdir(), 'redeye-root-'))
+    const external = mkdtempSync(join(tmpdir(), 'redeye-ext-'))
+    const agents = join(root, '.agents', 'skills')
+    const claude = join(root, '.claude', 'skills')
+    mkdirSync(agents, { recursive: true })
+    mkdirSync(claude, { recursive: true })
+
+    // user's own skill in .claude, linked from .agents
+    mkdirSync(join(claude, 'tdd'))
+    writeFileSync(join(claude, 'tdd', 'SKILL.md'), 'mine')
+    symlinkSync(join(claude, 'tdd'), join(agents, 'tdd'))
+
+    // broken link in .agents
+    symlinkSync('.claude/skills/nope', join(agents, 'codebase-design'))
+
+    // user's own real folder in .agents
+    mkdirSync(join(agents, 'to-spec'))
+    writeFileSync(join(agents, 'to-spec', 'SKILL.md'), 'mine')
+
+    // .agents link to a folder outside the root
+    writeFileSync(join(external, 'SKILL.md'), 'mine')
+    symlinkSync(external, join(agents, 'to-tickets'))
+
+    return { root, external }
+}
+
+const CROWDED = ['tdd', 'codebase-design', 'to-spec', 'to-tickets']
+
+test('findSkillCollisions is empty for a fresh root', t => {
+    const { bundledSkillsDir } = makeTempProject()
+    const root = mkdtempSync(join(tmpdir(), 'redeye-root-'))
+    t.deepEqual(findSkillCollisions(bundledSkillsDir, root), [])
+})
+
+test('findSkillCollisions is empty after setup has run', t => {
+    const {
+        projectDir, bundledSkillsDir, docsTemplatesDir,
+    } = makeTempProject()
+    setup({
+        bundledSkillsDir,
+        docsTemplatesDir,
+        projectDir,
+        tracker: 'local',
+    })
+    t.deepEqual(
+        findSkillCollisions(bundledSkillsDir, projectDir), [],
+        'a re-run of init has nothing to ask about'
+    )
+})
+
+test('findSkillCollisions reports changed bundled copies', t => {
+    const {
+        projectDir, bundledSkillsDir, docsTemplatesDir,
+    } = makeTempProject()
+    setup({
+        bundledSkillsDir,
+        docsTemplatesDir,
+        projectDir,
+        tracker: 'local',
+    })
+    writeFileSync(
+        join(projectDir, '.agents', 'skills', 'tdd', 'SKILL.md'),
+        'edited'
+    )
+    const found = findSkillCollisions(bundledSkillsDir, projectDir)
+    t.deepEqual(found.map(c => c.skill), ['tdd'])
+})
+
+test('findSkillCollisions reports every pre-existing entry', t => {
+    const { bundledSkillsDir } = makeTempProject()
+    const { root } = makeCrowdedRoot()
+    const found = findSkillCollisions(bundledSkillsDir, root)
+    t.deepEqual(
+        found.map(c => c.skill).sort(),
+        [...CROWDED].sort(),
+    )
+    const tdd = found.find(c => c.skill === 'tdd')
+    t.deepEqual(tdd?.paths, [
+        join(root, '.agents', 'skills', 'tdd'),
+        join(root, '.claude', 'skills', 'tdd'),
+    ], 'both locations are reported for one skill')
+})
+
+test('setup leaves skipped skills untouched', t => {
+    const {
+        projectDir, bundledSkillsDir, docsTemplatesDir,
+    } = makeTempProject()
+    const { root, external } = makeCrowdedRoot()
+
+    setup({
+        bundledSkillsDir,
+        docsTemplatesDir,
+        projectDir,
+        tracker: 'local',
+        skillsRoot: root,
+        skip: new Set(CROWDED),
+    })
+
+    const agents = join(root, '.agents', 'skills')
+    const claude = join(root, '.claude', 'skills')
+    t.equal(
+        readFileSync(join(claude, 'tdd', 'SKILL.md'), 'utf8'),
+        'mine'
+    )
+    t.ok(lstatSync(join(agents, 'tdd')).isSymbolicLink())
+    t.ok(lstatSync(join(claude, 'tdd')).isDirectory())
+    t.ok(lstatSync(join(agents, 'codebase-design')).isSymbolicLink())
+    t.equal(
+        readFileSync(join(agents, 'to-spec', 'SKILL.md'), 'utf8'),
+        'mine'
+    )
+    t.equal(readFileSync(join(external, 'SKILL.md'), 'utf8'), 'mine')
+
+    t.ok(
+        existsSync(join(agents, 'grill', 'SKILL.md')),
+        'skills that did not collide are still installed'
+    )
+    t.ok(
+        existsSync(join(claude, 'to-spec', 'SKILL.md')),
+        'a missing link is created even for a skipped skill'
+    )
+})
+
+test('setup replaces colliding skills that are not skipped', t => {
+    const {
+        projectDir, bundledSkillsDir, docsTemplatesDir,
+    } = makeTempProject()
+    const { root, external } = makeCrowdedRoot()
+
+    setup({
+        bundledSkillsDir,
+        docsTemplatesDir,
+        projectDir,
+        tracker: 'local',
+        skillsRoot: root,
+    })
+
+    t.deepEqual(
+        findSkillCollisions(bundledSkillsDir, root), [],
+        'every entry now matches the bundled install'
+    )
+    for (const skill of CROWDED) {
+        t.ok(
+            lstatSync(join(root, '.agents', 'skills', skill))
+                .isDirectory(),
+            `.agents/skills/${skill} is a real folder`
+        )
+    }
+    t.equal(
+        readFileSync(join(external, 'SKILL.md'), 'utf8'), 'mine',
+        'replacing a symlink does not touch what it pointed to'
     )
 })

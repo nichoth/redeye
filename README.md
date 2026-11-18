@@ -81,8 +81,14 @@ skill is exposed as `/grill`, along with its sub-skills `grilling`
 and `domain-modeling`.
 
 Pass `-g` (or `--global`) to install the skills in your home directory
-instead, at `~/.agents/skills/`, with symlinks in `~/.claude/skills/`. The
-doc templates and the `AGENTS.md` section still go in the current project.
+instead, at `~/.agents/skills/`, with symlinks in `~/.claude/skills/`.
+The issue tracker config (`docs/agents/*` and the `AGENTS.md` section) is
+specific to each repo, so it is still written to the current directory.
+Run `npx redeye init -g` from the root of each repo that uses the skills.
+
+If a skill with the same name is already installed and differs from the
+bundled copy, `init` asks before overwriting it. The default is to keep
+yours. This applies with or without `-g`.
 
 ```sh
 npx redeye init

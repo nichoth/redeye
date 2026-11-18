@@ -6,8 +6,13 @@ import { basename, dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
-import { select } from '@inquirer/prompts'
-import { setup, checkGhAuth, type TrackerKind } from './setup.js'
+import { confirm, select } from '@inquirer/prompts'
+import {
+    setup,
+    checkGhAuth,
+    findSkillCollisions,
+    type TrackerKind,
+} from './setup.js'
 import {
     dryRun,
     dryRunIsolated,
@@ -98,14 +103,37 @@ yargs(hideBin(process.argv))
                 }
             }
 
+            const home = homedir()
+            const skillsRoot = argv.global ? home : process.cwd()
+            const bundledSkillsDir = join(scriptDir, 'skills')
+            const tilde = (p:string) => p.startsWith(home + '/') ?
+                '~' + p.slice(home.length) :
+                p
+
+            const skip = new Set<string>()
+            const collisions = findSkillCollisions(
+                bundledSkillsDir, skillsRoot
+            )
+            for (const { skill, paths } of collisions) {
+                const overwrite = await confirm({
+                    message: `Skill "${skill}" already exists:\n` +
+                        paths.map(p => `  ${tilde(p)}\n`).join('') +
+                        '  Overwrite with the version bundled ' +
+                        'with redeye?',
+                    default: false,
+                })
+                if (!overwrite) skip.add(skill)
+            }
+
             setup({
-                bundledSkillsDir: join(scriptDir, 'skills'),
+                bundledSkillsDir,
                 docsTemplatesDir: join(
                     scriptDir, 'docs-templates'
                 ),
                 projectDir: process.cwd(),
                 tracker,
-                skillsRoot: argv.global ? homedir() : undefined,
+                skillsRoot,
+                skip,
             })
         }
     )
