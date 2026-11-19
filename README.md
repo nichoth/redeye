@@ -228,6 +228,58 @@ caffeinate -i npx redeye codex -m gpt-6.1-terra --effort medium
 The model passed in here (`tiiny/Qwen/Qwen3.6-35B-A3B-turbo`) corresponds to
 the model ID in `~/.pi/agent/models.json`.
 
+`~/.pi/agent/models.json`:
+
+```js
+{
+  "providers": {
+    "tiiny": {
+      "baseUrl": "http://openai.api.tiiny/v1",
+      "api": "openai-completions",
+      "apiKey": "$TIINY_API_KEY",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false,
+        "supportsUsageInStreaming": false,
+        "maxTokensField": "max_tokens"
+      },
+      "models": [
+        {
+          "id": "Qwen/Qwen3-Coder-Next",
+          "name": "Qwen3-Coder-Next",
+          "contextWindow": 262144,
+          "maxTokens": 16384
+        },
+        {
+          "id": "Qwen/Qwen3.6-35B-A3B",
+          "name": "Tiiny Qwen 3.6 35B A3B",
+          "contextWindow": 131072,
+          "maxTokens": 16384
+        },
+        {
+          "id": "Qwen/Qwen3.6-35B-A3B-turbo",
+          "name": "Tiiny Qwen 3.6 turbo",
+          "contextWindow": 262144,
+          "maxTokens": 16384
+        },
+        {
+          "id": "Qwen/Qwen3.5-9B-turbo",
+          "name": "Tiiny Qwen 3.5 9B turbo",
+          "contextWindow": 131072,
+          "maxTokens": 16384
+        },
+        {
+          "id": "zai-org/GLM-4.7-Flash",
+          "name": "Tiiny GLM 4.7 Flash",
+          "contextWindow": 131072,
+          "maxTokens": 16384
+        }
+      ]
+    }
+  }
+}
+```
+
 >
 > [!TIP]
 > Export env variable `TIINY_API_KEY` in the shell that runs `redeye`.
@@ -251,6 +303,10 @@ tiiny load Qwen/Qwen3.6-35B-A3B-turbo
 ```sh
 caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1
 ```
+
+Note the `concurrency 1`. We do that because the box answers requests
+one by one. A wave of five tickets takes about as long as running them
+in sequence. Each agent's clock runs while it waits.
 
 
 #### 1. Load the right model
