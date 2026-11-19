@@ -34,6 +34,9 @@ so they can't drift as long as you install the skills with this package.
   * [`pi` + OpenRouter model](#pi--openrouter-model)
   * [`codex` + Luna](#codex--luna)
   * [`codex` + Terra](#codex--terra)
+  * [Local Model With `pi`](#local-model-with-pi)
+    + [1. Load the right model](#1-load-the-right-model)
+    + [2. Run the Loop](#2-run-the-loop)
 - [Command Line Arguments](#command-line-arguments)
   * [Notes](#notes)
   * [`--spec ` option](#--spec--option)
@@ -78,6 +81,34 @@ in your repo. The upstream
 skill is exposed as `/grill`, along with its sub-skills `grilling`
 and `domain-modeling`.
 
+Pass `-g` (or `--global`) to install the skills in your home directory
+instead, at `~/.agents/skills/`, with symlinks in `~/.claude/skills/`.
+The issue tracker config (`docs/agents/*` and the `AGENTS.md` section) is
+specific to each repo, so it is still written to the current directory.
+Run `npx redeye init -g` from the root of each repo that uses the skills.
+
+If a skill with the same name is already installed and differs from the
+bundled copy, `init` asks before overwriting it. The default is to keep
+yours. This applies with or without `-g`.
+
+```sh
+npx redeye init
+```
+or for global skills:
+
+```sh
+npx redeye init -g
+```
+
+>
+> [!IMPORTANT]  
+> If you use the `pi` harness, `.agents/` must not be git ignored.
+> Each agent runs in a fresh git worktree, so ignored files are not
+> there, and `pi` stops looking for `.agents/skills/` at the worktree
+> root. Commit `.agents/`, or install the skills globally with
+> `npx redeye init -g`.
+>
+
 The Pocock skills are bundled with this git repo, at `./skills`.
 They are cloned with some metadata, visible in
 [skill/upstream.json](skills/upstream.json).
@@ -99,7 +130,7 @@ grill -> to-spec -> to-tickets -> tdd
 >
 > [!NOTE]  
 > The `grill` step can be changed to something else. Output from step 1
-> needs to be a prose description in a locall markdown file.
+> needs to be a prose description in a local markdown file.
 > The `redeye` CLI does the `tdd` part of the workflow.
 >
 
@@ -189,6 +220,94 @@ caffeinate -i npx redeye codex -m gpt-6-luna --effort high
 ```sh
 caffeinate -i npx redeye codex -m gpt-6.1-terra --effort medium
 ```
+
+---
+
+### Local Model With `pi`
+
+The model passed in here (`tiiny/Qwen/Qwen3.6-35B-A3B-turbo`) corresponds to
+the model ID in `~/.pi/agent/models.json`.
+
+>
+> [!TIP]
+> Export env variable `TIINY_API_KEY` in the shell that runs `redeye`.
+> 
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B --concurrency 1
+```
+
+Or with `-turbo` model:
+
+>
+> [!NOTE]  
+> Turbo mode is only about 10% faster.
+>
+
+```sh
+tiiny load Qwen/Qwen3.6-35B-A3B-turbo
+```
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1
+```
+
+
+#### 1. Load the right model
+
+```sh
+tiiny load Qwen/Qwen3.6-35B-A3B
+```
+>
+> [!NOTE]  
+> In tests, `tiiny` answers one request at a time no matter which model
+> is loaded, so the `n%` NPU values don't really matter.
+>
+
+##### Qwen3 Coder Next -- 94% NPU
+
+The 94% NPU memory footprint leaves almost no headroom on the Tiiny Pocket and
+the older February 2026 weights trail the April 2026 `Qwen3.6` models on harder
+bug-fixing benchmarks.
+
+```sh
+tiiny load Qwen/Qwen3-Coder-Next
+```
+
+##### Qwen3.6 35B A3B Turbo -- 45% NPU
+
+```sh
+tiiny load Qwen/Qwen3.6-35B-A3B-turbo
+```
+
+##### Qwen/Qwen3.6-27B
+
+Dense models activate all `27B` parameters on every token, giving `Qwen3.6-27B`
+a noticeable edge on tricky multi-file logic and terminal recovery.
+
+```sh
+tiiny load Qwen/Qwen3.6-27B
+```
+
+##### GLM 4.7 flash -- 57% NPU
+
+> [!WARNING]  
+> Slow with `zai-org/GLM-4.7-Flash`.
+> About 8 times slower than Qwen 3.6.
+
+```sh
+tiiny load zai-org/GLM-4.7-Flash
+```
+
+#### 2. Run the Loop
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1
+```
+
+Note `--concurrency 1`. The `tiiny` answers one request at a time, so extra
+agents only slow each other down.
+
 
 ## Command Line Arguments
 
