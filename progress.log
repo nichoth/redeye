@@ -270,3 +270,42 @@ Gotchas:
 - `sanitizeTicket` replaces the ticket-review sentinel prefix,
   separate from the existing `sanitize` for the end-of-run review
   sentinel prefix
+
+## 2026-11-19 -- US-010: Fake pi provider for role tests
+
+Created `test/fake-pi/pi` (sh wrapper) and `test/mock-agent-pi.js`
+as a fake pi provider, mirroring the fake-claude pattern. The
+basename `pi` makes `spawnAgent` take the pi branch (prompt via
+@file, --thinking for effort, etc).
+
+`mock-agent-pi.js` handles:
+- Parsing `@file` args to read the prompt (pi receives prompts
+  via file, not stdin)
+- `--model` extraction from CLI args
+- `FAKE_PI_RECORD_DIR`: writes `{provider, model, prompt, cwd}`
+  as one JSON file per invocation, so tests can verify which
+  provider ran and with which model
+- `FAKE_PI_RESPONSES` + `FAKE_PI_COUNTER`: ordered response
+  scripting per invocation (finding, clean, unparseable, exit1),
+  not keyed by round number since round numbers restart on retry
+- `FAKE_PI_DELEGATE`: delegates to another mock script (e.g.
+  mock-agent-review.js) with the prompt piped via stdin
+
+Added 4 new env keys to `ENV_KEYS` in
+`test/review-integration.test.ts`: FAKE_PI_RECORD_DIR,
+FAKE_PI_RESPONSES, FAKE_PI_COUNTER, FAKE_PI_DELEGATE.
+
+Added 4 tests to `test/review-integration.test.ts`:
+- Records provider=pi and model from --model arg
+- Scripts finding/clean/exit1 responses in order via counter
+- Writes unparseable garbage for the unparseable response type
+- Delegates to another mock and records the pi invocation
+
+Gotchas:
+- Pi receives prompts via file (@path arg), not stdin; the mock
+  reads the file directly while delegation pipes the prompt
+  contents to the delegate's stdin
+- The counter file is shared across invocations so ordered
+  responses work across separate process spawns
+- The response scripting path and the delegation path are
+  mutually exclusive: FAKE_PI_RESPONSES takes priority

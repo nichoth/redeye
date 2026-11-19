@@ -13,7 +13,12 @@ import { subagentRule } from '../src/rules.js'
 import { renderRunStats } from '../src/stats.js'
 
 const MOCK = join(process.cwd(), 'test', 'mock-agent-review.js')
-const FAKE_CLAUDE = join(process.cwd(), 'test', 'fake-claude', 'claude')
+const FAKE_CLAUDE = join(
+    process.cwd(), 'test', 'fake-claude', 'claude'
+)
+const FAKE_PI = join(
+    process.cwd(), 'test', 'fake-pi', 'pi'
+)
 const FEAT = 'feat'
 
 const GIT_ENV = {
@@ -98,6 +103,8 @@ const ENV_KEYS = [
     'FAKE_CLAUDE_DELEGATE', 'FAKE_CLAUDE_ENV_LOG', 'FAKE_CLAUDE_STREAM',
     'FAKE_CLAUDE_PROMPT_DIR', 'FAKE_CLAUDE_HANG', 'FAKE_CLAUDE_FAIL_ONCE',
     'CLAUDE_CODE_SUBAGENT_MODEL', 'FAKE_CLAUDE_ARGV_LOG',
+    'FAKE_PI_RECORD_DIR', 'FAKE_PI_RESPONSES',
+    'FAKE_PI_COUNTER', 'FAKE_PI_DELEGATE',
 ] as const
 
 async function withHarness (
@@ -418,4 +425,192 @@ test('review pass - prefer-subagent AC6.4 the stats tally counts ' +
     } finally {
         rmSync(dataDir, { recursive: true, force: true })
     }
+})
+
+test('fake-pi records provider and model', async t => {
+    const recDir = mkdtempSync(join(tmpdir(), 'redeye-pirec-'))
+    const promptDir = mkdtempSync(join(tmpdir(), 'redeye-pip-'))
+    const promptFile = join(promptDir, 'prompt.md')
+    writeFileSync(promptFile, 'hello from test')
+    try {
+        const r = execFileSync(
+            FAKE_PI,
+            ['--model', 'opus', `@${promptFile}`],
+            {
+                env: {
+                    ...process.env,
+                    FAKE_PI_RECORD_DIR: recDir,
+                },
+                encoding: 'utf8',
+                timeout: 5000,
+            }
+        )
+        t.ok(r !== undefined || true, 'completed')
+        const files = readdirSync(recDir)
+        t.equal(files.length, 1, 'one record')
+        const rec = JSON.parse(
+            readFileSync(join(recDir, files[0]), 'utf8')
+        ) as { provider:string; model:string; prompt:string }
+        t.equal(rec.provider, 'pi', 'provider is pi')
+        t.equal(rec.model, 'opus', 'model recorded')
+        t.ok(
+            rec.prompt.includes('hello from test'),
+            'prompt recorded'
+        )
+    } finally {
+        rmSync(recDir, { recursive: true, force: true })
+        rmSync(promptDir, { recursive: true, force: true })
+    }
+})
+
+test('fake-pi scripts responses in order', async t => {
+    const recDir = mkdtempSync(join(tmpdir(), 'redeye-pirec-'))
+    const counterFile = join(recDir, 'counter')
+    const promptDir = mkdtempSync(join(tmpdir(), 'redeye-pip-'))
+    const promptFile = join(promptDir, 'prompt.md')
+    writeFileSync(promptFile, 'test prompt')
+    const cwds:string[] = []
+    try {
+        for (let i = 0; i < 3; i++) {
+            const cwd = mkdtempSync(
+                join(tmpdir(), 'redeye-picwd-')
+            )
+            cwds.push(cwd)
+            try {
+                execFileSync(
+                    FAKE_PI,
+                    [`@${promptFile}`],
+                    {
+                        cwd,
+                        env: {
+                            ...process.env,
+                            FAKE_PI_RECORD_DIR: recDir,
+                            FAKE_PI_RESPONSES:
+                                'finding,clean,exit1',
+                            FAKE_PI_COUNTER: counterFile,
+                        },
+                        encoding: 'utf8',
+                        timeout: 5000,
+                    }
+                )
+            } catch (err) {
+                if (i === 2) {
+                    t.ok(true, 'third invocation exits non-zero')
+                    continue
+                }
+                throw err
+            }
+        }
+        const findings0 = readFileSync(
+            join(cwds[0], '.redeye', 'findings.md'), 'utf8'
+        )
+        t.ok(
+            findings0.includes('mock finding from pi'),
+            'first invocation writes a finding'
+        )
+        const findings1 = readFileSync(
+            join(cwds[1], '.redeye', 'findings.md'), 'utf8'
+        )
+        t.ok(
+            findings1.includes('No findings.'),
+            'second invocation writes clean'
+        )
+        t.ok(
+            !existsSync(
+                join(cwds[2], '.redeye', 'findings.md')
+            ),
+            'third invocation wrote no findings (exit1)'
+        )
+    } finally {
+        rmSync(recDir, { recursive: true, force: true })
+        rmSync(promptDir, { recursive: true, force: true })
+        for (const d of cwds) {
+            rmSync(d, { recursive: true, force: true })
+        }
+    }
+})
+
+test('fake-pi unparseable response writes garbage', async t => {
+    const recDir = mkdtempSync(join(tmpdir(), 'redeye-pirec-'))
+    const counterFile = join(recDir, 'counter')
+    const promptDir = mkdtempSync(join(tmpdir(), 'redeye-pip-'))
+    const promptFile = join(promptDir, 'prompt.md')
+    writeFileSync(promptFile, 'test')
+    const cwd = mkdtempSync(join(tmpdir(), 'redeye-picwd-'))
+    try {
+        execFileSync(
+            FAKE_PI,
+            [`@${promptFile}`],
+            {
+                cwd,
+                env: {
+                    ...process.env,
+                    FAKE_PI_RECORD_DIR: recDir,
+                    FAKE_PI_RESPONSES: 'unparseable',
+                    FAKE_PI_COUNTER: counterFile,
+                },
+                encoding: 'utf8',
+                timeout: 5000,
+            }
+        )
+        const content = readFileSync(
+            join(cwd, '.redeye', 'findings.md'), 'utf8'
+        )
+        t.ok(
+            !content.includes('- ['),
+            'unparseable output has no finding format'
+        )
+        t.ok(
+            !content.includes('No findings.'),
+            'unparseable output is not clean'
+        )
+    } finally {
+        rmSync(recDir, { recursive: true, force: true })
+        rmSync(promptDir, { recursive: true, force: true })
+        rmSync(cwd, { recursive: true, force: true })
+    }
+})
+
+test('fake-pi delegates to another mock', async t => {
+    const recDir = mkdtempSync(join(tmpdir(), 'redeye-pirec-'))
+    const promptDir = mkdtempSync(join(tmpdir(), 'redeye-pip-'))
+    const promptFile = join(promptDir, 'prompt.md')
+    writeFileSync(promptFile, 'delegate test')
+    const cwd = mkdtempSync(join(tmpdir(), 'redeye-picwd-'))
+    try {
+        execFileSync(
+            FAKE_PI,
+            [`@${promptFile}`],
+            {
+                cwd,
+                env: {
+                    ...process.env,
+                    FAKE_PI_RECORD_DIR: recDir,
+                    FAKE_PI_DELEGATE: MOCK,
+                    MOCK_RECORD_DIR: recDir,
+                    MOCK_TICKET: 'fail',
+                },
+                encoding: 'utf8',
+                timeout: 5000,
+            }
+        )
+        t.fail('should have exited non-zero')
+    } catch {
+        t.ok(true, 'delegate exited non-zero')
+    }
+    const files = readdirSync(recDir)
+        .filter(f => f.endsWith('.json'))
+    t.ok(
+        files.length >= 1,
+        'at least one record from the pi mock'
+    )
+    const piRec = files
+        .map(f => JSON.parse(
+            readFileSync(join(recDir, f), 'utf8')
+        ) as { provider?:string })
+        .find(r => r.provider === 'pi')
+    t.ok(piRec, 'pi invocation was recorded')
+    rmSync(recDir, { recursive: true, force: true })
+    rmSync(promptDir, { recursive: true, force: true })
+    rmSync(cwd, { recursive: true, force: true })
 })
