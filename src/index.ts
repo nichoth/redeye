@@ -673,6 +673,20 @@ async function runExecute (argv:{
         console.log(
             `Provider:     ${providerPath ?? providerMissing}`
         )
+        if (_adversarial) {
+            console.log(
+                `Implement:    ${_adversarial.implementStr}`
+            )
+            console.log(
+                `Review:       ${_adversarial.reviewStr}`
+            )
+            console.log(
+                `maxRounds:    ${_adversarial.maxRounds}`
+            )
+            console.log(
+                `minRounds:    ${_adversarial.minRounds}`
+            )
+        }
         if (isolated) {
             const repoName = getRepoName()
             dryRunIsolated({

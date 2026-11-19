@@ -6893,3 +6893,86 @@ test('CLI subprocess - .redeye.json with pi --max-turns ' +
         })
     }
 })
+
+test('CLI subprocess - --dry-run shows adversarial config ' +
+    'when present', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude -m opus --effort high',
+                    review: 'pi -m gpt4',
+                    maxRounds: 5,
+                    minRounds: 2,
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code, stdout } = await spawnCli([
+            MOCK_AGENT, '--spec', FEAT, '--dry-run',
+        ], { cwd: projectDir })
+
+        t.equal(code, 0, 'exits 0')
+        t.ok(
+            stdout.includes('claude -m opus --effort high'),
+            'stdout contains implement role string',
+        )
+        t.ok(
+            stdout.includes('pi -m gpt4'),
+            'stdout contains review role string',
+        )
+        t.ok(
+            stdout.includes('5'),
+            'stdout contains maxRounds value',
+        )
+        t.ok(
+            stdout.includes('2'),
+            'stdout contains minRounds value',
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - --dry-run without adversarial key ' +
+    'does not show review config', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const { code, stdout } = await spawnCli([
+            MOCK_AGENT, '--spec', FEAT, '--dry-run',
+        ], { cwd: projectDir })
+
+        t.equal(code, 0, 'exits 0')
+        t.ok(
+            !stdout.includes('Implement:'),
+            'no implement line without adversarial config',
+        )
+        t.ok(
+            !stdout.includes('maxRounds'),
+            'no maxRounds without adversarial config',
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})

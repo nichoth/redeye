@@ -65,3 +65,24 @@ Gotchas:
 - `loadConfig` throws, not returns an error, so the yargs
   async handler's rejection routes it to `.fail(null, err)`
   which does `formatErrorMessage` + exit 2
+
+## 2026-11-19 -- US-003: Show the config in --dry-run
+
+Added adversarial config display to the --dry-run output in
+`src/index.ts`. When `.redeye.json` has an `adversarial` key,
+--dry-run prints the implement role string, review role string,
+maxRounds and minRounds, each on its own labeled line, right
+after the Provider line and before the wave/branch output.
+
+Added `implementStr` and `reviewStr` fields to
+`AdversarialConfig` in `src/config.ts` to preserve the
+original role strings from the config file.
+
+Added two CLI tests in `test/integration.test.ts`:
+- With adversarial configured, the four values appear in stdout
+- Without adversarial, no Implement or maxRounds lines appear
+
+Gotchas:
+- The dry-run adversarial block prints before both the
+  isolated and non-isolated branches, so it appears in both
+  paths

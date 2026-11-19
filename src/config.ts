@@ -105,6 +105,8 @@ export function parseRoleString (input:string):ParsedRole {
 export interface AdversarialConfig {
     implement:ParsedRole
     review:ParsedRole
+    implementStr:string
+    reviewStr:string
     maxRounds:number
     minRounds:number
 }
@@ -190,5 +192,12 @@ export function loadConfig (
         )
     }
 
-    return { implement, review, maxRounds, minRounds }
+    return {
+        implement,
+        review,
+        implementStr: adv.implement as string,
+        reviewStr: adv.review as string,
+        maxRounds,
+        minRounds,
+    }
 }
