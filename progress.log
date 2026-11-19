@@ -203,3 +203,32 @@ Added 5 tests to `test/setup.test.ts`:
 Gotchas:
 - The adversarial block is written after all other setup work,
   so a failure in skill copying does not leave a partial config
+
+## 2026-11-19 -- US-008: redeye init asks about adversarial loops
+
+Added adversarial loop prompts to the `init` command in
+`src/index.ts`:
+- After the tracker question and skill collision prompts, a
+  `confirm` asks whether to enable adversarial review loops
+  (defaults to no)
+- On yes, two `input` prompts ask for the implement and review
+  commands as free text
+- Each answer is validated with `parseRoleString`; an invalid
+  string shows the error and re-asks
+- On yes, the answers are passed to `setup()` as the
+  `adversarial` option with default round values (maxRounds 3,
+  minRounds 1); on no, the option is not passed
+
+Added `AdversarialSetup` type import from setup.ts and
+`parseRoleString` import from config.ts. Added `input` from
+`@inquirer/prompts`.
+
+Updated README to mention the new init question in the Install
+Dependency Skills section.
+
+Gotchas:
+- The prompts are not tested, matching the existing pattern for
+  the tracker prompt which is also untested
+- Validation uses the same `parseRoleString` as loadConfig, so
+  the error messages match what the user would see from a
+  malformed .redeye.json

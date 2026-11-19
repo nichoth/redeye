@@ -6,12 +6,13 @@ import { basename, dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
-import { confirm, select } from '@inquirer/prompts'
+import { confirm, input, select } from '@inquirer/prompts'
 import {
     setup,
     checkGhAuth,
     findSkillCollisions,
     type TrackerKind,
+    type AdversarialSetup,
 } from './setup.js'
 import {
     dryRun,
@@ -29,7 +30,11 @@ import {
     type EffortLevel,
     type Ticket,
 } from './orchestrator.js'
-import { ROLE_OPTIONS, loadConfig } from './config.js'
+import {
+    ROLE_OPTIONS,
+    loadConfig,
+    parseRoleString,
+} from './config.js'
 import { detectTestCmd, detectInstallCmd } from './testcmd.js'
 import { resolveExecutable } from './preflight.js'
 import { createDisplay } from './display.js'
@@ -125,6 +130,48 @@ yargs(hideBin(process.argv))
                 if (!overwrite) skip.add(skill)
             }
 
+            let adversarial:AdversarialSetup|undefined
+            const wantAdversarial = await confirm({
+                message: 'Enable adversarial review loops?',
+                default: false,
+            })
+            if (wantAdversarial) {
+                const impl = await input({
+                    message: 'Implement command ' +
+                        '(e.g. claude -m opus)',
+                    validate: (v:string) => {
+                        try {
+                            parseRoleString(v)
+                            return true
+                        } catch (err) {
+                            return err instanceof Error ?
+                                err.message :
+                                String(err)
+                        }
+                    },
+                })
+                const rev = await input({
+                    message: 'Review command ' +
+                        '(e.g. pi -m sonnet)',
+                    validate: (v:string) => {
+                        try {
+                            parseRoleString(v)
+                            return true
+                        } catch (err) {
+                            return err instanceof Error ?
+                                err.message :
+                                String(err)
+                        }
+                    },
+                })
+                adversarial = {
+                    implement: impl,
+                    review: rev,
+                    maxRounds: 3,
+                    minRounds: 1,
+                }
+            }
+
             setup({
                 bundledSkillsDir,
                 docsTemplatesDir: join(
@@ -134,6 +181,7 @@ yargs(hideBin(process.argv))
                 tracker,
                 skillsRoot,
                 skip,
+                adversarial,
             })
         }
     )

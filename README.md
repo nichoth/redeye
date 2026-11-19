@@ -101,6 +101,11 @@ If a skill with the same name is already installed and differs from the
 bundled copy, `init` asks before overwriting it. The default is to keep
 yours. This applies with or without `-g`.
 
+After picking a tracker, `init` asks whether to enable adversarial
+review loops. On yes it prompts for an implement command and a review
+command (the same role-string syntax as `.redeye.json`), validates each
+one, and writes the result to `.redeye.json`.
+
 ```sh
 npx redeye init
 ```
