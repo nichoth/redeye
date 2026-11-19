@@ -16,6 +16,8 @@ from the skill definitions. This module bundles its skill dependencies,
 so they can't drift as long as you install the skills with this package.
 (See [the section on the `init` command](#install-dependency-skills).)
 
+<details><summary><h2>Contents</h2></summary>
+
 <!-- toc -->
 
 - [Install](#install)
@@ -52,6 +54,8 @@ so they can't drift as long as you install the skills with this package.
   * [Status display](#status-display)
 
 <!-- tocstop -->
+
+</details>
 
 ## Install
 
