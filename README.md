@@ -36,6 +36,7 @@ so they can't drift as long as you install the skills with this package.
   * [`codex` + Terra](#codex--terra)
   * [Local Model With `pi`](#local-model-with-pi)
     + [1. Load the right model](#1-load-the-right-model)
+    + [2. Run the Loop](#2-run-the-loop)
 - [Command Line Arguments](#command-line-arguments)
   * [Notes](#notes)
   * [`--spec ` option](#--spec--option)
@@ -225,13 +226,12 @@ caffeinate -i npx redeye codex -m gpt-6.1-terra --effort medium
 ### Local Model With `pi`
 
 The model passed in here (`tiiny/Qwen/Qwen3.6-35B-A3B-turbo`) corresponds to
-the model IDs in `~/.pi/agent/models.json`.
+the model ID in `~/.pi/agent/models.json`.
 
 >
 > [!TIP]
 > Export env variable `TIINY_API_KEY` in the shell that runs `redeye`.
 > 
-
 
 ```sh
 caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B --concurrency 1
@@ -266,6 +266,10 @@ tiiny load Qwen/Qwen3.6-35B-A3B
 
 ##### Qwen3 Coder Next -- 94% NPU
 
+The 94% NPU memory footprint leaves almost no headroom on the Tiiny Pocket and
+the older February 2026 weights trail the April 2026 `Qwen3.6` models on harder
+bug-fixing benchmarks.
+
 ```sh
 tiiny load Qwen/Qwen3-Coder-Next
 ```
@@ -274,6 +278,15 @@ tiiny load Qwen/Qwen3-Coder-Next
 
 ```sh
 tiiny load Qwen/Qwen3.6-35B-A3B-turbo
+```
+
+##### Qwen/Qwen3.6-27B
+
+Dense models activate all `27B` parameters on every token, giving `Qwen3.6-27B`
+a noticeable edge on tricky multi-file logic and terminal recovery.
+
+```sh
+tiiny load Qwen/Qwen3.6-27B
 ```
 
 ##### GLM 4.7 flash -- 57% NPU
