@@ -1,0 +1,114 @@
+{
+  "project": "redeye",
+  "branchName": "ralph/review-fixes",
+  "description": "Fix seven gaps from the adversarial review so unattended runs cannot orphan processes, leak worktrees, lose progress data, or report wrong defaults",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Fix dry-run retry delay default",
+      "description": "As an operator, I want dryRunIsolated to print 0s when retryDelay is omitted, matching what runWavesIsolated actually uses, so the dry-run output does not misrepresent the default.",
+      "acceptanceCriteria": [
+        "dryRunIsolated prints 'Retry delay:  0s' when retryDelay is omitted",
+        "Change line ~943 in src/orchestrator.ts from `opts.retryDelay ?? DEFAULT_RETRY_DELAY` to `opts.retryDelay ?? 0`",
+        "Test appended to test/orchestrator.test.ts after existing dryRunIsolated tests captures console.log and asserts output includes 'Retry delay:  0s'",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Review finding 7. Independent of other tasks. See plan Task 1 for exact test and fix code."
+    },
+    {
+      "id": "US-002",
+      "title": "Add worktree restriction to merge prompt",
+      "description": "As an operator, I want the merge-conflict respawn prompt to confine the agent to its worktree directory, matching the normal prompt, so a respawned agent cannot reach sibling checkouts via ../.",
+      "acceptanceCriteria": [
+        "renderMergePrompt output includes a rule mentioning 'current directory'",
+        "Add 'Do NOT read or modify files outside your current directory (the worktree).' to the instructions array in renderMergePrompt, between the existing 'Do NOT re-implement' and 'Do NOT run git push' lines",
+        "Test appended to test/orchestrator.test.ts after existing renderMergePrompt test asserts prompt.toLowerCase().includes('current directory')",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Review finding 6. Independent of other tasks. See plan Task 2 for exact test and fix code."
+    },
+    {
+      "id": "US-003",
+      "title": "Kill process group on grace timeout",
+      "description": "As an operator, I want the grace timer to kill the agent's process group when the agent exits but a grandchild holds the stdout pipe, so dev servers and watchers do not survive indefinitely.",
+      "acceptanceCriteria": [
+        "Create test/mock-agent-grandchild-exit.js that spawns a long-lived grandchild sharing stdout, writes grandchild pid to ./grandchild.pid, then exits 0; make it executable",
+        "In src/orchestrator.ts proc.on('exit') handler, add killProcessGroup(proc.pid) before proc.stdout.destroy() in the grace timer callback",
+        "Test appended to test/integration.test.ts verifies: spawnAgent resolves within 10s, exitCode is 0, timedOut is false, and the grandchild process is no longer alive",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Review finding 3. Independent of other tasks. See plan Task 3 for exact mock agent, test, and fix code."
+    },
+    {
+      "id": "US-004",
+      "title": "Track test-gate processes in signal registry",
+      "description": "As an operator, I want SIGINT during the test-gate phase to also kill test processes, not just agents, so no child processes are orphaned.",
+      "acceptanceCriteria": [
+        "runTestCmd in src/testcmd.ts accepts optional registry?:Set<number>; registers child.pid on spawn, unregisters on close and on error",
+        "runTestGate in src/orchestrator.ts passes runningAgents as the registry when calling runTestCmd",
+        "Test appended to test/testcmd.test.ts verifies pid is in registry during execution and removed after completion",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Review finding 1. Independent of other tasks. See plan Task 4 for exact test and implementation code."
+    },
+    {
+      "id": "US-005",
+      "title": "Serialize worktree removal through module queue",
+      "description": "As an operator running many tickets in parallel, I want removeWorktree to go through the same queue as createWorktree so concurrent create + remove calls cannot race on .git/worktrees metadata.",
+      "acceptanceCriteria": [
+        "Extract current removeWorktree body into removeWorktreeNow; the public removeWorktree routes through worktreeQueue the same way createWorktree does",
+        "Test appended to test/worktree.test.ts: creates a worktree, then concurrently creates another and removes the first; both operations succeed without race errors",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Review finding 2. Independent of other tasks. See plan Task 5 for exact test and implementation code."
+    },
+    {
+      "id": "US-006",
+      "title": "Carry worktree info in failure outcomes and clean up",
+      "description": "As an operator, I want the no-commits and error outcomes to carry worktree info and clean up their worktrees, so leftover directories do not leak on disk.",
+      "acceptanceCriteria": [
+        "TicketOutcome 'no-commits' variant gains worktreePath:string and branchName:string fields",
+        "TicketOutcome 'error' variant gains optional worktreePath?:string and branchName?:string fields",
+        "runTicketAttempt calls removeWorktreeQuietly before returning the no-commits outcome",
+        "runTicketAttempt returns worktreePath and branchName in the no-commits outcome",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Review finding 5. Must complete before US-007. See plan Task 6 for exact type changes and implementation."
+    },
+    {
+      "id": "US-007",
+      "title": "Record all terminal failures in progress.md and update AGENTS.md",
+      "description": "As an operator, I want every terminal failure (worktree-error, error, no-commits) to appear in progress.md, so no failures are invisible after a run.",
+      "acceptanceCriteria": [
+        "The worktree-error handler in runWavesIsolated calls checkTicket and saveProgress",
+        "The error handler in runWavesIsolated calls checkTicket and saveProgress, using outcome.branchName when available",
+        "The no-commits handler in runWavesIsolated calls checkTicket and saveProgress with outcome.branchName",
+        "Test appended to test/integration.test.ts: uses mock-agent-noop.js to trigger no-commits; verifies progress.md exists, contains unchecked ticket, and records exit code 0",
+        "AGENTS.md contracts updated for: testcmd registry parameter, worktree removal serialization, spawnAgent grace-timer process-group kill, and TicketOutcome type changes",
+        "Typecheck passes",
+        "Tests pass"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "Review finding 4. Depends on US-006 for updated TicketOutcome types. See plan Task 7 for exact handler code, test, and AGENTS.md updates."
+    }
+  ]
+}
