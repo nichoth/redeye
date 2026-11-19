@@ -814,6 +814,331 @@ export function readReviewEntries (path:string):ReviewEntry[] {
     return parseReviewEntries(readFileSync(path, 'utf8'))
 }
 
+// ---- Per-ticket review log ----
+
+export const TICKET_VERDICTS = [
+    'open',
+    'confirmed-fixed',
+    'withdrawn',
+    'still-open',
+] as const
+
+export type TicketVerdict = typeof TICKET_VERDICTS[number]
+
+export const TICKET_OUTCOMES = [
+    'pass', 'unresolved', 'failed',
+] as const
+
+export type TicketOutcome = typeof TICKET_OUTCOMES[number]
+
+export type FindingWithVerdict = {
+    summary:string
+    detail:string
+    verdict:TicketVerdict
+    fixerResponse?:'fixed'|'disputed'
+    fixerReason?:string
+}
+
+export type TicketRoundInput = {
+    attempt:number
+    round:number
+    implement:string
+    review:string
+    head:string
+    findings:FindingWithVerdict[]
+    fixHead?:string
+    testResult?:'pass'|'fail'
+}
+
+export type TicketTerminalInput = {
+    attempt:number
+    outcome:TicketOutcome
+}
+
+export type TicketRoundEntry = {
+    type:'round'
+    attempt:number
+    round:number
+    implement:string
+    review:string
+    head:string
+    findings:FindingWithVerdict[]
+    fixHead?:string
+    testResult?:'pass'|'fail'
+}
+
+export type TicketTerminalEntry = {
+    type:'terminal'
+    attempt:number
+    outcome:TicketOutcome
+}
+
+export type TicketReviewEntry =
+    TicketRoundEntry|TicketTerminalEntry
+
+const TICKET_SENTINEL_PREFIX = '<!-- redeye:ticket-review'
+const TICKET_SENTINEL_RE =
+    /^<!-- redeye:ticket-review (.*) -->$/
+
+function sanitizeTicket (text:string):string {
+    return text.replace(
+        new RegExp(TICKET_SENTINEL_PREFIX, 'g'),
+        '<!-- redeye-ticket-review'
+    )
+}
+
+function encodeAttr (value:string):string {
+    return value
+        .replace(/%/g, '%25')
+        .replace(/\s/g, c => encodeURIComponent(c))
+}
+
+function decodeAttr (value:string):string {
+    try {
+        return decodeURIComponent(value)
+    } catch {
+        return value
+    }
+}
+
+function renderFindingWithVerdict (f:FindingWithVerdict):string {
+    const lines:string[] = []
+    const summary = sanitizeTicket(collapse(f.summary))
+    lines.push(`- [${f.verdict}] ${summary}`)
+    if (f.detail) {
+        for (const l of f.detail.split('\n')) {
+            lines.push(`    ${sanitizeTicket(l)}`)
+        }
+    }
+    if (f.fixerResponse) {
+        const resp = f.fixerResponse === 'disputed' &&
+            f.fixerReason ?
+            `disputed: ${sanitizeTicket(f.fixerReason)}` :
+            f.fixerResponse
+        lines.push(`    fixer: ${resp}`)
+    }
+    return lines.join('\n')
+}
+
+export function renderTicketRound (
+    input:TicketRoundInput
+):string {
+    const attrs = [
+        'type=round',
+        `attempt=${input.attempt}`,
+        `round=${input.round}`,
+        `implement=${encodeAttr(input.implement)}`,
+        `review=${encodeAttr(input.review)}`,
+        `head=${input.head}`,
+    ]
+    if (input.fixHead) attrs.push(`fixHead=${input.fixHead}`)
+    if (input.testResult) {
+        attrs.push(`testResult=${input.testResult}`)
+    }
+    const sentinel =
+        `${TICKET_SENTINEL_PREFIX} ${attrs.join(' ')} -->`
+    const findingsBlock = input.findings.length > 0 ?
+        input.findings
+            .map(renderFindingWithVerdict).join('\n') :
+        NO_FINDINGS
+    return `${sentinel}\n${findingsBlock}\n---\n`
+}
+
+export function renderTicketTerminal (
+    input:TicketTerminalInput
+):string {
+    const sentinel =
+        `${TICKET_SENTINEL_PREFIX} type=terminal ` +
+        `attempt=${input.attempt} ` +
+        `outcome=${input.outcome} -->`
+    return `${sentinel}\n---\n`
+}
+
+function isTicketVerdict (v:string):v is TicketVerdict {
+    return (TICKET_VERDICTS as readonly string[]).includes(v)
+}
+
+function isTicketOutcome (v:string):v is TicketOutcome {
+    return (TICKET_OUTCOMES as readonly string[]).includes(v)
+}
+
+const TICKET_FINDING_RE =
+    /^- \[([^\]]+)\]\s+(.+)$/
+
+function parseTicketFindings (
+    lines:string[]
+):FindingWithVerdict[] {
+    const findings:FindingWithVerdict[] = []
+    const details:string[][] = []
+    let fixerResponse:('fixed'|'disputed')|undefined
+    let fixerReason:string|undefined
+
+    const flush = () => {
+        if (findings.length === 0) return
+        const last = findings[findings.length - 1]
+        const d = details[details.length - 1]
+        const plainDetail:string[] = []
+        for (const line of d) {
+            if (line.startsWith('fixer: ')) {
+                const val = line.slice(7)
+                if (val.startsWith('disputed: ')) {
+                    fixerResponse = 'disputed'
+                    fixerReason = val.slice(10)
+                } else if (val === 'fixed' ||
+                    val === 'disputed') {
+                    fixerResponse = val
+                    fixerReason = undefined
+                }
+            } else {
+                plainDetail.push(line)
+            }
+        }
+        last.detail = plainDetail.join('\n')
+        if (fixerResponse) {
+            last.fixerResponse = fixerResponse
+            if (fixerReason) last.fixerReason = fixerReason
+        }
+    }
+
+    for (const line of lines) {
+        const m = line.match(TICKET_FINDING_RE)
+        if (m) {
+            flush()
+            fixerResponse = undefined
+            fixerReason = undefined
+            const verdict = m[1]
+            if (!isTicketVerdict(verdict)) continue
+            findings.push({
+                summary: collapse(m[2]),
+                detail: '',
+                verdict,
+            })
+            details.push([])
+        } else if (findings.length > 0 && line.trim()) {
+            details[details.length - 1].push(line.trim())
+        }
+    }
+    flush()
+    return findings
+}
+
+function parseTicketEntry (
+    sentinel:string,
+    bodyLines:string[]
+):TicketReviewEntry|null {
+    const attrs:Record<string, string> = {}
+    for (const part of sentinel.split(/\s+/).filter(Boolean)) {
+        const idx = part.indexOf('=')
+        if (idx > 0) {
+            attrs[part.slice(0, idx)] = part.slice(idx + 1)
+        }
+    }
+
+    const { type } = attrs
+    const attemptStr = attrs.attempt
+    if (!attemptStr || !/^\d+$/.test(attemptStr)) return null
+    const attempt = Number(attemptStr)
+
+    if (type === 'terminal') {
+        const outcome = attrs.outcome
+        if (!outcome || !isTicketOutcome(outcome)) return null
+        return { type: 'terminal', attempt, outcome }
+    }
+
+    if (type === 'round') {
+        const roundStr = attrs.round
+        if (!roundStr || !/^\d+$/.test(roundStr)) return null
+        const round = Number(roundStr)
+        const head = attrs.head
+        if (!head || !SHA_RE.test(head)) return null
+        const implement = decodeAttr(attrs.implement ?? '')
+        const review = decodeAttr(attrs.review ?? '')
+        if (!implement || !review) return null
+
+        const lines = [...bodyLines]
+        while (lines.length > 0 &&
+            !lines[lines.length - 1].trim()) {
+            lines.pop()
+        }
+        if (lines.length > 0 &&
+            lines[lines.length - 1] === '---') {
+            lines.pop()
+        }
+
+        const findings = parseTicketFindings(lines)
+
+        const entry:TicketRoundEntry = {
+            type: 'round',
+            attempt,
+            round,
+            implement,
+            review,
+            head,
+            findings,
+        }
+
+        const fixHead = attrs.fixHead
+        if (fixHead && SHA_RE.test(fixHead)) {
+            entry.fixHead = fixHead
+        }
+        const testResult = attrs.testResult
+        if (testResult === 'pass' || testResult === 'fail') {
+            entry.testResult = testResult
+        }
+
+        return entry
+    }
+
+    return null
+}
+
+export function parseTicketReviewLog (
+    text:string
+):TicketReviewEntry[] {
+    const entries:TicketReviewEntry[] = []
+    let sentinel:string|null = null
+    let body:string[] = []
+    const flush = ():void => {
+        if (sentinel === null) return
+        const entry = parseTicketEntry(sentinel, body)
+        if (entry) entries.push(entry)
+    }
+    for (const line of splitLines(text)) {
+        const m = line.match(TICKET_SENTINEL_RE)
+        if (m) {
+            flush()
+            sentinel = m[1]
+            body = []
+        } else if (sentinel !== null) {
+            body.push(line)
+        }
+    }
+    flush()
+    return entries
+}
+
+export function currentAttemptEntries (
+    entries:ReadonlyArray<TicketReviewEntry>
+):TicketReviewEntry[] {
+    let lastTerminal = -1
+    for (let i = entries.length - 1; i >= 0; i--) {
+        if (entries[i].type === 'terminal') {
+            lastTerminal = i
+            break
+        }
+    }
+    return lastTerminal === -1 ?
+        [...entries] :
+        entries.slice(lastTerminal + 1)
+}
+
+export function ticketReviewPath (
+    feature:string,
+    ticketFileName:string
+):string {
+    return `.scratch/${feature}/reviews/${ticketFileName}`
+}
+
 // Reviews everything since the last reviewed commit, runs one fix
 // pass when there are findings, and appends and commits one entry
 // to the review log. Skips entirely when the range only touches

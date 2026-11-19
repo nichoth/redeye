@@ -232,3 +232,41 @@ Gotchas:
 - Validation uses the same `parseRoleString` as loadConfig, so
   the error messages match what the user would see from a
   malformed .redeye.json
+
+## 2026-11-19 -- US-009: Ticket review log format
+
+Added per-ticket review log types, render and parse functions to
+`src/review.ts`:
+
+Types:
+- `FindingWithVerdict` -- finding with verdict (open,
+  confirmed-fixed, withdrawn, still-open), optional fixer
+  response (fixed/disputed) and dispute reason
+- `TicketRoundInput`/`TicketRoundEntry` -- round entry with
+  attempt, round number, both role strings, head SHA, findings
+  with verdicts, optional fixHead and testResult
+- `TicketTerminalInput`/`TicketTerminalEntry` -- terminal entry
+  with attempt and outcome (pass, unresolved, failed)
+- `TicketReviewEntry` -- union of round and terminal
+
+Functions:
+- `renderTicketRound()` / `renderTicketTerminal()` -- render
+  entries with `<!-- redeye:ticket-review ... -->` sentinel lines
+- `parseTicketReviewLog()` -- parse log text back to entries,
+  dropping malformed entries
+- `currentAttemptEntries()` -- returns entries after the last
+  terminal entry (all entries when there is none)
+- `ticketReviewPath()` -- builds
+  `.scratch/<feature>/reviews/<ticket file name>`
+
+Added 12 new tests (43 assertions) to `test/review.test.ts`.
+
+Gotchas:
+- Role strings in sentinels are percent-encoded because they
+  contain spaces; `encodeAttr`/`decodeAttr` handle this
+- The finding verdict format `- [verdict] summary` differs from
+  the existing `- [ ]/[x] summary` checklist format; the ticket
+  finding parser uses a separate regex
+- `sanitizeTicket` replaces the ticket-review sentinel prefix,
+  separate from the existing `sanitize` for the end-of-run review
+  sentinel prefix
