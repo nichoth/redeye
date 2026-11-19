@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os'
 import {
     parseRoleString,
     loadConfig,
+    mergeRoleWithCli,
     type AdversarialConfig,
+    type ParsedRole,
 } from '../src/config.js'
 
 function tmp ():string {
@@ -331,4 +333,99 @@ test('loadConfig - minRounds not a positive integer ' +
     } finally {
         rmSync(dir, { recursive: true, force: true })
     }
+})
+
+// --- mergeRoleWithCli tests ---
+
+test('mergeRoleWithCli - role flag wins over CLI flag', t => {
+    const role:ParsedRole = {
+        provider: 'claude',
+        effort: 'high',
+    }
+    const cli = {
+        effort: 'low' as const,
+        maxTurns: 50,
+    }
+    const merged = mergeRoleWithCli(role, cli)
+    t.equal(merged.provider, 'claude')
+    t.equal(merged.effort, 'high', 'role effort wins')
+    t.equal(merged.maxTurns, 50, 'CLI fills in maxTurns')
+})
+
+test('mergeRoleWithCli - CLI fills in missing fields', t => {
+    const role:ParsedRole = {
+        provider: 'pi',
+    }
+    const cli = {
+        model: 'sonnet',
+        effort: 'medium' as const,
+        maxTurns: 30,
+        preferSubagent: 'haiku',
+    }
+    const merged = mergeRoleWithCli(role, cli)
+    t.equal(merged.provider, 'pi')
+    t.equal(merged.model, 'sonnet')
+    t.equal(merged.effort, 'medium')
+    t.equal(merged.maxTurns, 30)
+    t.equal(merged.preferSubagent, 'haiku')
+})
+
+test('mergeRoleWithCli - role with all fields ignores ' +
+    'CLI', t => {
+    const role:ParsedRole = {
+        provider: 'claude',
+        model: 'opus',
+        effort: 'high',
+        maxTurns: 40,
+        preferSubagent: 'sonnet',
+    }
+    const cli = {
+        model: 'haiku',
+        effort: 'low' as const,
+        maxTurns: 10,
+        preferSubagent: 'opus',
+    }
+    const merged = mergeRoleWithCli(role, cli)
+    t.equal(merged.model, 'opus')
+    t.equal(merged.effort, 'high')
+    t.equal(merged.maxTurns, 40)
+    t.equal(merged.preferSubagent, 'sonnet')
+})
+
+test('mergeRoleWithCli - empty CLI leaves role ' +
+    'unchanged', t => {
+    const role:ParsedRole = {
+        provider: 'claude',
+        model: 'opus',
+    }
+    const merged = mergeRoleWithCli(role, {})
+    t.equal(merged.provider, 'claude')
+    t.equal(merged.model, 'opus')
+    t.equal(merged.effort, undefined)
+    t.equal(merged.maxTurns, undefined)
+    t.equal(merged.preferSubagent, undefined)
+})
+
+test('mergeRoleWithCli - applies separately to implement ' +
+    'and review', t => {
+    const impl:ParsedRole = {
+        provider: 'claude',
+        model: 'opus',
+    }
+    const rev:ParsedRole = {
+        provider: 'pi',
+        effort: 'high',
+    }
+    const cli = {
+        effort: 'low' as const,
+        maxTurns: 20,
+    }
+    const mergedImpl = mergeRoleWithCli(impl, cli)
+    const mergedRev = mergeRoleWithCli(rev, cli)
+    t.equal(mergedImpl.effort, 'low',
+        'implement has no effort, gets CLI')
+    t.equal(mergedImpl.maxTurns, 20)
+    t.equal(mergedRev.effort, 'high',
+        'review effort wins over CLI')
+    t.equal(mergedRev.maxTurns, 20)
 })

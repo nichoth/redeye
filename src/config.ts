@@ -102,6 +102,29 @@ export function parseRoleString (input:string):ParsedRole {
     }
 }
 
+export interface CliOptions {
+    model?:string
+    effort?:string
+    maxTurns?:number
+    preferSubagent?:string
+}
+
+// Merges a parsed role with CLI options. The role's flags
+// win; CLI fills in whatever the role leaves out.
+export function mergeRoleWithCli (
+    role:ParsedRole,
+    cli:CliOptions
+):ParsedRole {
+    return {
+        provider: role.provider,
+        model: role.model ?? cli.model,
+        effort: role.effort ?? cli.effort,
+        maxTurns: role.maxTurns ?? cli.maxTurns,
+        preferSubagent: role.preferSubagent ??
+            cli.preferSubagent,
+    }
+}
+
 export interface AdversarialConfig {
     implement:ParsedRole
     review:ParsedRole

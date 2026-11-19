@@ -128,3 +128,21 @@ Gotchas:
   fail(msg, err, yargs), so both msg and err are truthy -- the
   fail handler's `if (err && !msg)` branch is NOT taken, help
   text IS shown, and exit code is 1. This matches the AC
+
+## 2026-11-19 -- US-005: Merge role-string flags with run-wide CLI flags
+
+Added `mergeRoleWithCli(role, cli)` to `src/config.ts`:
+- Pure function that merges a ParsedRole with CLI options
+- Role-string flags win over CLI flags for the same field
+- CLI flags fill in whatever the role string leaves out
+- Applies independently per role (implement and review)
+
+Also exported the `CliOptions` interface for the CLI-side fields
+(model, effort, maxTurns, preferSubagent).
+
+Added 5 pure tests to `test/config.test.ts`:
+- Role flag wins over CLI flag
+- CLI fills in missing fields
+- Role with all fields ignores CLI entirely
+- Empty CLI leaves role unchanged
+- Applies separately to implement and review roles
