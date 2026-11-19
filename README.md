@@ -361,12 +361,21 @@ tiiny load zai-org/GLM-4.7-Flash
 
 #### 2. Run the Loop
 
+##### Qwen3.6-35B-A3B-turbo
+
 ```sh
 caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1
 ```
 
 Note `--concurrency 1`. The `tiiny` answers one request at a time, so extra
 agents only slow each other down.
+
+
+##### Qwen3.5-9B-turbo
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.5-9B-turbo --concurrency 2
+```
 
 
 ## Command Line Arguments
