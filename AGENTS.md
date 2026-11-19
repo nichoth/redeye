@@ -60,6 +60,9 @@ merges into that branch.
 ## Project Structure
 - `src/index.ts` -- CLI entry point (yargs commands), signal
   handling, integration branch setup
+- `src/config.ts` -- role-string parser and shared option
+  definitions for -m/--model, --effort, --max-turns,
+  --prefer-subagent
 - `src/setup.ts` -- `redeye init` scaffolding
 - `src/orchestrator.ts` -- ticket scanning, prompts, agent
   spawning and wave execution
@@ -175,8 +178,9 @@ its tests.
   throwing.
 
 ### Module boundaries
-- `blockers`, `stats`, `retry`, `preflight`, `learnings` and
-  `rules` import no values from `src/orchestrator.ts`; `review`
+- `blockers`, `stats`, `retry`, `preflight`, `learnings`,
+  `rules` and `config` import no values from
+  `src/orchestrator.ts`; `review`
   imports only its `AgentResult` type and takes `spawnAgent` and
   the process registry as injected `deps`.
 - `graph` value-imports only from `orchestrator` and `display`, and

@@ -1,0 +1,29 @@
+## 2026-11-19 -- US-001: Parse role strings
+
+Created `src/config.ts` with:
+- `ROLE_OPTIONS` -- shared option definitions for -m/--model,
+  --effort, --max-turns, --prefer-subagent, used by both the
+  role-string parser and the yargs run command in index.ts
+- `parseRoleString(input)` -- parses a role string like
+  "claude -m opus --effort high --max-turns 40 --prefer-subagent"
+  into a ParsedRole object using yargs in non-CLI mode with
+  strict validation
+
+Refactored `src/index.ts` to import ROLE_OPTIONS from config.ts
+instead of defining the four shared options inline. This satisfies
+the "shared, not copied" requirement.
+
+Added `src/config.ts` to the second esbuild call in build-esm.
+Added `test/config.test.ts` with 11 pure tests to TESTS in
+scripts/test.sh. Updated AGENTS.md project structure and module
+boundaries to include config.
+
+Gotchas:
+- yargs strict mode rejects bare positionals; the parser uses a
+  `$0 <provider>` command pattern so the provider is consumed as
+  a named positional
+- `--prefer-subagent` with no value gives `""` from yargs (type
+  string); the parser coerces it to `"true"` to match the AC
+- tapzero `t.throws` regex matches `caught.message`, not the
+  full string; yargs error messages say "Unknown argument: X"
+  without the `--` prefix

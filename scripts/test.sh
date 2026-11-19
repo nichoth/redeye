@@ -26,6 +26,7 @@ TESTS=(
     testcmd
     preflight
     resolve
+    config
     graph
     integration
     review-integration

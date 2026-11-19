@@ -19,7 +19,6 @@ import {
     runWaves,
     runWavesIsolated,
     stripSpecSection,
-    ALL_EFFORT_LEVELS,
     DEFAULT_RETRIES,
     DEFAULT_RETRY_DELAY,
     DEFAULT_CONCURRENCY,
@@ -30,6 +29,7 @@ import {
     type EffortLevel,
     type Ticket,
 } from './orchestrator.js'
+import { ROLE_OPTIONS } from './config.js'
 import { detectTestCmd, detectInstallCmd } from './testcmd.js'
 import { resolveExecutable } from './preflight.js'
 import { createDisplay } from './display.js'
@@ -163,11 +163,7 @@ yargs(hideBin(process.argv))
                     'ticket (shorthand for ' +
                     '--max-turns)',
             })
-            .option('m', {
-                alias: 'model',
-                type: 'string',
-                describe: 'Model passed to the agent',
-            })
+            .option('m', ROLE_OPTIONS.m)
             .option('spec', {
                 type: 'string',
                 describe: 'Feature name ' +
@@ -206,25 +202,15 @@ yargs(hideBin(process.argv))
                     're-spawning',
                 default: false,
             })
-            .option('max-turns', {
-                type: 'number',
-                describe: 'Max agentic turns per ticket ' +
-                    '(forwarded to the agent CLI)',
-            })
-            .option('effort', {
-                type: 'string',
-                choices: ALL_EFFORT_LEVELS,
-                describe: 'Starting effort level. ' +
-                    'Omitted = provider default. ' +
-                    'Retries step up from here.',
-            })
-            .option('prefer-subagent', {
-                type: 'string',
-                describe: 'claude only: model that subagents ' +
-                    'default to (CLAUDE_CODE_SUBAGENT_MODEL), ' +
-                    'plus a prompt rule to hand read-only work ' +
-                    'to them. "" disables it.',
-            })
+            .option(
+                'max-turns',
+                ROLE_OPTIONS['max-turns']
+            )
+            .option('effort', ROLE_OPTIONS.effort)
+            .option(
+                'prefer-subagent',
+                ROLE_OPTIONS['prefer-subagent']
+            )
             .option('retries', {
                 type: 'number',
                 default: DEFAULT_RETRIES,
