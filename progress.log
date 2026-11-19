@@ -146,3 +146,39 @@ Added 5 pure tests to `test/config.test.ts`:
 - Role with all fields ignores CLI entirely
 - Empty CLI leaves role unchanged
 - Applies separately to implement and review roles
+
+## 2026-11-19 -- US-006: Preflight both roles and warn on same model
+
+Added review executable preflight to `src/index.ts`:
+- When adversarial is configured and no CLI provider overrides
+  implement, the review role's provider is also checked with
+  `resolveExecutable` before any branch work
+- A missing review executable exits 2 with a clear error naming
+  the provider
+
+Added same-model warning:
+- When implement and review resolve to the same provider basename
+  and same model (or both unset), a warning is logged that the
+  cross-model check is lost
+- The warning appears on both normal runs and --dry-run
+- When a CLI provider overrides implement, the comparison uses the
+  CLI provider and model instead
+
+Added in-place path handling:
+- When adversarial is configured but the run is outside a git repo
+  (the in-place path), a message is logged that the adversarial
+  loop is skipped, and the run continues as today
+
+Added 4 CLI tests to `test/integration.test.ts`:
+- Missing review executable exits 2 before any branch
+- Same provider and model warns and continues (--dry-run)
+- Different providers produce no same-model warning
+- In-place path with adversarial logs loop skipped
+
+Gotchas:
+- The review preflight runs whenever adversarial is set,
+  regardless of CLI override, since the review role always comes
+  from the config
+- The same-model comparison uses the CLI provider/model (not the
+  config's implement) when cliOverride is true, since that is what
+  actually runs

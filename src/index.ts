@@ -621,6 +621,45 @@ async function runExecute (argv:{
         )
         process.exit(2)
     }
+
+    // Preflight the review executable when adversarial is set
+    if (adversarial) {
+        const reviewProvider = adversarial.review.provider
+        const reviewIsPath = reviewProvider.includes('/')
+        const reviewPath = resolveExecutable(reviewProvider)
+        const reviewMissing = reviewIsPath ?
+            'not found or not executable' :
+            'not found on PATH'
+        if (reviewPath === null && !argv.dryRun) {
+            console.error(
+                `Review provider '${reviewProvider}' ` +
+                reviewMissing
+            )
+            process.exit(2)
+        }
+    }
+
+    // Warn when both roles resolve to the same model
+    if (adversarial) {
+        const implBase = basename(
+            cliOverride ? provider : adversarial.implement.provider
+        )
+        const revBase = basename(
+            adversarial.review.provider
+        )
+        const implModel = cliOverride ?
+            (model ?? '') :
+            (adversarial.implement.model ?? '')
+        const revModel = adversarial.review.model ?? ''
+        if (implBase === revBase && implModel === revModel) {
+            console.warn(
+                'Implement and review use the same model ' +
+                `(${implBase}${implModel ? ' ' + implModel : ''})` +
+                ' -- the cross-model check is lost'
+            )
+        }
+    }
+
     // Worktrees spawn with their own cwd, so a relative path must
     // be resolved here, against the launch directory. A bare name
     // stays a PATH lookup at spawn time.
@@ -817,6 +856,12 @@ async function runExecute (argv:{
                 undefined,
         })
     } else {
+        if (adversarial) {
+            display.log(
+                'Adversarial loop skipped ' +
+                '(not in a git repo)'
+            )
+        }
         result = await runWaves(
             allTickets, fallbackSpec,
             agentCmd, model ?? null,
