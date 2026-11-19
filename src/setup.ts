@@ -165,6 +165,13 @@ export function findSkillCollisions (
     return collisions
 }
 
+export type AdversarialSetup = {
+    implement:string
+    review:string
+    maxRounds:number
+    minRounds:number
+}
+
 export type SetupOpts = {
     bundledSkillsDir:string
     docsTemplatesDir:string
@@ -176,6 +183,7 @@ export type SetupOpts = {
     // Skills whose existing entries are left alone; missing entries
     // for them are still created. Every other skill is replaced.
     skip?:ReadonlySet<string>
+    adversarial?:AdversarialSetup
 }
 
 const TRACKER_TEMPLATES:Record<TrackerKind, string> = {
@@ -300,6 +308,29 @@ export function setup (opts:SetupOpts):void {
         'AGENTS.md merge=union',
     )
     console.log('  .gitattributes (AGENTS.md merge=union)')
+
+    if (opts.adversarial) {
+        const cfgPath = join(projectDir, '.redeye.json')
+        let existing:Record<string, unknown> = {}
+        if (existsSync(cfgPath)) {
+            existing = JSON.parse(
+                readFileSync(cfgPath, 'utf8')
+            )
+        }
+        const { implement, review, maxRounds, minRounds } =
+            opts.adversarial
+        existing.adversarial = {
+            implement,
+            review,
+            maxRounds,
+            minRounds,
+        }
+        writeFileSync(
+            cfgPath,
+            JSON.stringify(existing, null, 2) + '\n'
+        )
+        console.log('\n  .redeye.json (adversarial configured)')
+    }
 
     console.log(
         `\nSource: ${upstream.repo} @ ${upstream.commit}`

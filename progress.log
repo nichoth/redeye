@@ -182,3 +182,24 @@ Gotchas:
 - The same-model comparison uses the CLI provider/model (not the
   config's implement) when cliOverride is true, since that is what
   actually runs
+
+## 2026-11-19 -- US-007: setup() writes the adversarial key
+
+Added `AdversarialSetup` type to `src/setup.ts` and an optional
+`adversarial` field to `SetupOpts`. When the field is present,
+`setup()` reads any existing `.redeye.json`, merges the
+`adversarial` key (implement, review, maxRounds, minRounds) into
+it, and writes it back as pretty-printed JSON. When the field is
+absent, no `.redeye.json` is created or modified.
+
+Added 5 tests to `test/setup.test.ts`:
+- Writes .redeye.json with all adversarial fields
+- Merges into existing .redeye.json preserving other keys
+- Leaves existing .redeye.json untouched without adversarial opt
+- Creates no .redeye.json when absent and no adversarial opt
+- Writes round defaults explicitly (maxRounds/minRounds present
+  even at default values)
+
+Gotchas:
+- The adversarial block is written after all other setup work,
+  so a failure in skill copying does not leave a partial config

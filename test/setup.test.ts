@@ -825,3 +825,169 @@ test('setup replaces colliding skills that are not skipped', t => {
         'replacing a symlink does not touch what it pointed to'
     )
 })
+
+test('setup writes .redeye.json when adversarial is given', t => {
+    const {
+        projectDir, bundledSkillsDir, docsTemplatesDir,
+    } = makeTempProject()
+
+    setup({
+        bundledSkillsDir,
+        docsTemplatesDir,
+        projectDir,
+        tracker: 'local',
+        adversarial: {
+            implement: 'claude -m opus',
+            review: 'claude -m sonnet',
+            maxRounds: 3,
+            minRounds: 1,
+        },
+    })
+
+    const cfgPath = join(projectDir, '.redeye.json')
+    t.ok(existsSync(cfgPath), '.redeye.json should exist')
+    const cfg = JSON.parse(readFileSync(cfgPath, 'utf8'))
+    t.equal(
+        cfg.adversarial.implement, 'claude -m opus',
+        'implement role string'
+    )
+    t.equal(
+        cfg.adversarial.review, 'claude -m sonnet',
+        'review role string'
+    )
+    t.equal(cfg.adversarial.maxRounds, 3, 'maxRounds')
+    t.equal(cfg.adversarial.minRounds, 1, 'minRounds')
+})
+
+test(
+    'setup merges adversarial into existing .redeye.json',
+    t => {
+        const {
+            projectDir, bundledSkillsDir, docsTemplatesDir,
+        } = makeTempProject()
+
+        const cfgPath = join(projectDir, '.redeye.json')
+        writeFileSync(cfgPath, JSON.stringify({
+            someSetting: true,
+            nested: { a: 1 },
+        }))
+
+        setup({
+            bundledSkillsDir,
+            docsTemplatesDir,
+            projectDir,
+            tracker: 'local',
+            adversarial: {
+                implement: 'pi',
+                review: 'claude -m opus --effort high',
+                maxRounds: 5,
+                minRounds: 2,
+            },
+        })
+
+        const cfg = JSON.parse(readFileSync(cfgPath, 'utf8'))
+        t.equal(
+            cfg.someSetting, true,
+            'existing key preserved'
+        )
+        t.deepEqual(
+            cfg.nested, { a: 1 },
+            'existing nested key preserved'
+        )
+        t.equal(
+            cfg.adversarial.implement, 'pi',
+            'implement written'
+        )
+        t.equal(
+            cfg.adversarial.review,
+            'claude -m opus --effort high',
+            'review written'
+        )
+        t.equal(cfg.adversarial.maxRounds, 5, 'maxRounds')
+        t.equal(cfg.adversarial.minRounds, 2, 'minRounds')
+    }
+)
+
+test(
+    'setup without adversarial leaves existing .redeye.json',
+    t => {
+        const {
+            projectDir, bundledSkillsDir, docsTemplatesDir,
+        } = makeTempProject()
+
+        const cfgPath = join(projectDir, '.redeye.json')
+        const original = JSON.stringify({ someSetting: true })
+        writeFileSync(cfgPath, original)
+
+        setup({
+            bundledSkillsDir,
+            docsTemplatesDir,
+            projectDir,
+            tracker: 'local',
+        })
+
+        t.equal(
+            readFileSync(cfgPath, 'utf8'),
+            original,
+            '.redeye.json unchanged'
+        )
+    }
+)
+
+test(
+    'setup without adversarial creates no .redeye.json',
+    t => {
+        const {
+            projectDir, bundledSkillsDir, docsTemplatesDir,
+        } = makeTempProject()
+
+        setup({
+            bundledSkillsDir,
+            docsTemplatesDir,
+            projectDir,
+            tracker: 'local',
+        })
+
+        t.ok(
+            !existsSync(join(projectDir, '.redeye.json')),
+            'no .redeye.json created'
+        )
+    }
+)
+
+test(
+    'setup writes round defaults explicitly',
+    t => {
+        const {
+            projectDir, bundledSkillsDir, docsTemplatesDir,
+        } = makeTempProject()
+
+        setup({
+            bundledSkillsDir,
+            docsTemplatesDir,
+            projectDir,
+            tracker: 'local',
+            adversarial: {
+                implement: 'claude',
+                review: 'pi',
+                maxRounds: 3,
+                minRounds: 1,
+            },
+        })
+
+        const raw = readFileSync(
+            join(projectDir, '.redeye.json'), 'utf8'
+        )
+        const cfg = JSON.parse(raw)
+        t.ok(
+            'maxRounds' in cfg.adversarial,
+            'maxRounds key present even at default'
+        )
+        t.ok(
+            'minRounds' in cfg.adversarial,
+            'minRounds key present even at default'
+        )
+        t.equal(cfg.adversarial.maxRounds, 3)
+        t.equal(cfg.adversarial.minRounds, 1)
+    }
+)
