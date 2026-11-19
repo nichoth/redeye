@@ -8,7 +8,11 @@ import { tmpdir } from 'node:os'
 import { execFileSync, execSync } from 'node:child_process'
 import type { Display } from '../src/display.js'
 import { runWavesIsolated, scanTickets } from '../src/orchestrator.js'
-import { parseReviewEntries } from '../src/review.js'
+import {
+    parseReviewEntries,
+    parseTicketReviewLog,
+    ticketReviewPath,
+} from '../src/review.js'
 import { subagentRule } from '../src/rules.js'
 import { renderRunStats } from '../src/stats.js'
 
@@ -613,4 +617,168 @@ test('fake-pi delegates to another mock', async t => {
     rmSync(recDir, { recursive: true, force: true })
     rmSync(promptDir, { recursive: true, force: true })
     rmSync(cwd, { recursive: true, force: true })
+})
+
+// ---- Per-ticket adversarial review (US-011) ----
+
+test('per-ticket review - clean reviewer lets ticket ' +
+    'merge with pass entry', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'clean',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone, 'ticket is done')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        t.ok(existsSync(logPath), 'review log exists')
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(rounds.length, 1, 'one round')
+        t.equal(terms.length, 1, 'one terminal')
+        if (terms[0].type === 'terminal') {
+            t.equal(
+                terms[0].outcome, 'pass',
+                'pass outcome'
+            )
+        }
+
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 1,
+            'one reviewer invocation')
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
+})
+
+test('per-ticket review - reviewer failure retries ' +
+    'and round numbers restart', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'exit1,clean',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 1,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone, 'ticket merges on retry')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 2,
+            'two terminal entries (failed + pass)')
+
+        const failedTerm = terms.find(
+            e => e.type === 'terminal' &&
+                e.outcome === 'failed'
+        )
+        t.ok(failedTerm, 'first attempt has failed entry')
+        if (failedTerm && failedTerm.type === 'terminal') {
+            t.equal(failedTerm.attempt, 1,
+                'failed entry is attempt 1')
+        }
+
+        const passTerm = terms.find(
+            e => e.type === 'terminal' &&
+                e.outcome === 'pass'
+        )
+        t.ok(passTerm, 'second attempt has pass entry')
+        if (passTerm && passTerm.type === 'terminal') {
+            t.equal(passTerm.attempt, 2,
+                'pass entry is attempt 2')
+        }
+
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+        t.equal(rounds.length, 2, 'two round entries')
+        for (const r of rounds) {
+            if (r.type === 'round') {
+                t.equal(r.round, 1,
+                    'round number is 1 (restarts)')
+            }
+        }
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
+})
+
+test('per-ticket review - no adversarial key means ' +
+    'no reviewer', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'clean',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        await h.run(false)
+
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 0,
+            'no reviewer invocations')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        t.ok(!existsSync(logPath),
+            'no review log')
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
 })

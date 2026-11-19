@@ -1139,6 +1139,162 @@ export function ticketReviewPath (
     return `.scratch/${feature}/reviews/${ticketFileName}`
 }
 
+// ---- Per-ticket review round runner ----
+
+export type TicketReviewRoundOpts = {
+    ticket:{ filename:string; body:string; feature:string }
+    specBody:string
+    agentCmd:string
+    model:string|null
+    effort?:EffortLevel
+    maxTurns?:number
+    preferSubagent?:string
+    baseBranch:string
+    worktreePath:string
+    repoRoot:string
+    timeout:number
+    logsDir:string
+    retries:number
+    retryDelay:number
+    log:(msg:string) => void
+}
+
+export function renderTicketReviewerPrompt (opts:{
+    ticketFilename:string
+    ticketBody:string
+    specBody:string
+    from:string
+    to:string
+    exclude?:string
+    preferSubagent?:string
+}):string {
+    return [
+        '---- SPEC CONTEXT ----',
+        opts.specBody,
+        '',
+        '---- TICKET ----',
+        opts.ticketFilename,
+        opts.ticketBody,
+        '',
+        REVIEW_MARKER,
+        'You are reviewing the implementation of this ' +
+            'ticket before it merges.',
+        '',
+        'The change to review:',
+        '',
+        `    ${reviewDiffCommand(opts.from, opts.to, opts.exclude)}`,
+        '',
+        'Follow these rules:',
+        readDocsRule('ticket'),
+        '- Look for correctness bugs, missing or weak ' +
+            'tests, and code that breaks a documented ' +
+            'contract. Ignore style preferences.',
+        '- You may run the tests or the type checker to ' +
+            'confirm a suspicion.',
+        ...subagentRule(opts.preferSubagent, true),
+        '- Do NOT edit, stage, or commit code. Anything ' +
+            'you change here is discarded.',
+        ...CONFINEMENT_RULES,
+        '',
+        `Write your findings to \`${FINDINGS_PATH}\` ` +
+            '(create the directory), most severe first, ' +
+            'in exactly this form:',
+        '',
+        '- [ ] <one-line summary of the finding>',
+        '    <file:line, and a concrete input or state ' +
+            'that goes wrong>',
+        '',
+        'If you find nothing worth fixing, write the ' +
+            `single line: ${NO_FINDINGS}`,
+        'Never git add or commit that file; the ' +
+            'orchestrator collects it.',
+        '',
+    ].join('\n')
+}
+
+export async function runTicketReviewRound (
+    opts:TicketReviewRoundOpts,
+    deps:ReviewDeps
+):Promise<{ findings:Finding[]|null; head:string }> {
+    const head = headCommit(opts.worktreePath)
+    const base = mergeBase(
+        opts.repoRoot, opts.baseBranch, head
+    ) ?? head
+    const exclude = reviewExcludeFor(
+        opts.repoRoot,
+        ticketReviewPath(
+            opts.ticket.feature,
+            opts.ticket.filename
+        )
+    )
+    const stem = opts.ticket.filename.replace(/\.md$/, '')
+    const findings = await runWithRetries<Finding[]|null>({
+        maxAttempts: opts.retries + 1,
+        retryDelay: opts.retryDelay,
+        agentCmd: opts.agentCmd,
+        effort: opts.effort,
+        label: `${opts.ticket.filename} review`,
+        log: opts.log,
+    }, async (attempt, effort) => {
+        const agent = await deps.spawnAgent({
+            prompt: renderTicketReviewerPrompt({
+                ticketFilename: opts.ticket.filename,
+                ticketBody: opts.ticket.body,
+                specBody: opts.specBody,
+                from: base,
+                to: head,
+                exclude,
+                preferSubagent: opts.preferSubagent,
+            }),
+            agentCmd: opts.agentCmd,
+            model: opts.model,
+            timeout: opts.timeout,
+            logPath: logPath(
+                opts.logsDir, `${stem}.review`,
+                attempt, '.log'
+            ),
+            cwd: opts.worktreePath,
+            label: `${stem} review`,
+            maxTurns: opts.maxTurns,
+            effort,
+            preferSubagent: opts.preferSubagent,
+            onLine: opts.log,
+            progress: {
+                label: `${stem} review`,
+                onLine: opts.log,
+            },
+        })
+        if (!agent.timedOut && agent.exitCode !== 0) {
+            opts.log(
+                `  ${opts.ticket.filename}: reviewer ` +
+                `exited ${agent.exitCode}`
+            )
+            return { result: null, stop: false }
+        }
+        if (agent.timedOut) {
+            opts.log(
+                `  ${opts.ticket.filename}: reviewer ` +
+                'timed out'
+            )
+            return { result: null, stop: false }
+        }
+        const text = collectNotes(
+            opts.worktreePath, FINDINGS_FILE
+        )
+        const parsed = text === null ?
+            null :
+            parseFindings(text)
+        if (parsed === null) {
+            opts.log(
+                `  ${opts.ticket.filename}: reviewer ` +
+                'left no usable findings'
+            )
+        }
+        return { result: parsed, stop: parsed !== null }
+    })
+    return { findings, head }
+}
+
 // Reviews everything since the last reviewed commit, runs one fix
 // pass when there are findings, and appends and commits one entry
 // to the review log. Skips entirely when the range only touches

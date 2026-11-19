@@ -897,6 +897,8 @@ async function runExecute (argv:{
                 },
             adversarial: adversarial ?
                 {
+                    implementStr: adversarial.implementStr,
+                    reviewStr: adversarial.reviewStr,
                     review: adversarial.review,
                     maxRounds: adversarial.maxRounds,
                     minRounds: adversarial.minRounds,

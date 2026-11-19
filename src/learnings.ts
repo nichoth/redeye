@@ -23,6 +23,7 @@ export const LEARNING_OUTCOMES = [
     'exit',
     'tests',
     'install',
+    'review',
     'no-commits',
     'error',
     'merge',
@@ -63,7 +64,7 @@ type AgentFields = { run:AgentRunRecord; effort?:string }
 type LogTail = { logName:string; logTail:string }
 
 export type EntryInput = EntryBase&(
-    | (AgentFields&{ outcome:'done'|'exit'|'no-commits' })
+    | (AgentFields&{ outcome:'done'|'exit'|'no-commits'|'review' })
     | (AgentFields&LogTail&{ outcome:'tests' })
     | (LogTail&{ outcome:'install' })
     | { outcome:'error'; error:string }
@@ -192,6 +193,9 @@ export function renderEntry (input:EntryInput):string {
         case 'install':
             description = 'failed (install)'
             break
+        case 'review':
+            description = 'failed (review)'
+            break
         case 'no-commits':
             description = 'no commits'
             break
@@ -220,6 +224,7 @@ export function renderEntry (input:EntryInput):string {
     switch (input.outcome) {
         case 'done':
         case 'exit':
+        case 'review':
         case 'no-commits': {
             const run = input.run
             const summary = renderAgentSummary(run, input.effort)

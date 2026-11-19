@@ -65,7 +65,15 @@ import {
     notesRule,
     agentsMdRule,
 } from './rules.js'
-import { runReviewPass, renderReviewSummary } from './review.js'
+import {
+    runReviewPass,
+    renderReviewSummary,
+    runTicketReviewRound,
+    ticketReviewPath,
+    renderTicketRound,
+    renderTicketTerminal,
+    type FindingWithVerdict,
+} from './review.js'
 import {
     addRun,
     addStats,
@@ -1834,10 +1842,10 @@ type TicketOutcome =
     }
     | {
         kind:'failed'
-        reason:'exit'|'tests'
+        reason:'exit'|'tests'|'review'
         branchName:string
-        // A placeholder 1 for 'tests'; the agent's real exit
-        // code is agentRun.exitCode
+        // A placeholder 1 for 'tests' and 'review'; the
+        // agent's real exit code is agentRun.exitCode
         exitCode:number
         completedItems:string[]
         agentRun:AgentRunRecord
@@ -1849,6 +1857,20 @@ type TicketOutcome =
         completedItems:string[]
         agentRun:AgentRunRecord
     }
+
+export type AdversarialOpts = {
+    implementStr:string
+    reviewStr:string
+    review:{
+        provider:string
+        model?:string
+        effort?:string
+        maxTurns?:number
+        preferSubagent?:string
+    }
+    maxRounds:number
+    minRounds:number
+}
 
 type TicketAttemptOpts = {
     ticket:Ticket
@@ -1868,9 +1890,12 @@ type TicketAttemptOpts = {
     // claude only: model for subagents; unset = off
     preferSubagent?:string
     learningsPath:string
+    retries:number
+    retryDelay:number
     d:Display
     // called with every agent result, for the run's stats tally
     onAgentRun?:(result:AgentResult) => void
+    adversarial?:AdversarialOpts
 }
 
 /**
@@ -2120,6 +2145,128 @@ async function runTicketAttempt (
         }
     }
 
+    if (opts.adversarial) {
+        const adv = opts.adversarial
+        const reviewLogPath = join(
+            opts.repoRoot,
+            ticketReviewPath(
+                ticket.feature, ticket.filename
+            )
+        )
+
+        const { findings, head: reviewHead } =
+            await runTicketReviewRound({
+                ticket,
+                specBody: lookupSpec(
+                    opts.specBodies,
+                    opts.specBody,
+                    ticket.feature,
+                ),
+                agentCmd: adv.review.provider,
+                model: adv.review.model ?? null,
+                effort: adv.review.effort as
+                    EffortLevel|undefined,
+                maxTurns: adv.review.maxTurns,
+                preferSubagent:
+                    adv.review.preferSubagent,
+                baseBranch: opts.baseBranch,
+                worktreePath: worktree.worktreePath,
+                repoRoot: opts.repoRoot,
+                timeout: opts.timeout,
+                logsDir: opts.logsDir,
+                retries: opts.retries,
+                retryDelay: opts.retryDelay,
+                log: (msg) => d.log(msg),
+            }, {
+                spawnAgent: async spawnOpts => {
+                    const result = await spawnAgent(
+                        spawnOpts
+                    )
+                    opts.onAgentRun?.(result)
+                    return result
+                },
+                registry: runningAgents,
+            })
+
+        const fwv:FindingWithVerdict[] =
+            findings === null ?
+                [] :
+                findings.map(f => ({
+                    summary: f.summary,
+                    detail: f.detail,
+                    verdict: 'open' as const,
+                }))
+
+        appendEntry(
+            reviewLogPath,
+            renderTicketRound({
+                attempt: opts.attempt,
+                round: 1,
+                implement: adv.implementStr,
+                review: adv.reviewStr,
+                head: reviewHead,
+                findings: fwv,
+            })
+        )
+
+        if (findings === null) {
+            appendEntry(
+                reviewLogPath,
+                renderTicketTerminal({
+                    attempt: opts.attempt,
+                    outcome: 'failed',
+                })
+            )
+            await removeWorktreeQuietly(
+                worktree.worktreePath, d
+            )
+            return {
+                kind: 'failed',
+                reason: 'review',
+                branchName: worktree.branchName,
+                exitCode: 1,
+                completedItems:
+                    agentResult.completedItems,
+                agentRun,
+            }
+        }
+
+        if (findings.length > 0) {
+            appendEntry(
+                reviewLogPath,
+                renderTicketTerminal({
+                    attempt: opts.attempt,
+                    outcome: 'failed',
+                })
+            )
+            d.log(
+                `  ${ticket.filename}: reviewer found ` +
+                `${findings.length} finding` +
+                `${findings.length === 1 ? '' : 's'}`
+            )
+            await removeWorktreeQuietly(
+                worktree.worktreePath, d
+            )
+            return {
+                kind: 'failed',
+                reason: 'review',
+                branchName: worktree.branchName,
+                exitCode: 1,
+                completedItems:
+                    agentResult.completedItems,
+                agentRun,
+            }
+        }
+
+        appendEntry(
+            reviewLogPath,
+            renderTicketTerminal({
+                attempt: opts.attempt,
+                outcome: 'pass',
+            })
+        )
+    }
+
     return {
         kind: 'ready',
         worktreePath: worktree.worktreePath,
@@ -2186,6 +2333,13 @@ function attemptEntry (opts:{
                         run: outcome.agentRun,
                         effort,
                         ...logFor('.test.log'),
+                    }
+                case 'review':
+                    return {
+                        ...base,
+                        outcome: 'review',
+                        run: outcome.agentRun,
+                        effort,
                     }
                 case 'install':
                     return {
@@ -2311,9 +2465,12 @@ async function runTicketAttempts (
     })
 }
 
-function failureNote (reason:'exit'|'tests'|'install'):string {
+function failureNote (
+    reason:'exit'|'tests'|'install'|'review'
+):string {
     if (reason === 'tests') return 'tests failed'
     if (reason === 'install') return 'install failed'
+    if (reason === 'review') return 'review failed'
     return 'failed'
 }
 
@@ -2916,19 +3073,7 @@ export async function runWavesIsolated (opts:{
         // integration branch
         forkedFrom?:string
     }
-    // per-ticket adversarial review config; threaded through
-    // for later stories -- no reviewer is started yet
-    adversarial?:{
-        review:{
-            provider:string
-            model?:string
-            effort?:string
-            maxTurns?:number
-            preferSubagent?:string
-        }
-        maxRounds:number
-        minRounds:number
-    }
+    adversarial?:AdversarialOpts
 }):Promise<{ allDone:boolean; branch:string }> {
     mkdirSync(opts.logsDir, { recursive: true })
 
@@ -3074,6 +3219,7 @@ export async function runWavesIsolated (opts:{
                 retryDelay,
                 d,
                 onAgentRun,
+                adversarial: opts.adversarial,
             })
         )
 
@@ -3084,6 +3230,15 @@ export async function runWavesIsolated (opts:{
         const touched = new Set(ready.map(t => {
             return learningsPathFor(tracker.pathFor(t.feature))
         }))
+        if (opts.adversarial) {
+            for (const t of ready) {
+                const rlp = join(
+                    repoRoot,
+                    ticketReviewPath(t.feature, t.filename)
+                )
+                if (isRegularFile(rlp)) touched.add(rlp)
+            }
+        }
         for (const path of touched) {
             if (!isRegularFile(path)) continue
             try {
