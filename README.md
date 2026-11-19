@@ -434,7 +434,7 @@ Flags:
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `<provider>` | yes | -- | Agent harness to spawn (e.g. `claude`, `codex`, `pi`) |
+| `[provider]` | no | -- | Agent harness to spawn (e.g. `claude`, `codex`, `pi`). Optional when `.redeye.json` sets `implement` -- the implement role's provider is used. A CLI provider overrides implement |
 | `[turns]` | no | -- | Max agentic turns per agent run (positional shorthand for `--max-turns`) |
 | `-m`, `--model` | no | -- | Model flag passed to the agent |
 | `--spec <name>` | no | auto | Feature name (resolves `.scratch/<name>/`) |

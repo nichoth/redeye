@@ -2916,6 +2916,19 @@ export async function runWavesIsolated (opts:{
         // integration branch
         forkedFrom?:string
     }
+    // per-ticket adversarial review config; threaded through
+    // for later stories -- no reviewer is started yet
+    adversarial?:{
+        review:{
+            provider:string
+            model?:string
+            effort?:string
+            maxTurns?:number
+            preferSubagent?:string
+        }
+        maxRounds:number
+        minRounds:number
+    }
 }):Promise<{ allDone:boolean; branch:string }> {
     mkdirSync(opts.logsDir, { recursive: true })
 

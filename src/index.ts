@@ -148,14 +148,15 @@ yargs(hideBin(process.argv))
         argv => runGraph(argv.spec)
     )
     .command(
-        '$0 <provider> [turns]',
+        '$0 [provider] [turns]',
         'Execute tickets with the given provider',
         y => y
             .positional('provider', {
                 type: 'string',
                 describe: 'Agent CLI to spawn ' +
-                    '(e.g. claude, codex, pi)',
-                demandOption: true,
+                    '(e.g. claude, codex, pi). ' +
+                    'Optional when .redeye.json ' +
+                    'sets implement',
             })
             .positional('turns', {
                 type: 'number',
@@ -237,10 +238,33 @@ yargs(hideBin(process.argv))
                 default: true,
                 describe: 'Review the merged work and run one ' +
                     'fix pass at the end. --no-review skips it.',
+            })
+            .check(argv => {
+                if (!argv.provider) {
+                    let hasConfig = false
+                    try {
+                        hasConfig = loadConfig(
+                            process.cwd()
+                        ) !== null
+                    } catch {
+                        // Config errors are reported by
+                        // the handler, not the check.
+                    }
+                    if (!hasConfig) {
+                        throw new Error(
+                            'Specify a provider ' +
+                            '(e.g. redeye claude) ' +
+                            'or set implement ' +
+                            'in .redeye.json'
+                        )
+                    }
+                }
+                return true
             }),
         async argv => {
             await runExecute({
-                provider: argv.provider as string,
+                provider: argv.provider as
+                    string|undefined,
                 model: argv.model as string|undefined,
                 spec: argv.spec as string|undefined,
                 dryRun: argv.dryRun as boolean|undefined,
@@ -528,7 +552,7 @@ function reviewPathFor (issuesDirs:string[]):string {
 }
 
 async function runExecute (argv:{
-    provider:string
+    provider?:string
     model?:string
     spec?:string
     dryRun?:boolean
@@ -553,8 +577,19 @@ async function runExecute (argv:{
 
     // Load .redeye.json before any provider or git work.
     // Validation errors stop the run before anything is created.
-    const _adversarial = loadConfig(process.cwd())
+    const adversarial = loadConfig(process.cwd())
 
+    // Resolve the effective provider: CLI arg wins, then
+    // the implement role from .redeye.json. The .check()
+    // in the yargs builder already rejects no-config +
+    // no-provider before the handler runs.
+    const cliOverride = !!argv.provider && !!adversarial
+    const provider = argv.provider ??
+        adversarial?.implement.provider ?? ''
+    const model = argv.model ??
+        (!argv.provider && adversarial ?
+            adversarial.implement.model :
+            undefined)
     // Stop before the dry run, provider lookup and any branch work
     // when every ready-for-agent ticket is blocked. A resumed
     // integration branch is checked after its re-scan instead.
@@ -567,15 +602,22 @@ async function runExecute (argv:{
         return
     }
 
-    const providerPath = resolveExecutable(argv.provider)
-    const providerIsPath = argv.provider.includes('/')
+    if (cliOverride) {
+        console.log(
+            `${provider} overrides implement ` +
+            `(${adversarial!.implementStr})`
+        )
+    }
+
+    const providerPath = resolveExecutable(provider)
+    const providerIsPath = provider.includes('/')
     // A path is never searched on PATH, so say what was checked
     const providerMissing = providerIsPath ?
         'not found or not executable' :
         'not found on PATH'
     if (providerPath === null && !argv.dryRun) {
         console.error(
-            `Provider '${argv.provider}' ${providerMissing}`
+            `Provider '${provider}' ${providerMissing}`
         )
         process.exit(2)
     }
@@ -583,13 +625,13 @@ async function runExecute (argv:{
     // be resolved here, against the launch directory. A bare name
     // stays a PATH lookup at spawn time.
     const agentCmd = providerIsPath ?
-        providerPath ?? argv.provider :
-        argv.provider
+        providerPath ?? provider :
+        provider
 
     // claude is the only provider with subagents. Warn once here
     // and drop the value, so no agent gets the env var or the rule.
     let preferSubagent = argv.preferSubagent || undefined
-    const providerName = basename(argv.provider)
+    const providerName = basename(provider)
     if (preferSubagent && providerName !== 'claude') {
         console.warn(
             '--prefer-subagent not supported by ' +
@@ -673,18 +715,25 @@ async function runExecute (argv:{
         console.log(
             `Provider:     ${providerPath ?? providerMissing}`
         )
-        if (_adversarial) {
+        if (adversarial) {
+            if (cliOverride) {
+                console.log(
+                    `              ${provider} ` +
+                    'overrides implement ' +
+                    `(${adversarial.implementStr})`
+                )
+            }
             console.log(
-                `Implement:    ${_adversarial.implementStr}`
+                `Implement:    ${adversarial.implementStr}`
             )
             console.log(
-                `Review:       ${_adversarial.reviewStr}`
+                `Review:       ${adversarial.reviewStr}`
             )
             console.log(
-                `maxRounds:    ${_adversarial.maxRounds}`
+                `maxRounds:    ${adversarial.maxRounds}`
             )
             console.log(
-                `minRounds:    ${_adversarial.minRounds}`
+                `minRounds:    ${adversarial.minRounds}`
             )
         }
         if (isolated) {
@@ -737,7 +786,7 @@ async function runExecute (argv:{
             specBody: fallbackSpec,
             specBodies,
             agentCmd,
-            model: argv.model ?? null,
+            model: model ?? null,
             timeout,
             logsDir,
             featureName: firstFeatureName,
@@ -759,11 +808,18 @@ async function runExecute (argv:{
                     reviewPath: reviewPathFor(loaded.issuesDirs),
                     forkedFrom: plan?.forkedFrom ?? undefined,
                 },
+            adversarial: adversarial ?
+                {
+                    review: adversarial.review,
+                    maxRounds: adversarial.maxRounds,
+                    minRounds: adversarial.minRounds,
+                } :
+                undefined,
         })
     } else {
         result = await runWaves(
             allTickets, fallbackSpec,
-            agentCmd, argv.model ?? null,
+            agentCmd, model ?? null,
             timeout,
             logsDir,
             testCmd,

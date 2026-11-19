@@ -86,3 +86,45 @@ Gotchas:
 - The dry-run adversarial block prints before both the
   isolated and non-isolated branches, so it appears in both
   paths
+
+## 2026-11-19 -- US-004: A bare redeye uses the implement role
+
+Made the run command's provider positional optional (`$0 [provider]
+[turns]`). When `.redeye.json` sets an adversarial implement role
+and no CLI provider is given, the implement role's provider and
+model are used. A CLI provider overrides implement and logs a
+one-liner; `--dry-run` repeats the override. Without config and
+without a provider, the usage error is unchanged (exit 1 with help
+text).
+
+Changes in `src/index.ts`:
+- `.check()` validates no-config + no-provider, throws a clear
+  Error that yargs routes to .fail() as a usage error (exit 1,
+  help text shown)
+- `runExecute` resolves `provider` and `model` from the implement
+  role when no CLI provider is given
+- `cliOverride` flag logs the override before provider lookup
+- dry-run block prints the override line
+- The resolved adversarial review role is threaded through to
+  `runWavesIsolated` as an `adversarial` option, but no reviewer
+  is started yet
+
+Changes in `src/orchestrator.ts`:
+- `runWavesIsolated` gains an optional `adversarial` parameter
+  carrying the parsed review role, maxRounds and minRounds, for
+  later stories to consume
+
+Added three CLI tests in `test/integration.test.ts`:
+- Bare redeye with adversarial config uses implement provider in
+  --dry-run
+- CLI provider overrides implement in --dry-run
+- No config and no provider exits 1 with help text
+
+README already documents the optional provider in the flags table
+and in the .redeye.json section from US-002/US-003.
+
+Gotchas:
+- yargs `.check()` throws an Error whose message arrives as
+  fail(msg, err, yargs), so both msg and err are truthy -- the
+  fail handler's `if (err && !msg)` branch is NOT taken, help
+  text IS shown, and exit code is 1. This matches the AC

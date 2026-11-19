@@ -6976,3 +6976,108 @@ test('CLI subprocess - --dry-run without adversarial key ' +
         })
     }
 })
+
+// --- US-004: bare redeye uses implement role ---
+
+test('CLI subprocess - bare redeye with adversarial config ' +
+    'uses implement provider in --dry-run', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude -m opus',
+                    review: 'pi -m gpt4',
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code, stdout } = await spawnCli([
+            '--spec', FEAT, '--dry-run',
+        ], { cwd: projectDir })
+
+        t.equal(code, 0, 'exits 0')
+        t.ok(
+            stdout.includes('claude'),
+            'provider line shows implement provider',
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - CLI provider overrides implement ' +
+    'in --dry-run', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude -m opus',
+                    review: 'pi -m gpt4',
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code, stdout } = await spawnCli([
+            MOCK_AGENT, '--spec', FEAT, '--dry-run',
+        ], { cwd: projectDir })
+
+        t.equal(code, 0, 'exits 0')
+        t.ok(
+            stdout.includes('overrides implement'),
+            'stdout says the CLI provider overrides implement',
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - no config and no provider exits 1 ' +
+    'with help text', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const { code, stderr } = await spawnCli([
+            '--spec', FEAT,
+        ], { cwd: projectDir })
+
+        t.equal(code, 1, 'exits 1')
+        t.ok(
+            stderr.includes('provider') ||
+            stderr.includes('command'),
+            'stderr mentions provider or command',
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
