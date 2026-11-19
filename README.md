@@ -273,8 +273,8 @@ the model ID in `~/.pi/agent/models.json`.
           "maxTokens": 16384
         },
         {
-          "id": "Qwen/Qwen3.5-9B-turbo",
-          "name": "Tiiny Qwen 3.5 9B turbo",
+          "id": "Qwen/Qwen3.5-9B-Turbo",
+          "name": "Tiiny Qwen 3.5 9B Turbo",
           "contextWindow": 131072,
           "maxTokens": 16384
         },
@@ -314,9 +314,30 @@ tiiny load Qwen/Qwen3.6-35B-A3B-turbo
 caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1
 ```
 
-Note the `concurrency 1`. We do that because the box answers requests
-one by one. A wave of five tickets takes about as long as running them
-in sequence. Each agent's clock runs while it waits.
+>
+> [!TIP]  
+> `--concurrency 1`
+> The box answers one request at a time, and it keeps a prompt cache for only
+> one conversation. With one agent, each turn reuses the cache from the turn
+> before, so the box only reads the new tokens. With two or more agents,
+> their requests alternate, each one evicts the other's cache, and every turn
+> reads the agent's whole context again, which slows things down.
+>
+
+
+Measured on the box with `Qwen3.5-9B-Turbo` and a 23k token prompt:
+
+| Request                           | Time  |
+|-----------------------------------|-------|
+| Cold                              | 17.8s |
+| Same prefix, plus one more turn   | 1.4s  |
+| Same prefix, after another prompt | 17.9s |
+
+The box reads a prompt at about 1,300 tokens per second, so an agent with
+a 50k token context spends about 40 seconds per turn when its cache is
+gone. In a run with `--concurrency 2`, turns took about 100 seconds each,
+because each agent also waited for the other's request. Extra agents make
+the whole run slower, not just each agent.
 
 
 #### 1. Load the right model
@@ -328,6 +349,13 @@ tiiny load Qwen/Qwen3.6-35B-A3B
 > [!NOTE]  
 > In tests, `tiiny` answers one request at a time no matter which model
 > is loaded, so the `n%` NPU values don't really matter.
+>
+
+>
+> [!WARNING]
+> The model passed to `-m` must be the one loaded on the box. Otherwise
+> the box returns a 404, `pi` still exits 0, and each attempt is recorded
+> as "no commits", using up the ticket's retries in seconds.
 >
 
 ##### Qwen3 Coder Next -- 94% NPU
@@ -382,15 +410,9 @@ caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.5-9B-Turbo --concurrency 1
 caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1
 ```
 
-Note `--concurrency 1`. The `tiiny` answers one request at a time, so extra
-agents only slow each other down.
-
-
-##### Qwen3.5-9B-turbo
-
-```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.5-9B-turbo --concurrency 2
-```
+Keep `--concurrency 1` with every `tiiny` model. A higher value makes
+the agents evict each other's prompt cache (see
+[Local Model With `pi`](#local-model-with-pi)).
 
 
 ## `.redeye.json`
