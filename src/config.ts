@@ -1,3 +1,5 @@
+import { readFileSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
 import yargs from 'yargs'
 import { ALL_EFFORT_LEVELS } from './retry.js'
 
@@ -98,4 +100,95 @@ export function parseRoleString (input:string):ParsedRole {
         maxTurns: parsed.maxTurns as number|undefined,
         preferSubagent,
     }
+}
+
+export interface AdversarialConfig {
+    implement:ParsedRole
+    review:ParsedRole
+    maxRounds:number
+    minRounds:number
+}
+
+function isPositiveInteger (v:unknown):v is number {
+    return typeof v === 'number' &&
+        Number.isInteger(v) &&
+        v > 0
+}
+
+// Reads .redeye.json from `root`. Returns null when the file
+// is absent or has no adversarial key (loop off). Throws on
+// any validation error so the caller can exit before work
+// starts.
+export function loadConfig (
+    root:string
+):AdversarialConfig|null {
+    const file = join(root, '.redeye.json')
+    if (!existsSync(file)) return null
+
+    let raw:unknown
+    try {
+        raw = JSON.parse(readFileSync(file, 'utf8'))
+    } catch (err) {
+        const msg = err instanceof Error ?
+            err.message :
+            String(err)
+        throw new Error(
+            `.redeye.json: ${msg}`
+        )
+    }
+
+    if (
+        raw === null ||
+        typeof raw !== 'object' ||
+        !('adversarial' in raw)
+    ) {
+        return null
+    }
+
+    const adv = (raw as Record<string, unknown>)
+        .adversarial as Record<string, unknown>|null
+    if (adv === null || typeof adv !== 'object') {
+        return null
+    }
+
+    if (typeof adv.implement !== 'string') {
+        throw new Error(
+            '.redeye.json: adversarial.implement is ' +
+            'required (a role string)'
+        )
+    }
+    if (typeof adv.review !== 'string') {
+        throw new Error(
+            '.redeye.json: adversarial.review is ' +
+            'required (a role string)'
+        )
+    }
+
+    const implement = parseRoleString(adv.implement)
+    const review = parseRoleString(adv.review)
+
+    const maxRounds = adv.maxRounds ?? 3
+    const minRounds = adv.minRounds ?? 1
+
+    if (!isPositiveInteger(maxRounds)) {
+        throw new Error(
+            '.redeye.json: maxRounds must be a ' +
+            'positive integer'
+        )
+    }
+    if (!isPositiveInteger(minRounds)) {
+        throw new Error(
+            '.redeye.json: minRounds must be a ' +
+            'positive integer'
+        )
+    }
+    if (minRounds > maxRounds) {
+        throw new Error(
+            '.redeye.json: minRounds (' + minRounds +
+            ') must not exceed maxRounds (' +
+            maxRounds + ')'
+        )
+    }
+
+    return { implement, review, maxRounds, minRounds }
 }

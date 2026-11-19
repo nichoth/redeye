@@ -38,7 +38,13 @@ so they can't drift as long as you install the skills with this package.
   * [`codex` + Terra](#codex--terra)
   * [Local Model With `pi`](#local-model-with-pi)
     + [1. Load the right model](#1-load-the-right-model)
+      - [Qwen3 Coder Next -- 94% NPU](#qwen3-coder-next----94%25-npu)
+      - [Qwen3.6 35B A3B Turbo -- 45% NPU](#qwen36-35b-a3b-turbo----45%25-npu)
+      - [Qwen/Qwen3.6-27B](#qwenqwen36-27b)
+      - [GLM 4.7 flash -- 57% NPU](#glm-47-flash----57%25-npu)
     + [2. Run the Loop](#2-run-the-loop)
+      - [Qwen3.6-35B-A3B-turbo](#qwen36-35b-a3b-turbo)
+      - [Qwen3.5-9B-turbo](#qwen35-9b-turbo)
 - [Command Line Arguments](#command-line-arguments)
   * [Notes](#notes)
   * [`--spec ` option](#--spec--option)
@@ -361,6 +367,15 @@ tiiny load zai-org/GLM-4.7-Flash
 
 #### 2. Run the Loop
 
+##### Qwen3.5-9B-Turbo
+
+[!TIP]
+> The fastest model.
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.5-9B-Turbo --concurrency 1
+```
+
 ##### Qwen3.6-35B-A3B-turbo
 
 ```sh
@@ -376,6 +391,41 @@ agents only slow each other down.
 ```sh
 caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.5-9B-turbo --concurrency 2
 ```
+
+
+## `.redeye.json`
+
+An optional config file at the repo root. When present with an
+`adversarial` key, each ticket goes through a cross-model review loop
+before it can merge.
+
+```json
+{
+  "adversarial": {
+    "implement": "claude -m opus --effort high",
+    "review": "pi --effort medium",
+    "maxRounds": 3,
+    "minRounds": 1
+  }
+}
+```
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `implement` | yes | -- | Role string for the implementing agent. Same syntax as the CLI: `<provider> [-m model] [--effort level] [--max-turns n] [--prefer-subagent model]` |
+| `review` | yes | -- | Role string for the reviewing agent |
+| `maxRounds` | no | `3` | Maximum review/fix rounds per ticket |
+| `minRounds` | no | `1` | Minimum rounds before a clean review can pass the ticket |
+
+A missing file or a file with no `adversarial` key leaves
+behavior unchanged. Invalid JSON, a missing role, or an
+invalid role string stops the run before any branch or
+worktree is created (exit 2).
+
+A role string with `--max-turns` or `--prefer-subagent` on a
+provider that does not support them is not an error -- redeye
+warns and drops the flag for that role, the same as the CLI
+path.
 
 
 ## Command Line Arguments

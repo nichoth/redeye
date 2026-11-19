@@ -29,7 +29,7 @@ import {
     type EffortLevel,
     type Ticket,
 } from './orchestrator.js'
-import { ROLE_OPTIONS } from './config.js'
+import { ROLE_OPTIONS, loadConfig } from './config.js'
 import { detectTestCmd, detectInstallCmd } from './testcmd.js'
 import { resolveExecutable } from './preflight.js'
 import { createDisplay } from './display.js'
@@ -550,6 +550,10 @@ async function runExecute (argv:{
 
     let loaded = loadTicketsOrExit(selections)
     if (loaded.allTickets.length === 0) return
+
+    // Load .redeye.json before any provider or git work.
+    // Validation errors stop the run before anything is created.
+    const _adversarial = loadConfig(process.cwd())
 
     // Stop before the dry run, provider lookup and any branch work
     // when every ready-for-agent ticket is blocked. A resumed

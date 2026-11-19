@@ -1,5 +1,16 @@
 import { test } from '@substrate-system/tapzero'
-import { parseRoleString } from '../src/config.js'
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import {
+    parseRoleString,
+    loadConfig,
+    type AdversarialConfig,
+} from '../src/config.js'
+
+function tmp ():string {
+    return mkdtempSync(join(tmpdir(), 'redeye-cfg-'))
+}
 
 test('parse a full role string', t => {
     const result = parseRoleString(
@@ -74,4 +85,250 @@ test('--max-turns alone', t => {
     const result = parseRoleString('claude --max-turns 25')
     t.equal(result.provider, 'claude')
     t.equal(result.maxTurns, 25)
+})
+
+// --- loadConfig tests ---
+
+test('loadConfig - missing file returns loop off', t => {
+    const dir = tmp()
+    try {
+        const cfg = loadConfig(dir)
+        t.equal(cfg, null, 'null means loop off')
+    } finally {
+        rmSync(dir, { recursive: true, force: true })
+    }
+})
+
+test('loadConfig - file with no adversarial key returns ' +
+    'loop off', t => {
+    const dir = tmp()
+    try {
+        writeFileSync(
+            join(dir, '.redeye.json'),
+            JSON.stringify({ something: 'else' })
+        )
+        const cfg = loadConfig(dir)
+        t.equal(cfg, null, 'null means loop off')
+    } finally {
+        rmSync(dir, { recursive: true, force: true })
+    }
+})
+
+test('loadConfig - valid adversarial config', t => {
+    const dir = tmp()
+    try {
+        writeFileSync(
+            join(dir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude -m opus',
+                    review: 'pi --effort high',
+                },
+            })
+        )
+        const cfg = loadConfig(dir) as AdversarialConfig
+        t.ok(cfg, 'config is not null')
+        t.equal(
+            cfg.implement.provider, 'claude',
+            'implement provider'
+        )
+        t.equal(cfg.implement.model, 'opus')
+        t.equal(cfg.review.provider, 'pi')
+        t.equal(cfg.review.effort, 'high')
+        t.equal(cfg.maxRounds, 3, 'maxRounds defaults to 3')
+        t.equal(cfg.minRounds, 1, 'minRounds defaults to 1')
+    } finally {
+        rmSync(dir, { recursive: true, force: true })
+    }
+})
+
+test('loadConfig - explicit maxRounds and minRounds', t => {
+    const dir = tmp()
+    try {
+        writeFileSync(
+            join(dir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude',
+                    review: 'pi',
+                    maxRounds: 5,
+                    minRounds: 2,
+                },
+            })
+        )
+        const cfg = loadConfig(dir) as AdversarialConfig
+        t.equal(cfg.maxRounds, 5)
+        t.equal(cfg.minRounds, 2)
+    } finally {
+        rmSync(dir, { recursive: true, force: true })
+    }
+})
+
+test('loadConfig - missing implement rejects', t => {
+    const dir = tmp()
+    try {
+        writeFileSync(
+            join(dir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    review: 'pi',
+                },
+            })
+        )
+        t.throws(
+            () => loadConfig(dir),
+            /implement/i
+        )
+    } finally {
+        rmSync(dir, { recursive: true, force: true })
+    }
+})
+
+test('loadConfig - missing review rejects', t => {
+    const dir = tmp()
+    try {
+        writeFileSync(
+            join(dir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude',
+                },
+            })
+        )
+        t.throws(
+            () => loadConfig(dir),
+            /review/i
+        )
+    } finally {
+        rmSync(dir, { recursive: true, force: true })
+    }
+})
+
+test('loadConfig - invalid JSON rejects', t => {
+    const dir = tmp()
+    try {
+        writeFileSync(
+            join(dir, '.redeye.json'),
+            '{ not valid json'
+        )
+        t.throws(
+            () => loadConfig(dir),
+            /parse|json|syntax/i
+        )
+    } finally {
+        rmSync(dir, { recursive: true, force: true })
+    }
+})
+
+test('loadConfig - invalid role string rejects', t => {
+    const dir = tmp()
+    try {
+        writeFileSync(
+            join(dir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude --timeout 60',
+                    review: 'pi',
+                },
+            })
+        )
+        t.throws(
+            () => loadConfig(dir),
+            /unknown.*timeout/i
+        )
+    } finally {
+        rmSync(dir, { recursive: true, force: true })
+    }
+})
+
+test('loadConfig - maxRounds not a positive integer ' +
+    'rejects', t => {
+    const dir = tmp()
+    try {
+        writeFileSync(
+            join(dir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude',
+                    review: 'pi',
+                    maxRounds: 0,
+                },
+            })
+        )
+        t.throws(
+            () => loadConfig(dir),
+            /maxRounds/i
+        )
+    } finally {
+        rmSync(dir, { recursive: true, force: true })
+    }
+})
+
+test('loadConfig - maxRounds float rejects', t => {
+    const dir = tmp()
+    try {
+        writeFileSync(
+            join(dir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude',
+                    review: 'pi',
+                    maxRounds: 2.5,
+                },
+            })
+        )
+        t.throws(
+            () => loadConfig(dir),
+            /maxRounds/i
+        )
+    } finally {
+        rmSync(dir, { recursive: true, force: true })
+    }
+})
+
+test('loadConfig - minRounds greater than maxRounds ' +
+    'rejects', t => {
+    const dir = tmp()
+    try {
+        writeFileSync(
+            join(dir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude',
+                    review: 'pi',
+                    maxRounds: 2,
+                    minRounds: 5,
+                },
+            })
+        )
+        t.throws(
+            () => loadConfig(dir),
+            /minRounds/i
+        )
+    } finally {
+        rmSync(dir, { recursive: true, force: true })
+    }
+})
+
+test('loadConfig - minRounds not a positive integer ' +
+    'rejects', t => {
+    const dir = tmp()
+    try {
+        writeFileSync(
+            join(dir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude',
+                    review: 'pi',
+                    minRounds: -1,
+                },
+            })
+        )
+        t.throws(
+            () => loadConfig(dir),
+            /minRounds/i
+        )
+    } finally {
+        rmSync(dir, { recursive: true, force: true })
+    }
 })

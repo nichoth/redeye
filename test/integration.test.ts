@@ -6777,3 +6777,119 @@ test('graph - read-only, git-free, no provider or branch output',
         }
     }
 )
+
+// --- .redeye.json config loading tests ---
+
+test('CLI subprocess - invalid .redeye.json exits 2 with ' +
+    'no branch', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            '{ not valid json'
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code, stderr } = await spawnCli([
+            MOCK_AGENT, '--spec', FEAT,
+        ], { cwd: projectDir })
+
+        t.equal(code, 2, 'exits 2')
+        t.ok(
+            !hasStackLine(stderr),
+            'no stack trace'
+        )
+        t.equal(
+            integrationBranches(projectDir), '',
+            'no integration branch created'
+        )
+        t.equal(
+            headBranch(projectDir), 'main',
+            'still on main'
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - .redeye.json role with unsupported ' +
+    'flag exits 2 with no branch', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude --timeout 60',
+                    review: 'pi',
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code, stderr } = await spawnCli([
+            MOCK_AGENT, '--spec', FEAT,
+        ], { cwd: projectDir })
+
+        t.equal(code, 2, 'exits 2')
+        t.ok(
+            !hasStackLine(stderr),
+            'no stack trace'
+        )
+        t.equal(
+            integrationBranches(projectDir), '',
+            'no integration branch created'
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - .redeye.json with pi --max-turns ' +
+    '40 passes --dry-run', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude',
+                    review: 'pi --max-turns 40',
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code } = await spawnCli([
+            MOCK_AGENT, '--spec', FEAT, '--dry-run',
+        ], { cwd: projectDir })
+
+        t.equal(code, 0, 'exits 0')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})

@@ -27,3 +27,41 @@ Gotchas:
 - tapzero `t.throws` regex matches `caught.message`, not the
   full string; yargs error messages say "Unknown argument: X"
   without the `--` prefix
+
+## 2026-11-19 -- US-002: Load and validate .redeye.json
+
+Added `loadConfig(root)` to `src/config.ts`:
+- Reads `.redeye.json` from the given directory
+- Returns `null` (loop off) when the file is missing or has
+  no `adversarial` key
+- When `adversarial` is present, requires `implement` and
+  `review` as role strings parsed with `parseRoleString`
+- Defaults `maxRounds` to 3 and `minRounds` to 1; validates
+  both are positive integers and minRounds <= maxRounds
+- Throws on invalid JSON, missing role, invalid role string,
+  or invalid round values
+
+Integrated into `runExecute` in `src/index.ts`:
+- `loadConfig(process.cwd())` is called after ticket loading
+  but before `resolveExecutable` and before any git/worktree
+  work
+- Errors thrown by `loadConfig` are caught by the yargs
+  `.fail()` handler and routed through `formatErrorMessage`
+  (exit 2, no stack trace)
+
+Added 12 pure tests to `test/config.test.ts` covering all
+validation paths. Added 3 CLI tests to
+`test/integration.test.ts`:
+- Invalid JSON exits 2 with no integration branch
+- Role string with unsupported flag exits 2 with no branch
+- `pi --max-turns 40` in a role string passes `--dry-run`
+
+Added a `.redeye.json` section to README describing the file
+shape and role-string syntax.
+
+Gotchas:
+- The loaded config is currently unused (`_adversarial`);
+  later stories (US-004+) will wire it into the run
+- `loadConfig` throws, not returns an error, so the yargs
+  async handler's rejection routes it to `.fail(null, err)`
+  which does `formatErrorMessage` + exit 2
