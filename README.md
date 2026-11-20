@@ -25,6 +25,8 @@ so they can't drift as long as you install the skills with this package.
   * [Install Dependency Skills](#install-dependency-skills)
 - [Example Workflow](#example-workflow)
   * [Create Issues](#create-issues)
+- [Adversarial Review](#adversarial-review)
+  * [Turn It On](#turn-it-on)
 - [Examples](#examples)
   * [Keep Your Machine Awake](#keep-your-machine-awake)
     + [Mac OS](#mac-os)
@@ -45,9 +47,10 @@ so they can't drift as long as you install the skills with this package.
     + [2. Run the Loop](#2-run-the-loop)
       - [Qwen3.5-9B-Turbo](#qwen35-9b-turbo)
       - [Qwen3.6-35B-A3B-turbo](#qwen36-35b-a3b-turbo)
+      - [Qwen3.6-27B-Turbo](#qwen36-27b-turbo)
       - [Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo](#huihui-ornith-15-35b-a3b-abliterated-turbo)
-      - [Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo](#huihui-ornith-15-35b-a3b-abliterated-turbo-1)
       - [Qwen3.8-27B-heretic-ara-Turbo](#qwen38-27b-heretic-ara-turbo)
+      - [Ornith-1.5-35B-A3B-Turbo](#ornith-15-35b-a3b-turbo)
 - [`.redeye.json`](#redeyejson)
 - [Command Line Arguments](#command-line-arguments)
   * [Notes](#notes)
@@ -62,6 +65,7 @@ so they can't drift as long as you install the skills with this package.
   * [`.scratch/` in git](#scratch-in-git)
   * [Review](#review)
   * [Status display](#status-display)
+- [See Also](#see-also)
 
 <!-- tocstop -->
 
@@ -173,6 +177,53 @@ a spec text description.
 > then follow with `to-tickets`.
 >
 
+## Adversarial Review
+
+You have the option of running this in adversarial mode, which means it
+will do a classic
+[adversarial review loop](https://gist.github.com/dollspace-gay/45c95ebfb5a3a3bae84d8bebd662cc25)
+before marking work as complete.
+
+Adversarial mode is off by default. Without it, each ticket is done when
+its agent exits and the test command passes.
+
+With adversarial mode on, every ticket that passes the test gate is
+checked by a second agent before it can merge. You configure two roles:
+
+* **implement** -- the agent that writes the code, and fixes whatever
+  the reviewer finds
+* **review** -- a different model that reads the ticket's branch and
+  reports findings. It never edits code.
+
+Each round, the reviewer reviews the branch. If findings are open, the
+implement agent fixes them and the test command runs again, then the
+next round starts. Only the reviewer can close a finding. The ticket
+merges once a round ends with no open findings (and at least
+`minRounds` rounds have run). If findings are still open after
+`maxRounds`, the ticket is set to `ready-for-human`, its branch is
+kept, and it is not merged.
+
+The rounds are logged to `.scratch/<feature>/reviews/<ticket file>`,
+and the status display shows the current round and role
+(`review 2/3`, `fix 2/3`). The end-of-run review pass also uses the
+review role.
+
+### Turn It On
+
+`init` writes an `adversarial` key to `.redeye.json` at the repo root,
+keeping any other keys already in the file.
+`maxRounds` and `minRounds` get their defaults (`3` and `1`);
+edit the file to change them. See [`.redeye.json`](#redeyejson).
+
+A provider on the command line (`npx redeye claude ...`) overrides the
+implement role, and the review role stays as configured.
+
+>
+> [!TIP]
+> Use a different model for each role. If both roles resolve to the
+> same model, redeye warns that the cross-model check is lost.
+>
+
 ## Examples
 
 After you have the tickets, use the `redeye` loop to execute.
@@ -181,12 +232,17 @@ possible, with respect to the ticket dependencies.
 
 ### Keep Your Machine Awake
 
-This is expected to run for a long time, like overnight.
+This is expected to run for a long time, like overnight. I use command
+`caffeinate` to prevent the computer from sleeping.
 
 #### Mac OS
 
 Use `caffeinate` to prevent your machine from sleeping. These examples will
 keep the machine awake, but the display can still go dark.
+
+
+---
+
 
 ### Claude Opus 4.6
 
@@ -305,22 +361,15 @@ the model ID in `~/.pi/agent/models.json`.
 > 
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B --concurrency 1
-```
-
-Or with `-turbo` model:
-
->
-> [!NOTE]  
-> Turbo mode is only about 10% faster.
->
-
-```sh
 tiiny load Qwen/Qwen3.6-35B-A3B-turbo
 ```
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1 --timeout 900 --retries 1
+```
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1 --timeout 900 --retries 1
 ```
 
 >
@@ -355,16 +404,10 @@ the whole run slower, not just each agent.
 tiiny load Qwen/Qwen3.6-35B-A3B
 ```
 >
-> [!NOTE]  
-> In tests, `tiiny` answers one request at a time no matter which model
-> is loaded, so the `n%` NPU values don't really matter.
->
-
->
 > [!WARNING]
 > The model passed to `-m` must be the one loaded on the box. Otherwise
 > the box returns a 404, `pi` still exits 0, and each attempt is recorded
-> as "no commits", using up the ticket's retries in seconds.
+> as "no commits", using up the ticket's retries.
 >
 
 ##### Qwen3 Coder Next -- 94% NPU
@@ -416,7 +459,7 @@ the agents evict each other's prompt cache (see
 >
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.5-9B-Turbo --concurrency 1
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.5-9B-Turbo --concurrency 1 --timeout 900 --retries 1
 ```
 
 ---
@@ -424,7 +467,7 @@ caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.5-9B-Turbo --concurrency 1
 ##### Qwen3.6-35B-A3B-turbo
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1 --timeout 900 --retries 1
 ```
 
 ---
@@ -432,27 +475,27 @@ caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1
 ##### Qwen3.6-27B-Turbo
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.8-27B-Turbo --concurrency 1
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.8-27B-Turbo --concurrency 1 --timeout 900 --retries 1
 ```
 
 
 ##### Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/huihui-ai/Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo --concurrency 1
+caffeinate -i npx redeye pi -m tiiny/huihui-ai/Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo --concurrency 1 --timeout 900 --retries 1
 ```
 
 
 ##### Qwen3.8-27B-heretic-ara-Turbo
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/trohrbaugh/Qwen3.8-27B-heretic-ara-Turbo --concurrency 1
+caffeinate -i npx redeye pi -m tiiny/trohrbaugh/Qwen3.8-27B-heretic-ara-Turbo --concurrency 1 --timeout 900 --retries 1
 ```
 
 ##### Ornith-1.5-35B-A3B-Turbo
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/ornith-ai/Ornith-1.5-35B-A3B-Turbo --concurrency 1
+caffeinate -i npx redeye pi -m tiiny/ornith-ai/Ornith-1.5-35B-A3B-Turbo --concurrency 1 --timeout 900 --retries 1
 ```
 
 
@@ -863,3 +906,10 @@ Known limit: with `-X`, the run stops at the first merge conflict. A
 ticket whose branch succeeded but came after the conflicting branch is
 never merged, and its row stays on the cyan "waiting to merge" dot when
 the run stops.
+
+## See Also
+
+* [Verification-Driven Development (VDD)](https://gist.github.com/dollspace-gay/45c95ebfb5a3a3bae84d8bebd662cc25)
+  (gist)
+* [`roast` CLI tool](https://github.com/bluesky-social/roast)
+* [addyosmani/adverse](https://github.com/addyosmani/adverse)
