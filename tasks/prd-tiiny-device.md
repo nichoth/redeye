@@ -163,6 +163,16 @@ the device at the same time.
       tiiny-router's Python controller uses, so the two cannot both
       take the lock. If the `flock` itself is busy, `acquire` reports
       that and does not write.
+- [ ] The `flock` critical section runs in a `python3` helper that
+      redeye spawns (see Technical Considerations). redeye adds no
+      native dependency.
+- [ ] Before the first lock operation, redeye checks that `python3`
+      runs (for example `python3 -c 'import fcntl'` exits 0 within a
+      few seconds). If `python3` is missing, or is the macOS stub
+      that asks to install the Command Line Tools, redeye exits
+      non-zero before creating any worktree, with a message that says
+      to install Python 3 or pass `--no-device-lock`. It never hangs
+      waiting on the stub's install prompt.
 - [ ] `release` writes the released state (a write, not a delete) and
       only succeeds when redeye's owner matches the holder.
 - [ ] redeye's owner string is `redeye:<feature>:<pid>`, and the task
@@ -367,13 +377,34 @@ does with a Tiiny device and how to configure it.
 
 ## Technical Considerations
 
-- **`flock` from Node.** Node has no built-in `flock`. tiiny-router's
-  controller uses `fcntl.flock` in Python, so a lock-file-only scheme
-  (for example `O_EXCL` on a sidecar file) would not exclude it. Two
-  options: run the critical section through a short `python3` helper
-  (macOS ships `python3`; tiiny-router already requires it), or add a
-  small native dependency that exposes `flock`. The PRD requires the
-  behavior (US-003), not the mechanism.
+- **`flock` through a `python3` helper.** Node has no built-in
+  `flock`, and tiiny-router's controller locks with `fcntl.flock`
+  (`flock(2)`), so redeye must use the same call to exclude it.
+  `mkdir`/`O_EXCL` lock files and POSIX record locks (`lockf`,
+  `fcntl(F_SETLK)`) do not exclude a `flock` holder. redeye spawns
+  `python3` to run each lock operation (acquire, renew, release) as
+  one short critical section: open the lock file, `flock(LOCK_EX |
+  LOCK_NB)`, read, decide, write, unlock, then print the result as
+  JSON on stdout for redeye to parse. The flock is held for
+  milliseconds; the lock's lasting state is the file's JSON contents
+  and their expiry. A spawn every 5 minutes for renewal costs
+  nothing noticeable.
+  - Why not a native dependency: the usual package (`fs-ext`) has no
+    prebuilt binaries and compiles with `node-gyp` on every install,
+    which needs Xcode Command Line Tools on macOS and a C++ toolchain
+    on Linux, and would be installed for every redeye user, not only
+    Tiiny users. Anyone sharing this lock already runs tiiny-router's
+    Python controller, so they already have `python3`.
+  - The helper script ships inside the package (for example
+    `src/tiiny-lock.py`) and is run with `python3 -I` so nothing in
+    the working directory can shadow its imports. The build's `copy`
+    script in `package.json` copies only `skills/` and
+    `docs-templates/` today, so it must also copy the helper into
+    `dist/`, and a test must check the helper is present in the
+    packed tarball (`npm pack --dry-run`).
+  - `flock` is not reliable on network filesystems. The default lock
+    path is on the local disk, so this only matters if a user points
+    `TIINY_HOME` or `TIINY_LOCK_FILE` at a network mount.
 - **Where the code goes.** A new `src/tiiny.ts` (config, device
   client, lock, hold) keeps the orchestrator change small: startup
   and shutdown hooks in `runWaves` / `runWavesIsolated`, and the

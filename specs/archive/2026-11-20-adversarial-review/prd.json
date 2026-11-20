@@ -1,0 +1,409 @@
+{
+  "project": "redeye",
+  "branchName": "ralph/adversarial-review",
+  "description": "Per-ticket cross-model adversarial review: an optional loop, configured in .redeye.json, where a review-role model reviews each ticket branch before merge and the implement-role model must fix or dispute each finding. Only the reviewer can close a finding. Source: tasks/prd-adversarial-review.md and .scratch/adversarial-review/spec.md. With no .redeye.json or no adversarial key, behavior is unchanged. Tests assert observable results (ticket Status, merged or not, branch exists, progress.md, review log contents, which role got which prompt, exit code), never prompt wording, log wording or internal call order.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Parse role strings",
+      "description": "As a redeye user, I want to write the implement and review roles as the same command strings I would type after `redeye`, so that I do not have to learn a second config syntax. (From .scratch/adversarial-review/issues/01.)",
+      "acceptanceCriteria": [
+        "New module src/config.ts exports a role-string parser",
+        "The parser uses the same option definitions as the yargs run command; the definitions are shared, not copied",
+        "\"claude -m opus --effort high --max-turns 40 --prefer-subagent\" parses to provider claude, model opus, effort high, max turns 40, prefer-subagent true",
+        "--model works as the long form of -m",
+        "Any flag other than -m/--model, --effort, --max-turns and --prefer-subagent is rejected with an error",
+        "An extra positional (e.g. \"claude opus\") is rejected",
+        "An empty string is rejected",
+        "src/config.ts has no value imports from src/orchestrator.ts, and AGENTS.md's module-boundaries list names config",
+        "src/config.ts is added to the second esbuild call in build-esm in package.json",
+        "Pure tests in new test/config.test.ts, added to TESTS in scripts/test.sh",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Load and validate .redeye.json",
+      "description": "As a redeye user, I want a malformed .redeye.json to stop the run before anything is created, so that a typo cannot start a run with the wrong models. (From ticket 01.)",
+      "acceptanceCriteria": [
+        "src/config.ts exports a loader that reads .redeye.json from the repo root",
+        "A missing file returns loop off; so does a file with no adversarial key",
+        "When adversarial is present, implement and review are required and each must parse with the US-001 parser",
+        "maxRounds defaults to 3 and minRounds defaults to 1",
+        "A maxRounds or minRounds that is not a positive integer is rejected, as is minRounds greater than maxRounds",
+        "runExecute in src/index.ts loads the config once, before resolveExecutable and before any git or worktree work",
+        "CLI test (spawnCli): a .redeye.json that is not valid JSON exits 2 and no branch or worktree is created",
+        "CLI test: a role string with an unsupported flag exits 2 and no branch or worktree is created",
+        "Errors go through formatErrorMessage (no stack trace)",
+        "A role string with --max-turns or --prefer-subagent on a provider that lacks them is not a config error: redeye warns and drops the flag for that role, as the CLI path does today",
+        "CLI test: a .redeye.json whose role is \"pi --max-turns 40\" passes --dry-run with exit 0",
+        "Existing integration tests pass unchanged",
+        "README has a short .redeye.json section describing the file shape and role-string syntax",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Show the config in --dry-run",
+      "description": "As a redeye user, I want --dry-run to show the implement and review roles and the round limits, so that I can check my config without spending tokens. (From ticket 01.)",
+      "acceptanceCriteria": [
+        "With adversarial configured, --dry-run prints the implement role string, the review role string, maxRounds and minRounds",
+        "With no adversarial key, --dry-run output is unchanged",
+        "CLI test checks that the configured values appear in the output, without matching surrounding wording",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "A bare redeye uses the implement role",
+      "description": "As a redeye user with adversarial configured, I want a bare `redeye` to use the implement command, and a provider given on the command line to override it, so that I do not repeat the provider on every run but can still try another model. (From ticket 02.)",
+      "acceptanceCriteria": [
+        "The run command's provider positional becomes optional ($0 [provider] [turns])",
+        "With adversarial configured and no provider argument, tickets run with the implement role's provider and model",
+        "With a provider argument, that provider is used and one line is logged saying it overrides implement",
+        "--dry-run says when a command-line provider overrides implement",
+        "With no config and no provider, the usage error is unchanged (exit 1 with help text)",
+        "Every yargs command handler still returns a promise",
+        "The resolved review role is passed through to the runWavesIsolated call site, but no reviewer is started yet",
+        "README usage section shows the provider as optional when .redeye.json sets implement",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Merge role-string flags with run-wide CLI flags",
+      "description": "As a redeye user, I want flags inside a role string to win for that role, and CLI flags to fill in whatever the string leaves out, so that I can set run-wide defaults on the command line. (From ticket 02.)",
+      "acceptanceCriteria": [
+        "src/config.ts exports a pure function that merges a parsed role with the run's CLI options",
+        "A flag set in the role string wins over the same CLI flag (role --effort high + CLI --effort low gives high)",
+        "A flag the role string leaves out takes the CLI value",
+        "The merge applies separately to the implement and review roles",
+        "Pure tests in test/config.test.ts",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Preflight both roles and warn on same model",
+      "description": "As a redeye user, I want both role executables checked at startup, and a warning when both roles resolve to the same model, so that I notice a missing binary or a lost cross-model check before a run starts. (From ticket 02.)",
+      "acceptanceCriteria": [
+        "The provider preflight (resolveExecutable) checks both the implement and review executables",
+        "CLI test: a missing review executable exits 2 before any branch is created",
+        "When implement and review have the same provider basename and same model, one warning is logged at startup and the run continues",
+        "The same-model warning also appears in --dry-run",
+        "On the in-place path (outside a git repo) with adversarial set, redeye logs that the loop is skipped and otherwise runs as today",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "setup() writes the adversarial key",
+      "description": "As a redeye user with an existing .redeye.json, I want init to merge the adversarial key into the file and keep my other keys, so that nothing I configured is lost. (From ticket 03.)",
+      "acceptanceCriteria": [
+        "SetupOpts in src/setup.ts gains an optional adversarial config",
+        "Given that config, setup() writes .redeye.json with implement, review, maxRounds and minRounds; the round values are written explicitly even when they are the defaults",
+        "Given that config and an existing .redeye.json with other keys, setup() keeps those keys and adds adversarial",
+        "Without that config, setup() leaves an existing .redeye.json untouched and creates none when absent",
+        "Tests in test/setup.test.ts",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "redeye init asks about adversarial loops",
+      "description": "As a redeye user, I want `redeye init` to ask whether I want adversarial loops and for the two commands, so that I can turn the feature on without writing config by hand. (From ticket 03.)",
+      "acceptanceCriteria": [
+        "After the tracker question, init asks a yes/no question that defaults to no",
+        "On yes, it asks for the implement command, then the review command, as free text",
+        "Each answer is validated with the US-001 parser, and an invalid string is asked for again",
+        "On yes, the answers are passed to setup() as the US-007 option; on no, the option is not passed",
+        "The prompts are not tested, like the existing tracker prompt",
+        "README mentions the new init question",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Ticket review log format",
+      "description": "As a redeye user, I want a per-ticket review log that records every round, so that I can audit why a ticket passed or stopped. (From ticket 04, with fields from tickets 05 and 06.)",
+      "acceptanceCriteria": [
+        "src/review.ts exports render and parse functions for the ticket review log",
+        "The log path is .scratch/<feature>/reviews/<ticket file name>",
+        "Each entry opens with a <!-- redeye:... --> sentinel line, following the review.md and learnings.md conventions",
+        "A round entry records round number, both role strings, the branch head reviewed, and every finding with its verdict; it has optional fields for the fixer's response per finding (fixed, or disputed with a reason), the test gate result, and the branch head after the fix",
+        "A terminal entry records pass, unresolved or failed",
+        "Each round entry and terminal entry records its attempt number",
+        "src/review.ts exports a pure helper that returns the current attempt's entries: those after the last terminal entry (all entries when there is none). Loop state (round number, open findings, resume) is read only through it",
+        "Pure test: a log with a failed attempt followed by rounds of a new attempt yields only the new attempt's rounds, and its round numbers start at 1",
+        "Render then parse returns the same entries",
+        "Sentinel text inside free-text fields is neutralized so one entry cannot forge another",
+        "The parser drops malformed entries instead of throwing",
+        "Pure tests in test/review.test.ts",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Fake pi provider for role tests",
+      "description": "As a redeye developer, I want a fake pi wrapper next to fake-claude, so that one test run can give implement and review different providers and record which role ran. (From ticket 04.)",
+      "acceptanceCriteria": [
+        "New test/fake-pi/pi is an sh wrapper around a mock agent script; its basename makes spawnAgent take the pi branch",
+        "The mock records which provider was invoked and with which model, in a form a test can read back",
+        "New FAKE_* variables script the reviewer's output per invocation, in order (not keyed by round number, since round numbers restart on retry): an open finding, `No findings.`, unparseable output, or a non-zero exit",
+        "The new keys are added to ENV_KEYS in test/review-integration.test.ts",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "One review step gates each ticket",
+      "description": "As a redeye user, I want every ticket reviewed by the review model at least once before it is marked done, so that no ticket merges unchecked. (From ticket 04.)",
+      "acceptanceCriteria": [
+        "In runTicketAttempt, after runTestGate passes and before the attempt reports ready to merge, a round runner in src/review.ts runs the review step in the ticket's worktree",
+        "The round runner takes spawnAgent and the process registry as injected deps, and imports only types from src/orchestrator.ts",
+        "The reviewer prompt is built from the ticket body, its spec, and the merge-base-to-head diff (minus .scratch/), and reuses CONFINEMENT_RULES and the read-only rules from src/rules.ts",
+        "The reviewer runs with the review role's provider and model; implementation runs with the implement role's",
+        "The reviewer process joins existing process tracking so the signal handler kills it",
+        "`No findings.` lets the ticket merge as today; the log has one round and a pass entry",
+        "A reviewer that exits non-zero, times out, or writes unparseable findings after its retries fails the attempt; the ticket gets done:false in progress.md and goes through the existing ticket retry policy",
+        "Until US-012 lands, open findings also fail the attempt",
+        "The ticket review log is committed with the other bookkeeping files at every terminal point (git add --force)",
+        "Every attempt that reaches the loop appends a terminal entry (pass, failed or unresolved) before it returns; the log is only appended to, never truncated",
+        "Round numbers restart at 1 for each attempt, and the reviewer is given only the current attempt's open findings",
+        "Integration test: a loop that fails (reviewer exits non-zero) and is retried logs a failed entry, then the retry's reviewer outputs `No findings.` and the ticket merges, with the retry's round recorded as round 1",
+        "With no adversarial key, agent invocations match today's and no reviewer is spawned",
+        "Integration tests in test/review-integration.test.ts use runWavesIsolated with the mock agents",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Unresolved outcome",
+      "description": "As a redeye user, I want a ticket that the reviewer will not pass to become ready-for-human with its branch kept, so that I can pick up where the models stopped. (From ticket 04.)",
+      "acceptanceCriteria": [
+        "TicketOutcome gains an unresolved kind",
+        "For now, findings still open after the review step make the ticket unresolved (US-016 changes this to after maxRounds)",
+        "An unresolved ticket's **Status:** becomes ready-for-human",
+        "progress.md records it with done:false",
+        "Its branch is kept, its worktree is removed, and it is not merged",
+        "runTicketAttempts does not retry it in this run",
+        "A ticket blocked by an unresolved ticket is reported as blocked and does not run (existing non-agent-ticket path)",
+        "The run exits 1",
+        "The ticket review log ends with an unresolved entry",
+        "AGENTS.md: the 'review pass is advisory' invariant is narrowed to the end-of-run pass; a new invariant says the per-ticket loop is a gate whose errors decide the ticket outcome; the ticket review log is described under 'Logs on disk'",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Show the round and role in the status display",
+      "description": "As a redeye user, I want the status display to show which round a ticket is in and which role is running, so that a long loop does not look hung. (From tickets 04 and 05.)",
+      "acceptanceCriteria": [
+        "The Display interface in src/display.ts gains a way to set a running ticket's round label",
+        "While the loop runs, the ticket's row stays in the running state",
+        "The label shows the step, the round and maxRounds, e.g. `review 1/3` or `fix 2/3`",
+        "StatusDisplay and PlainDisplay both implement it",
+        "Test in test/display.test.ts: after a round label is set, the ticket is still running and the label includes the round numbers; the test does not match exact rendered text",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Fix step with the implement role",
+      "description": "As a redeye user, I want the implement model to fix or dispute each open finding and then pass the tests again, so that review findings turn into real changes. (From ticket 05.) A timed-out fixer follows the existing timeout invariant: it is not a failure. A timed-out reviewer is still a failure (US-011).",
+      "acceptanceCriteria": [
+        "When findings are open and rounds remain, the implement role runs as the fixer in the ticket's worktree, using the existing runFixer contract: fix with /tdd and mark [x], or dispute by leaving the finding unchecked and writing the reason in its notes file",
+        "The fixer process joins existing process tracking",
+        "After the fix step, the test gate runs again in the worktree",
+        "On a test failure, the fixer runs again with the failure in its prompt (existing fix-retry); when those attempts run out, the attempt fails and the existing ticket retry policy applies",
+        "The round's log entry records the fixer's response to each finding, the test gate result, and the branch head after the fix",
+        "A fixer that times out is not a failure: its dirty changes are auto-committed, the test gate runs (with the existing fix-retry on failure), and if it passes the next round's review runs. Findings it did not address stay open for the reviewer",
+        "The fake agent can script fix, dispute, failing-tests and timeout behavior through new FAKE_* keys, added to the test file's key list",
+        "Integration test: a fixer whose changes keep failing the test gate fails the attempt, and the ticket goes through the retry path",
+        "Integration test: a fixer that times out with uncommitted changes has them committed on the ticket branch, the attempt does not fail, and a next review round is recorded in the log",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Verdicts on open findings",
+      "description": "As a redeye user, I want only the reviewer to be able to close a finding, so that the author model cannot wave away real problems with its own code, and a hallucinated finding can still be withdrawn. (From ticket 05.)",
+      "acceptanceCriteria": [
+        "The next round's reviewer prompt includes the open findings and the fixer's response to each",
+        "For each previously open finding the reviewer gives exactly one verdict: confirmed fixed, withdrawn, or still open; it may also add new findings",
+        "Reviewer output missing a verdict for a previously open finding counts as unparseable",
+        "`No findings.` is accepted only when no prior findings are open",
+        "When the fixer made no commits (the branch head under review equals the previous round's head after the fix), the reviewer still runs normally, and its prompt adds one line, kept in src/rules.ts, saying the head is unchanged and the fixer's dispute reasons are the new information; new findings are still allowed and the output format and parser are unchanged",
+        "Integration test: a fixer that disputes every finding without committing is followed by a full review round (the reviewer is spawned and its verdicts are recorded in the log); the test does not match the prompt line's wording",
+        "A fixer's [x] does not close a finding, and neither does a dispute",
+        "Integration test: a finding the fixer marks [x] stays open when the next reviewer keeps it open",
+        "Integration test: a finding fixed by the fixer and confirmed by the next reviewer lets the ticket merge after two rounds, and the log shows both rounds",
+        "Integration test: a finding the fixer disputes and the next reviewer withdraws lets the ticket merge",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Round limits",
+      "description": "As a redeye user, I want to set maxRounds and minRounds, so that I can trade cost against scrutiny per project. (From ticket 05.)",
+      "acceptanceCriteria": [
+        "A ticket passes when a round ends with nothing open and at least minRounds rounds have run",
+        "With minRounds 2, a clean first round is followed by a second review before the ticket merges",
+        "When the review in round maxRounds leaves findings open, the ticket is unresolved (US-012), and the fixer does not run after that final review",
+        "Integration test: a disputed finding the reviewer keeps open until maxRounds makes the ticket ready-for-human, unmerged, with its branch kept, and the run exits 1",
+        "README's .redeye.json section documents the round rules",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Add a worktree on an existing branch",
+      "description": "As a redeye developer, I want a queued way to recreate a worktree on a branch that already exists, so that resume can reuse an interrupted ticket's branch safely. (From ticket 06.)",
+      "acceptanceCriteria": [
+        "src/worktree.ts exports a function that adds a worktree for an existing branch without resetting it",
+        "It runs on worktreeQueue",
+        "Test in test/worktree.test.ts: after the call, the worktree is checked out at the branch's existing head",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Resume an interrupted loop",
+      "description": "As a redeye user, I want an interrupted run to resume a ticket's adversarial loop at the next round, so that a crash does not throw away finished review work. (From ticket 06.) Resume looks only at the current attempt (the US-009 helper), so terminal entries from earlier attempts or earlier runs do not block it.",
+      "acceptanceCriteria": [
+        "In runTicketAttempt, before createWorktree, when the ticket's branch already exists, redeye reads the ticket review log",
+        "Resume happens when the current attempt's last recorded branch head matches the branch head and the current attempt has no terminal entry (the log's last entry is not terminal); redeye then recreates the worktree with the US-017 function and starts the round runner at the next round, skipping implementation",
+        "In every other case the existing behavior holds: the stale worktree and branch are removed and the ticket starts fresh",
+        "Integration test: a run interrupted after a recorded round resumes at the next round without running implementation again, and the ticket can pass and merge",
+        "Integration test: a branch head that no longer matches the log starts fresh, and implementation runs again",
+        "Integration test: a log that ends in a terminal entry starts fresh",
+        "Integration test: a log with an earlier attempt's failed entry followed by a recorded round whose head matches the branch resumes at the next round",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Split the end-of-run review pass into two roles",
+      "description": "As a redeye developer, I want ReviewPassOpts to carry separate reviewer and fixer roles, so that the end-of-run pass can run cross-model. (From ticket 07. Prefactor with no change in behavior.)",
+      "acceptanceCriteria": [
+        "ReviewPassOpts replaces its single agentCmd/model with reviewer and fixer roles (provider, model, effort and related options)",
+        "Both roles default to the run's provider",
+        "runReviewer, runFixer and runReviewPass use their own role, and each role's effort ladder comes from its own provider (runWithRetries gets the role's command)",
+        "Existing tests in test/review-pass.test.ts and test/review-integration.test.ts pass with only the needed changes to how options are built",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "The end-of-run pass uses both configured roles",
+      "description": "As a redeye user with adversarial configured, I want the end-of-run review pass to use the review model as its reviewer and the implement model as its fixer, and --no-review to skip only that pass, so that the final pass is cross-model too and the per-ticket loop cannot be disabled by accident. (From ticket 07.)",
+      "acceptanceCriteria": [
+        "With adversarial configured, runWavesIsolated passes the review role as the end-of-run reviewer and the implement role as the end-of-run fixer",
+        "Without adversarial, the reviewer and fixer run with the run's provider, as today",
+        "With adversarial and --no-review, no end-of-run review runs, but every ticket still goes through the per-ticket loop",
+        "Tests cover all three cases above",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

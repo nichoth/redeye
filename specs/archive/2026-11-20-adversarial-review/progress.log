@@ -1,0 +1,678 @@
+## 2026-11-20 -- US-020: The end-of-run pass uses both configured roles
+
+No new code needed -- the implementation was completed as part of
+US-019's refactor:
+
+src/orchestrator.ts:4339-4362:
+- When adversarial is configured, the end-of-run reviewer uses
+  adv.review (the review role's provider/model/effort)
+- The fixer uses runRole, which is the implement role's
+  provider/model when adversarial is set (resolved in index.ts)
+- Without adversarial, both roles use the run's CLI provider
+
+src/orchestrator.ts:4330:
+- `if (opts.review)` gates the end-of-run pass, so --no-review
+  skips it; the per-ticket loop is unaffected since it reads
+  opts.adversarial independently
+
+test/review-integration.test.ts:1996-2110 (3 tests, all passing):
+- Adversarial: pi as reviewer, mock-agent-review as fixer
+- No adversarial: run provider for both
+- --no-review + adversarial: end-of-run skipped, per-ticket loop
+  still runs
+
+Gotchas:
+- The fixer role does not need an explicit adversarial.implement
+  reference because index.ts resolves the implement role into the
+  top-level agentCmd/model before calling runWavesIsolated; the
+  runRole object built from those fields IS the implement role
+
+## 2026-11-20 -- US-019: Split the end-of-run review pass into two roles
+
+Refactored ReviewPassOpts to carry separate reviewer and fixer
+roles instead of a single agentCmd/model. No behavior change --
+both roles default to the run's provider.
+
+src/review.ts:
+- Added `ReviewRole` type (agentCmd, model, effort, maxTurns,
+  preferSubagent)
+- `ReviewPassOpts` replaces `agentCmd`, `model`, `effort`,
+  `maxTurns`, `preferSubagent` with `reviewer:ReviewRole` and
+  `fixer:ReviewRole`
+- `runReviewer` uses `opts.reviewer.*` for its agent and retry
+  effort ladder
+- `runFixer` uses `opts.fixer.*` for its agent and retry effort
+  ladder
+
+src/orchestrator.ts:
+- The `runReviewPass` call site builds a `runRole` object from
+  the run's provider/model/effort/maxTurns/preferSubagent and
+  passes it as both `reviewer` and `fixer`, preserving current
+  behavior
+
+test/review-pass.test.ts:
+- `passOpts` helper builds a `defaultRole` and passes it as
+  both `reviewer` and `fixer`
+
+Gotchas:
+- Each role's `agentCmd` is passed to `runWithRetries`, which
+  uses `basename(agentCmd)` for the effort ladder lookup; this
+  means the reviewer and fixer can have different providers with
+  different effort ladders (US-020 will use this)
+- `runStep` (install/test commands) only uses `opts.timeout` and
+  `opts.log`, not the role fields, so it needed no changes
+
+## 2026-11-20 -- US-018: Resume an interrupted loop
+
+Added resume detection and execution to the per-ticket adversarial
+review loop, so a crash or interruption does not throw away finished
+review rounds.
+
+src/orchestrator.ts:
+- `branchHead(repoRoot, branchName)` -- reads a branch's HEAD via
+  `git rev-parse` without a worktree
+- `detectResume(opts)` -- checks whether a ticket's adversarial
+  loop is resumable: branch exists, review log has current-attempt
+  round entries with no terminal, and the last recorded head
+  (fixHead if present, else head) matches the branch's actual HEAD.
+  Returns `ResumeState` with nextRound, openFindings and
+  lastFixHead, or null for fresh start
+- `runAdversarialFromResume(ctx)` -- runs the adversarial loop
+  from a resume state, sharing the same review/fix loop logic as
+  the normal path but with a synthetic agentRun (implementation
+  skipped) and round counter starting from the resume point
+- `runTicketAttempt` -- before `createWorktree`, calls
+  `detectResume`; on a resumable state, uses
+  `addWorktreeForBranch` (US-017) to recreate the worktree and
+  delegates to `runAdversarialFromResume`; otherwise falls through
+  to the existing fresh-start path (stale branch deleted by
+  `createWorktree`)
+
+test/review-integration.test.ts (4 new tests):
+- Interrupted after recorded round resumes at next round without
+  running implementation; ticket passes and merges
+- Branch head mismatch starts fresh; implementation runs again
+- Log ending in terminal entry starts fresh
+- Earlier attempt failed + current attempt round matches branch
+  head -> resumes at next round
+
+Gotchas:
+- Resume detection uses `currentAttemptEntries` (US-009 helper),
+  so terminal entries from earlier attempts or runs do not block
+  it
+- The recorded head is `fixHead` when present (the fixer ran),
+  else `head` (only the reviewer ran); this correctly handles
+  both interrupted-after-review and interrupted-after-fix cases
+- `addWorktreeForBranch` preserves the branch's commits, unlike
+  `createWorktree` which force-deletes and recreates the branch
+
+## 2026-11-20 -- US-017: Add a worktree on an existing branch
+
+Added `addWorktreeForBranch` to `src/worktree.ts`: a queued function
+that creates a worktree for a branch that already exists, without
+resetting it. The worktree checks out at the branch's current head.
+
+src/worktree.ts:
+- `addWorktreeForBranchNow` -- internal function: cleans up stale
+  worktree at the target path, prunes, then `git worktree add`
+  without `-b` (uses existing branch instead of creating a new one)
+- `addWorktreeForBranch` -- exported, runs through `enqueue` on
+  `worktreeQueue` so concurrent calls cannot race
+
+test/worktree.test.ts (1 new test):
+- Creates a branch with a commit ahead of main, checks out main,
+  then calls `addWorktreeForBranch`; verifies the worktree path
+  exists, is on the correct branch, and HEAD matches the branch's
+  existing head
+
+Gotchas:
+- The key difference from `addWorktreeNow` is no `-b` flag and no
+  branch deletion before adding; `addWorktreeForBranchNow` preserves
+  the branch and all its commits
+- Stale worktree cleanup at the target path is still done (force
+  remove + prune), since an interrupted run may leave a registered
+  worktree entry behind
+
+## 2026-11-20 -- US-016: Round limits
+
+Added minRounds and maxRounds enforcement to the per-ticket
+adversarial review loop in src/orchestrator.ts.
+
+src/orchestrator.ts:
+- When `stillOpen.length === 0` but `round < minRounds`, the
+  loop continues to another review round instead of passing
+- When `round >= maxRounds` and findings are still open, the
+  ticket becomes unresolved (ready-for-human, branch kept,
+  worktree removed) and the fixer does NOT run after that
+  final review
+
+test/review-integration.test.ts (2 new tests):
+- minRounds 2 forces a second review even when round 1 is
+  clean; two rounds recorded, reviewer ran twice
+- maxRounds reached with open findings makes ticket
+  unresolved; status ready-for-human, branch kept, fixer
+  ran once (not after the final review), run exits 1
+
+README.md:
+- Documented the round rules in the .redeye.json section
+
+Gotchas:
+- The minRounds continuation resets `openFindings` to [] and
+  uses `continue` to skip the fixer since there's nothing to
+  fix; the next round is a fresh review
+- The maxRounds check runs before the fixer block, so the
+  fixer is never spawned on the final round
+
+## 2026-11-20 -- US-014: Fix step with the implement role
+
+Added the fix step to the per-ticket adversarial review loop.
+
+src/review.ts:
+- `runTicketFixStep` -- spawns the implement-role agent with
+  `renderFixPrompt`, uses `runWithRetries` for fix-retry on test
+  failure, auto-commits dirty changes on timeout, runs the test
+  gate after fix, returns `TicketFixResult` with fixHead,
+  testResult, completedItems, notes, timedOut
+- `TicketFixOpts` and `TicketFixResult` types
+- Exported `ReviewDeps` type for the orchestrator import
+
+src/orchestrator.ts:
+- Replaced single-review-then-unresolved with a `while (true)`
+  review-fix loop: reviewer finds issues -> fixer runs -> test
+  gate -> if pass, loop back to reviewer; if fail, fail attempt
+- `markFixed` maps fixer's completedItems to FindingWithVerdict
+  entries; round entry records fixHead and testResult
+
+test/mock-agent-review.js:
+- `getFixMode()` with MOCK_FIX_RESPONSES + MOCK_FIX_COUNTER for
+  ordered response sequencing
+- `hang` mode (uncommitted file + keep alive) for timeout tests
+- `dispute` mode (notes only, no commit)
+
+test/review-integration.test.ts:
+- Updated US-012 tests: open findings now trigger fix step instead
+  of immediately going to unresolved; first test verifies fix +
+  clean review -> pass; second test verifies broken fix -> failed
+- Two new US-014 tests: fixer test failures fail attempt with
+  retry; fixer timeout auto-commits and next review round runs
+
+## 2026-11-19 -- US-001: Parse role strings
+
+Created `src/config.ts` with:
+- `ROLE_OPTIONS` -- shared option definitions for -m/--model,
+  --effort, --max-turns, --prefer-subagent, used by both the
+  role-string parser and the yargs run command in index.ts
+- `parseRoleString(input)` -- parses a role string like
+  "claude -m opus --effort high --max-turns 40 --prefer-subagent"
+  into a ParsedRole object using yargs in non-CLI mode with
+  strict validation
+
+Refactored `src/index.ts` to import ROLE_OPTIONS from config.ts
+instead of defining the four shared options inline. This satisfies
+the "shared, not copied" requirement.
+
+Added `src/config.ts` to the second esbuild call in build-esm.
+Added `test/config.test.ts` with 11 pure tests to TESTS in
+scripts/test.sh. Updated AGENTS.md project structure and module
+boundaries to include config.
+
+Gotchas:
+- yargs strict mode rejects bare positionals; the parser uses a
+  `$0 <provider>` command pattern so the provider is consumed as
+  a named positional
+- `--prefer-subagent` with no value gives `""` from yargs (type
+  string); the parser coerces it to `"true"` to match the AC
+- tapzero `t.throws` regex matches `caught.message`, not the
+  full string; yargs error messages say "Unknown argument: X"
+  without the `--` prefix
+
+## 2026-11-19 -- US-002: Load and validate .redeye.json
+
+Added `loadConfig(root)` to `src/config.ts`:
+- Reads `.redeye.json` from the given directory
+- Returns `null` (loop off) when the file is missing or has
+  no `adversarial` key
+- When `adversarial` is present, requires `implement` and
+  `review` as role strings parsed with `parseRoleString`
+- Defaults `maxRounds` to 3 and `minRounds` to 1; validates
+  both are positive integers and minRounds <= maxRounds
+- Throws on invalid JSON, missing role, invalid role string,
+  or invalid round values
+
+Integrated into `runExecute` in `src/index.ts`:
+- `loadConfig(process.cwd())` is called after ticket loading
+  but before `resolveExecutable` and before any git/worktree
+  work
+- Errors thrown by `loadConfig` are caught by the yargs
+  `.fail()` handler and routed through `formatErrorMessage`
+  (exit 2, no stack trace)
+
+Added 12 pure tests to `test/config.test.ts` covering all
+validation paths. Added 3 CLI tests to
+`test/integration.test.ts`:
+- Invalid JSON exits 2 with no integration branch
+- Role string with unsupported flag exits 2 with no branch
+- `pi --max-turns 40` in a role string passes `--dry-run`
+
+Added a `.redeye.json` section to README describing the file
+shape and role-string syntax.
+
+Gotchas:
+- The loaded config is currently unused (`_adversarial`);
+  later stories (US-004+) will wire it into the run
+- `loadConfig` throws, not returns an error, so the yargs
+  async handler's rejection routes it to `.fail(null, err)`
+  which does `formatErrorMessage` + exit 2
+
+## 2026-11-19 -- US-003: Show the config in --dry-run
+
+Added adversarial config display to the --dry-run output in
+`src/index.ts`. When `.redeye.json` has an `adversarial` key,
+--dry-run prints the implement role string, review role string,
+maxRounds and minRounds, each on its own labeled line, right
+after the Provider line and before the wave/branch output.
+
+Added `implementStr` and `reviewStr` fields to
+`AdversarialConfig` in `src/config.ts` to preserve the
+original role strings from the config file.
+
+Added two CLI tests in `test/integration.test.ts`:
+- With adversarial configured, the four values appear in stdout
+- Without adversarial, no Implement or maxRounds lines appear
+
+Gotchas:
+- The dry-run adversarial block prints before both the
+  isolated and non-isolated branches, so it appears in both
+  paths
+
+## 2026-11-19 -- US-004: A bare redeye uses the implement role
+
+Made the run command's provider positional optional (`$0 [provider]
+[turns]`). When `.redeye.json` sets an adversarial implement role
+and no CLI provider is given, the implement role's provider and
+model are used. A CLI provider overrides implement and logs a
+one-liner; `--dry-run` repeats the override. Without config and
+without a provider, the usage error is unchanged (exit 1 with help
+text).
+
+Changes in `src/index.ts`:
+- `.check()` validates no-config + no-provider, throws a clear
+  Error that yargs routes to .fail() as a usage error (exit 1,
+  help text shown)
+- `runExecute` resolves `provider` and `model` from the implement
+  role when no CLI provider is given
+- `cliOverride` flag logs the override before provider lookup
+- dry-run block prints the override line
+- The resolved adversarial review role is threaded through to
+  `runWavesIsolated` as an `adversarial` option, but no reviewer
+  is started yet
+
+Changes in `src/orchestrator.ts`:
+- `runWavesIsolated` gains an optional `adversarial` parameter
+  carrying the parsed review role, maxRounds and minRounds, for
+  later stories to consume
+
+Added three CLI tests in `test/integration.test.ts`:
+- Bare redeye with adversarial config uses implement provider in
+  --dry-run
+- CLI provider overrides implement in --dry-run
+- No config and no provider exits 1 with help text
+
+README already documents the optional provider in the flags table
+and in the .redeye.json section from US-002/US-003.
+
+Gotchas:
+- yargs `.check()` throws an Error whose message arrives as
+  fail(msg, err, yargs), so both msg and err are truthy -- the
+  fail handler's `if (err && !msg)` branch is NOT taken, help
+  text IS shown, and exit code is 1. This matches the AC
+
+## 2026-11-19 -- US-005: Merge role-string flags with run-wide CLI flags
+
+Added `mergeRoleWithCli(role, cli)` to `src/config.ts`:
+- Pure function that merges a ParsedRole with CLI options
+- Role-string flags win over CLI flags for the same field
+- CLI flags fill in whatever the role string leaves out
+- Applies independently per role (implement and review)
+
+Also exported the `CliOptions` interface for the CLI-side fields
+(model, effort, maxTurns, preferSubagent).
+
+Added 5 pure tests to `test/config.test.ts`:
+- Role flag wins over CLI flag
+- CLI fills in missing fields
+- Role with all fields ignores CLI entirely
+- Empty CLI leaves role unchanged
+- Applies separately to implement and review roles
+
+## 2026-11-19 -- US-006: Preflight both roles and warn on same model
+
+Added review executable preflight to `src/index.ts`:
+- When adversarial is configured and no CLI provider overrides
+  implement, the review role's provider is also checked with
+  `resolveExecutable` before any branch work
+- A missing review executable exits 2 with a clear error naming
+  the provider
+
+Added same-model warning:
+- When implement and review resolve to the same provider basename
+  and same model (or both unset), a warning is logged that the
+  cross-model check is lost
+- The warning appears on both normal runs and --dry-run
+- When a CLI provider overrides implement, the comparison uses the
+  CLI provider and model instead
+
+Added in-place path handling:
+- When adversarial is configured but the run is outside a git repo
+  (the in-place path), a message is logged that the adversarial
+  loop is skipped, and the run continues as today
+
+Added 4 CLI tests to `test/integration.test.ts`:
+- Missing review executable exits 2 before any branch
+- Same provider and model warns and continues (--dry-run)
+- Different providers produce no same-model warning
+- In-place path with adversarial logs loop skipped
+
+Gotchas:
+- The review preflight runs whenever adversarial is set,
+  regardless of CLI override, since the review role always comes
+  from the config
+- The same-model comparison uses the CLI provider/model (not the
+  config's implement) when cliOverride is true, since that is what
+  actually runs
+
+## 2026-11-19 -- US-007: setup() writes the adversarial key
+
+Added `AdversarialSetup` type to `src/setup.ts` and an optional
+`adversarial` field to `SetupOpts`. When the field is present,
+`setup()` reads any existing `.redeye.json`, merges the
+`adversarial` key (implement, review, maxRounds, minRounds) into
+it, and writes it back as pretty-printed JSON. When the field is
+absent, no `.redeye.json` is created or modified.
+
+Added 5 tests to `test/setup.test.ts`:
+- Writes .redeye.json with all adversarial fields
+- Merges into existing .redeye.json preserving other keys
+- Leaves existing .redeye.json untouched without adversarial opt
+- Creates no .redeye.json when absent and no adversarial opt
+- Writes round defaults explicitly (maxRounds/minRounds present
+  even at default values)
+
+Gotchas:
+- The adversarial block is written after all other setup work,
+  so a failure in skill copying does not leave a partial config
+
+## 2026-11-19 -- US-008: redeye init asks about adversarial loops
+
+Added adversarial loop prompts to the `init` command in
+`src/index.ts`:
+- After the tracker question and skill collision prompts, a
+  `confirm` asks whether to enable adversarial review loops
+  (defaults to no)
+- On yes, two `input` prompts ask for the implement and review
+  commands as free text
+- Each answer is validated with `parseRoleString`; an invalid
+  string shows the error and re-asks
+- On yes, the answers are passed to `setup()` as the
+  `adversarial` option with default round values (maxRounds 3,
+  minRounds 1); on no, the option is not passed
+
+Added `AdversarialSetup` type import from setup.ts and
+`parseRoleString` import from config.ts. Added `input` from
+`@inquirer/prompts`.
+
+Updated README to mention the new init question in the Install
+Dependency Skills section.
+
+Gotchas:
+- The prompts are not tested, matching the existing pattern for
+  the tracker prompt which is also untested
+- Validation uses the same `parseRoleString` as loadConfig, so
+  the error messages match what the user would see from a
+  malformed .redeye.json
+
+## 2026-11-19 -- US-009: Ticket review log format
+
+Added per-ticket review log types, render and parse functions to
+`src/review.ts`:
+
+Types:
+- `FindingWithVerdict` -- finding with verdict (open,
+  confirmed-fixed, withdrawn, still-open), optional fixer
+  response (fixed/disputed) and dispute reason
+- `TicketRoundInput`/`TicketRoundEntry` -- round entry with
+  attempt, round number, both role strings, head SHA, findings
+  with verdicts, optional fixHead and testResult
+- `TicketTerminalInput`/`TicketTerminalEntry` -- terminal entry
+  with attempt and outcome (pass, unresolved, failed)
+- `TicketReviewEntry` -- union of round and terminal
+
+Functions:
+- `renderTicketRound()` / `renderTicketTerminal()` -- render
+  entries with `<!-- redeye:ticket-review ... -->` sentinel lines
+- `parseTicketReviewLog()` -- parse log text back to entries,
+  dropping malformed entries
+- `currentAttemptEntries()` -- returns entries after the last
+  terminal entry (all entries when there is none)
+- `ticketReviewPath()` -- builds
+  `.scratch/<feature>/reviews/<ticket file name>`
+
+Added 12 new tests (43 assertions) to `test/review.test.ts`.
+
+Gotchas:
+- Role strings in sentinels are percent-encoded because they
+  contain spaces; `encodeAttr`/`decodeAttr` handle this
+- The finding verdict format `- [verdict] summary` differs from
+  the existing `- [ ]/[x] summary` checklist format; the ticket
+  finding parser uses a separate regex
+- `sanitizeTicket` replaces the ticket-review sentinel prefix,
+  separate from the existing `sanitize` for the end-of-run review
+  sentinel prefix
+
+## 2026-11-19 -- US-010: Fake pi provider for role tests
+
+Created `test/fake-pi/pi` (sh wrapper) and `test/mock-agent-pi.js`
+as a fake pi provider, mirroring the fake-claude pattern. The
+basename `pi` makes `spawnAgent` take the pi branch (prompt via
+@file, --thinking for effort, etc).
+
+`mock-agent-pi.js` handles:
+- Parsing `@file` args to read the prompt (pi receives prompts
+  via file, not stdin)
+- `--model` extraction from CLI args
+- `FAKE_PI_RECORD_DIR`: writes `{provider, model, prompt, cwd}`
+  as one JSON file per invocation, so tests can verify which
+  provider ran and with which model
+- `FAKE_PI_RESPONSES` + `FAKE_PI_COUNTER`: ordered response
+  scripting per invocation (finding, clean, unparseable, exit1),
+  not keyed by round number since round numbers restart on retry
+- `FAKE_PI_DELEGATE`: delegates to another mock script (e.g.
+  mock-agent-review.js) with the prompt piped via stdin
+
+Added 4 new env keys to `ENV_KEYS` in
+`test/review-integration.test.ts`: FAKE_PI_RECORD_DIR,
+FAKE_PI_RESPONSES, FAKE_PI_COUNTER, FAKE_PI_DELEGATE.
+
+Added 4 tests to `test/review-integration.test.ts`:
+- Records provider=pi and model from --model arg
+- Scripts finding/clean/exit1 responses in order via counter
+- Writes unparseable garbage for the unparseable response type
+- Delegates to another mock and records the pi invocation
+
+Gotchas:
+- Pi receives prompts via file (@path arg), not stdin; the mock
+  reads the file directly while delegation pipes the prompt
+  contents to the delegate's stdin
+- The counter file is shared across invocations so ordered
+  responses work across separate process spawns
+- The response scripting path and the delegation path are
+  mutually exclusive: FAKE_PI_RESPONSES takes priority
+
+## 2026-11-19 -- US-011: One review step gates each ticket
+
+Fixed the per-ticket adversarial review step that was already
+scaffolded (code + tests from a prior session) but had a bug
+causing the tests to fail.
+
+Bug: `runTicketAttempt` passed the ticket's own `retries` count
+to `runTicketReviewRound`, giving the reviewer internal retries
+equal to the ticket retries. This meant a reviewer exit-1
+followed by a clean response would succeed on the reviewer's
+internal retry within a single ticket attempt, instead of
+failing the attempt and triggering the ticket retry policy.
+
+Fix: changed `retries: opts.retries` to `retries: 0` (and
+`retryDelay: 0`) in the `runTicketReviewRound` call inside
+`runTicketAttempt`. The reviewer gets one shot per ticket
+attempt; if it fails, the ticket retry policy handles retries.
+
+Gotchas:
+- The reviewer's retry count must be independent of the ticket
+  retry count. The end-of-run reviewer in `runReviewPass` still
+  uses its own `retries` from `ReviewPassOpts`, which is correct
+  for that path
+- The per-ticket reviewer retries are 0 because the ticket
+  retry policy already wraps the entire attempt including the
+  review step, so double-retrying would waste pi calls on the
+  same failing reviewer
+
+## 2026-11-20 -- US-012: Unresolved outcome
+
+Added the `unresolved` ticket outcome for the per-ticket
+adversarial review loop. When the reviewer finds open issues,
+the ticket becomes `ready-for-human` with its branch kept.
+
+Changes in `src/orchestrator.ts`:
+- `TicketOutcome` gains an `unresolved` kind carrying
+  `branchName`, `completedItems` and `agentRun`
+- `runTicketAttempt`: when `findings.length > 0`, writes an
+  `unresolved` terminal entry and returns `unresolved` instead
+  of `failed`
+- `runTicketAttempts`: stops retrying on `unresolved`
+  (`stop: true`)
+- `attemptEntry`: maps `unresolved` to learnings outcome
+  `review`
+- New `markHuman(ticket)` sets the ticket's **Status:** to
+  `ready-for-human` on disk
+- Outcome processing in `runWavesIsolated`: handles `unresolved`
+  by calling `markHuman`, removing the worktree (not the
+  branch), recording `done:false` in progress, and adding to
+  `failedKeys`
+- `allDone` now checks `failedKeys.size === 0` in addition to
+  `remaining.length === 0`, so unresolved tickets (whose status
+  is `ready-for-human`, not `ready-for-agent`) correctly make
+  the run exit 1
+
+Changes in `src/display.ts`:
+- `TicketStatus` gains `'ready-for-human'`
+- `renderDot` renders it as a yellow filled dot
+
+Changes in `AGENTS.md`:
+- Narrowed 'review pass is advisory' to end-of-run pass
+- Added invariant: per-ticket loop is a gate whose errors decide
+  the ticket outcome
+- Described the per-ticket review log under 'Logs on disk'
+
+Added 2 integration tests in `test/review-integration.test.ts`:
+- Open findings make ticket unresolved: status, progress, branch
+  kept, worktree removed, review log, no retry
+- Unresolved is not retried even with retries > 0
+
+Gotchas:
+- `failedKeys` now serves double duty: it tracks both failed and
+  unresolved tickets. This is correct because both prevent the
+  ticket from being selected in later waves and both block
+  downstream tickets
+- The existing `findBlockedTickets` already treats non-done,
+  non-ready-for-agent tickets as dead blockers, so a
+  ready-for-human ticket naturally blocks its dependents without
+  any change to the blocker logic
+- The `allDone` change (`&& failedKeys.size === 0`) is safe for
+  existing behavior because failed tickets keep their
+  `ready-for-agent` status, so `remaining.length` was already
+  non-zero for them; the new check only matters for unresolved
+  tickets whose status changes to `ready-for-human`
+
+## 2026-11-20 -- US-013: Show the round and role in the status display
+
+Added `setRoundLabel` to the `Display` interface and both
+implementations (`StatusDisplay`, `PlainDisplay`).
+
+Changes in `src/display.ts`:
+- `DisplayTicket` gains optional `roundLabel?:string|null`
+- `Display` interface gains `setRoundLabel(num, feature, label)`
+- `StatusDisplay.setRoundLabel` stores the label on the ticket
+  and re-renders
+- `PlainDisplay.setRoundLabel` logs the label (no grid to update)
+- `rowText` renders the label in brackets after the ticket name,
+  e.g. `task1.md [review 1/3]`; blocked and round-label states
+  are mutually exclusive in the ternary
+
+Added 5 tests in `test/display.test.ts`:
+- Round label shows step name and round numbers on running ticket
+- Fix step label shows fix and round numbers
+- Null clears the label
+- PlainDisplay logs the label
+- RecordingDisplay records the call
+
+Also updated `RecordingDisplay` (test helper) with the new method.
+
+Gotchas:
+- The label is a free-form string, not structured round/max --
+  the caller (the review loop in orchestrator.ts) will format it
+  as `review 1/3` or `fix 2/3` when it calls `setRoundLabel`
+- `rowText` gives blocked-by priority over round label in the
+  ternary, since a blocked ticket is never simultaneously running
+
+## US-015: Verdicts on open findings
+
+Implemented verdict system where only the reviewer model can close
+findings. The fixer's [x] marks or disputes are recorded but do not
+change the finding's open/closed status.
+
+### Changes
+
+src/rules.ts:
+- Added UNCHANGED_HEAD_RULE constant for when the fixer disputed
+  without committing (branch head unchanged)
+
+src/review.ts:
+- Added FindingWithVerdict type with verdict field
+  (open | confirmed-fixed | withdrawn | still-open) and optional
+  fixerResponse/fixerReason
+- Added parseVerdictFindings(text, priorSummaries) -- parses
+  reviewer verdict output, validates all prior findings have
+  verdicts, rejects "No findings." when priors exist
+- Added parseFindingsAsVerdicts(text) -- wraps parseFindings with
+  verdict:'open' for initial round
+- Added renderTicketReviewerVerdictPrompt -- renders prompt with
+  prior findings, fixer responses, verdict format instructions,
+  and optional unchanged-head rule
+- Updated runTicketReviewRound to use verdict prompt/parser when
+  priorFindings are provided, standard prompt/parser otherwise
+
+src/orchestrator.ts:
+- Rewrote the adversarial review loop to track openFindings as
+  FindingWithVerdict[] across rounds
+- Detects unchangedHead by comparing lastFixHead with current head
+- After verdict round, filters stillOpen vs closed findings
+- Fixer response recording preserves the reviewer's verdict
+  instead of forcing 'open'
+- Updated pre-existing tests from finding,clean to
+  finding,verdict-fixed since the second reviewer invocation now
+  receives priorFindings and must give verdicts
+
+test/mock-agent-pi.js:
+- Added verdict-fixed, verdict-withdraw, verdict-open response
+  types
+
+test/review.test.ts (8 new tests):
+- Verdict parsing: all priors covered, missing verdict, No findings
+  with/without priors, new finding for prior summary rejected,
+  still-open verdict, verdict prompt content, unchanged head rule
+
+test/review-integration.test.ts (4 new tests):
+- Fixer disputes without commit, reviewer withdraws
+- Fixer marks [x] but reviewer keeps it open (still-open)
+- Fixer fixes, reviewer confirms (confirmed-fixed), ticket merges
+- Fixer disputes, reviewer withdraws, ticket merges
