@@ -1807,6 +1807,17 @@ class RecordingDisplay implements Display {
         })
     }
 
+    setRoundLabel (
+        num:number,
+        feature:string|undefined,
+        label:string|null,
+    ):void {
+        this.calls.push({
+            method: 'setRoundLabel',
+            args: [num, feature, label],
+        })
+    }
+
     log (message:string):void {
         this.calls.push({
             method: 'log',
@@ -2977,4 +2988,134 @@ test('PlainDisplay accepts phases without printing anything', t => {
         console.log = origLog
     }
     t.equal(logs.length, 0, 'plain output relies on log lines instead')
+})
+
+// -- Tests for US-013: Round label on the status display --
+
+test('setRoundLabel shows round numbers on running ticket', t => {
+    const stream = createMockStream()
+    const display = new StatusDisplay({ stream })
+
+    const tickets = [
+        { num: 1, filename: 'task1.md' },
+        { num: 2, filename: 'task2.md' },
+    ]
+    display.startRun(tickets)
+    display.startWave(1, 1, tickets)
+    display.setTicketStatus(1, 'in-progress')
+
+    stream.clear()
+    display.setRoundLabel(1, undefined, 'review 1/3')
+
+    const output = stripAnsi(stream.getOutput())
+    const ticket1Line = output.split('\n').find(
+        l => l.includes('task1.md')
+    )
+    t.ok(
+        ticket1Line && ticket1Line.includes('1/3'),
+        'round numbers appear on the ticket row'
+    )
+    t.ok(
+        ticket1Line && ticket1Line.includes('review'),
+        'step name appears on the ticket row'
+    )
+
+    const raw = rawLastFrame(stream.getOutput())
+    const rawLines = raw.split('\n')
+    const rawTicket1 = rawLines.find(
+        l => stripAnsi(l).includes('task1.md')
+    )
+    t.ok(
+        rawTicket1 && rawTicket1.includes(renderDot('in-progress')),
+        'ticket stays in-progress while label is set'
+    )
+
+    display.cleanup()
+})
+
+test('setRoundLabel with fix step shows fix label', t => {
+    const stream = createMockStream()
+    const display = new StatusDisplay({ stream })
+
+    const tickets = [
+        { num: 1, filename: 'task1.md' },
+    ]
+    display.startRun(tickets)
+    display.startWave(1, 1, tickets)
+    display.setTicketStatus(1, 'in-progress')
+
+    display.setRoundLabel(1, undefined, 'fix 2/3')
+
+    const output = stripAnsi(lastFrame(stream.getOutput()))
+    const ticket1Line = output.split('\n').find(
+        l => l.includes('task1.md')
+    )
+    t.ok(
+        ticket1Line && ticket1Line.includes('2/3'),
+        'fix round numbers appear'
+    )
+    t.ok(
+        ticket1Line && ticket1Line.includes('fix'),
+        'fix step name appears'
+    )
+
+    display.cleanup()
+})
+
+test('setRoundLabel null clears the label', t => {
+    const stream = createMockStream()
+    const display = new StatusDisplay({ stream })
+
+    const tickets = [
+        { num: 1, filename: 'task1.md' },
+    ]
+    display.startRun(tickets)
+    display.startWave(1, 1, tickets)
+    display.setTicketStatus(1, 'in-progress')
+    display.setRoundLabel(1, undefined, 'review 1/3')
+
+    stream.clear()
+    display.setRoundLabel(1, undefined, null)
+
+    const output = stripAnsi(lastFrame(stream.getOutput()))
+    const ticket1Line = output.split('\n').find(
+        l => l.includes('task1.md')
+    )
+    t.ok(
+        ticket1Line && !ticket1Line.includes('1/3'),
+        'round numbers are gone after clearing'
+    )
+
+    display.cleanup()
+})
+
+test('PlainDisplay setRoundLabel logs the label', t => {
+    const logs:string[] = []
+    const origLog = console.log
+    console.log = (...args:unknown[]) => {
+        logs.push(args.join(' '))
+    }
+    try {
+        const display = new PlainDisplay()
+        display.setRoundLabel(1, undefined, 'review 1/3')
+    } finally {
+        console.log = origLog
+    }
+    const all = logs.join('\n')
+    t.ok(
+        all.includes('1/3'),
+        'plain display logs round numbers'
+    )
+})
+
+test('RecordingDisplay records setRoundLabel calls', t => {
+    const display = new RecordingDisplay()
+    display.setRoundLabel(1, 'feat', 'review 2/3')
+    const calls = display.getCallsByMethod('setRoundLabel')
+    t.equal(calls.length, 1, 'one setRoundLabel call')
+    t.deepEqual(
+        calls[0],
+        [1, 'feat', 'review 2/3'],
+        'args match'
+    )
 })

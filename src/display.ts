@@ -16,6 +16,7 @@ export type DisplayTicket = {
     status:TicketStatus
     blockedBy?:ReadonlyArray<string>
     stats?:SubagentStats
+    roundLabel?:string|null
 }
 
 export type TicketRef = {
@@ -78,6 +79,15 @@ export type Display = {
         num:number,
         feature:string|undefined,
         stats:SubagentStats,
+    ):void
+    /**
+     * Set a round label on a running ticket, e.g.
+     * `review 1/3` or `fix 2/3`. Pass `null` to clear.
+     */
+    setRoundLabel(
+        num:number,
+        feature:string|undefined,
+        label:string|null,
     ):void
     /**
      * Name the work running after the last wave, such as the
@@ -176,7 +186,9 @@ function rowText (ticket:DisplayTicket):string {
     const base = ticket.status === 'blocked' &&
         ticket.blockedBy?.length ?
         `${label} (blocked by ${ticket.blockedBy.join(', ')})` :
-        label
+        ticket.roundLabel ?
+            `${label} [${ticket.roundLabel}]` :
+            label
     const suffix = formatStats(ticket.stats)
     return suffix === null ? base : `${base} - ${suffix}`
 }
@@ -364,6 +376,18 @@ export class StatusDisplay implements Display {
         if (!ticket) return
 
         ticket.stats = { ...stats }
+        this.render()
+    }
+
+    setRoundLabel (
+        num:number,
+        feature:string|undefined,
+        label:string|null,
+    ):void {
+        const ticket = this.findTicket(num, feature)
+        if (!ticket) return
+
+        ticket.roundLabel = label
         this.render()
     }
 
@@ -598,6 +622,16 @@ export class PlainDisplay implements Display {
         _stats:SubagentStats,
     ):void {
         // no-op: plain mode has no fixed list
+    }
+
+    setRoundLabel (
+        _num:number,
+        _feature:string|undefined,
+        label:string|null,
+    ):void {
+        if (label !== null) {
+            console.log(`  [${label}]`)
+        }
     }
 
     setPhase (_label:string|null):void {

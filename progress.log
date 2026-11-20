@@ -394,3 +394,34 @@ Gotchas:
   `ready-for-agent` status, so `remaining.length` was already
   non-zero for them; the new check only matters for unresolved
   tickets whose status changes to `ready-for-human`
+
+## 2026-11-20 -- US-013: Show the round and role in the status display
+
+Added `setRoundLabel` to the `Display` interface and both
+implementations (`StatusDisplay`, `PlainDisplay`).
+
+Changes in `src/display.ts`:
+- `DisplayTicket` gains optional `roundLabel?:string|null`
+- `Display` interface gains `setRoundLabel(num, feature, label)`
+- `StatusDisplay.setRoundLabel` stores the label on the ticket
+  and re-renders
+- `PlainDisplay.setRoundLabel` logs the label (no grid to update)
+- `rowText` renders the label in brackets after the ticket name,
+  e.g. `task1.md [review 1/3]`; blocked and round-label states
+  are mutually exclusive in the ternary
+
+Added 5 tests in `test/display.test.ts`:
+- Round label shows step name and round numbers on running ticket
+- Fix step label shows fix and round numbers
+- Null clears the label
+- PlainDisplay logs the label
+- RecordingDisplay records the call
+
+Also updated `RecordingDisplay` (test helper) with the new method.
+
+Gotchas:
+- The label is a free-form string, not structured round/max --
+  the caller (the review loop in orchestrator.ts) will format it
+  as `review 1/3` or `fix 2/3` when it calls `setRoundLabel`
+- `rowText` gives blocked-by priority over round label in the
+  ternary, since a blocked ticket is never simultaneously running
