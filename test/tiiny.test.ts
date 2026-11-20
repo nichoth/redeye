@@ -1,6 +1,6 @@
 import { test } from '@substrate-system/tapzero'
 import {
-    mkdtempSync, writeFileSync, rmSync,
+    mkdtempSync, writeFileSync, rmSync, chmodSync,
 } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -8,8 +8,11 @@ import {
     isTiinyRun,
     deviceModelIds,
     loadTiinyProvider,
+    residentModels,
+    loadModel,
     type TiinyProvider,
 } from '../src/tiiny.js'
+import { createFakeDevice } from './fake-device.js'
 
 function tmp ():string {
     return mkdtempSync(join(tmpdir(), 'redeye-tiiny-'))
@@ -316,3 +319,195 @@ test('loadTiinyProvider - invalid JSON returns error', t => {
         rmSync(dir, { recursive: true, force: true })
     }
 })
+
+// --- residentModels ---
+
+test('residentModels - returns ids from device',
+    async t => {
+        const dev = await createFakeDevice({
+            resident: [
+                'Qwen/Qwen3.6-35B-A3B-turbo',
+                'openai/gpt-oss-20b',
+            ],
+        })
+        try {
+            const result = await residentModels(
+                dev.url + '/v1',
+                'test-key'
+            )
+            t.ok('ids' in result, 'returns ids')
+            t.deepEqual(
+                (result as { ids:string[] }).ids,
+                [
+                    'Qwen/Qwen3.6-35B-A3B-turbo',
+                    'openai/gpt-oss-20b',
+                ]
+            )
+        } finally {
+            await dev.close()
+        }
+    }
+)
+
+test('residentModels - empty when no models resident',
+    async t => {
+        const dev = await createFakeDevice()
+        try {
+            const result = await residentModels(
+                dev.url + '/v1',
+                'test-key'
+            )
+            t.ok('ids' in result, 'returns ids')
+            t.deepEqual(
+                (result as { ids:string[] }).ids,
+                []
+            )
+        } finally {
+            await dev.close()
+        }
+    }
+)
+
+test('residentModels - network error returns error ' +
+    'value',
+    async t => {
+        const result = await residentModels(
+            'http://127.0.0.1:1',
+            'test-key'
+        )
+        t.ok('error' in result, 'returns error')
+    }
+)
+
+// --- loadModel ---
+
+test('loadModel - HTTP path loads and polls until ' +
+    'resident',
+    async t => {
+        const dev = await createFakeDevice()
+        try {
+            setTimeout(() => {
+                dev.resident.add(
+                    'Qwen/Qwen3.6-35B-A3B-turbo'
+                )
+            }, 60)
+
+            const result = await loadModel(
+                'Qwen/Qwen3.6-35B-A3B-turbo',
+                {
+                    host: dev.url,
+                    apiKey: 'test-key',
+                    baseUrl: dev.url + '/v1',
+                    pollMs: 30,
+                    deadlineMs: 5000,
+                }
+            )
+            t.ok(
+                'ok' in result && result.ok,
+                'reports success'
+            )
+            t.deepEqual(
+                dev.loadRequests,
+                ['Qwen/Qwen3.6-35B-A3B-turbo'],
+                'posted start request'
+            )
+        } finally {
+            await dev.close()
+        }
+    }
+)
+
+test('loadModel - already resident skips start and ' +
+    'succeeds',
+    async t => {
+        const dev = await createFakeDevice({
+            resident: ['Qwen/Qwen3.6-35B-A3B-turbo'],
+        })
+        try {
+            const result = await loadModel(
+                'Qwen/Qwen3.6-35B-A3B-turbo',
+                {
+                    host: dev.url,
+                    apiKey: 'test-key',
+                    baseUrl: dev.url + '/v1',
+                    pollMs: 30,
+                    deadlineMs: 2000,
+                }
+            )
+            t.ok(
+                'ok' in result && result.ok,
+                'reports success'
+            )
+            t.deepEqual(
+                dev.loadRequests,
+                ['Qwen/Qwen3.6-35B-A3B-turbo'],
+                'still posted start (idempotent)'
+            )
+        } finally {
+            await dev.close()
+        }
+    }
+)
+
+test('loadModel - CLI fallback when HTTP start fails',
+    async t => {
+        const dev = await createFakeDevice()
+        const dir = tmp()
+        try {
+            dev.resident.add('test-model')
+
+            const fakeBin = join(dir, 'tiiny')
+            writeFileSync(
+                fakeBin,
+                '#!/bin/sh\nexit 0\n'
+            )
+            chmodSync(fakeBin, 0o755)
+
+            const result = await loadModel(
+                'test-model',
+                {
+                    host: 'http://127.0.0.1:1',
+                    apiKey: 'test-key',
+                    baseUrl: dev.url + '/v1',
+                    tiinyBin: fakeBin,
+                    pollMs: 30,
+                    deadlineMs: 5000,
+                }
+            )
+            t.ok(
+                'ok' in result && result.ok,
+                'succeeds via CLI fallback'
+            )
+        } finally {
+            await dev.close()
+            rmSync(dir, { recursive: true, force: true })
+        }
+    }
+)
+
+test('loadModel - timeout when model never becomes ' +
+    'resident',
+    async t => {
+        const dev = await createFakeDevice()
+        try {
+            const result = await loadModel(
+                'never-loads',
+                {
+                    host: dev.url,
+                    apiKey: 'test-key',
+                    baseUrl: dev.url + '/v1',
+                    pollMs: 20,
+                    deadlineMs: 100,
+                }
+            )
+            t.ok('error' in result, 'returns error')
+            t.ok(
+                (result as { error:string }).error
+                    .includes('never-loads'),
+                'error names the model'
+            )
+        } finally {
+            await dev.close()
+        }
+    }
+)
