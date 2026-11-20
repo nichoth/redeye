@@ -87,20 +87,23 @@ npm i -S redeye
 
 ### Install Dependency Skills
 
+Install the required
+[Pocock skills](https://github.com/mattpocock/skills),
+and create a `.redeye.json` file in your repo.
+
 ```sh
 npx redeye init
 ```
 
-Use the `init` subcommand in this package to add the required
-[Pocock skills](https://github.com/mattpocock/skills) to your repo.
 This command will copy some files in this package to a specific directory
 in your repo. The upstream
 [`grill-with-docs`](https://github.com/mattpocock/skills/blob/main/skills/engineering/grill-with-docs/SKILL.md)
 skill is exposed as `/grill`, along with its sub-skills `grilling`
 and `domain-modeling`.
 
-Pass `-g` (or `--global`) to install the skills in your home directory
-instead, at `~/.agents/skills/`, with symlinks in `~/.claude/skills/`.
+Pass `-g` (or `--global`) to install the skills in your home directory,
+at `~/.agents/skills/`, with symlinks in `~/.claude/skills/`.
+
 The issue tracker config (`docs/agents/*` and the `AGENTS.md` section) is
 specific to each repo, so it is still written to the current directory.
 Run `npx redeye init -g` from the root of each repo that uses the skills.
@@ -109,23 +112,14 @@ If a skill with the same name is already installed and differs from the
 bundled copy, `init` asks before overwriting it. The default is to keep
 yours. This applies with or without `-g`.
 
-After picking a tracker, `init` asks whether to enable adversarial
+After picking an issue tracker, `init` asks whether to enable adversarial
 review loops. On yes it prompts for an implement command and a review
-command (the same role-string syntax as `.redeye.json`), validates each
-one, and writes the result to `.redeye.json`.
-
-```sh
-npx redeye init
-```
-or for global skills:
-
-```sh
-npx redeye init -g
-```
+command (the same syntax as `.redeye.json`), validates each one,
+and writes the result to `.redeye.json`.
 
 >
 > [!IMPORTANT]  
-> If you use the `pi` harness, `.agents/` must not be git ignored.
+> If you use the `pi` harness, `.agents/` **must not be git ignored**.
 > Each agent runs in a fresh git worktree, so ignored files are not
 > there, and `pi` stops looking for `.agents/skills/` at the worktree
 > root. Commit `.agents/`, or install the skills globally with
@@ -143,6 +137,7 @@ That's how we prevent skill vs API drift.
 1. create spec
 2. [create tickets](#create-issues)
 3. TDD
+
 
 **The expected flow is**
 
@@ -176,6 +171,8 @@ a spec text description.
 > [superpowers:writing-plans](https://github.com/obra/superpowers/blob/main/skills/writing-plans/SKILL.md),
 > then follow with `to-tickets`.
 >
+
+---
 
 ## Adversarial Review
 
@@ -211,12 +208,12 @@ review role.
 ### Turn It On
 
 `init` writes an `adversarial` key to `.redeye.json` at the repo root,
-keeping any other keys already in the file.
-`maxRounds` and `minRounds` get their defaults (`3` and `1`);
-edit the file to change them. See [`.redeye.json`](#redeyejson).
+keeping other keys already in the file. Fields `maxRounds` and `minRounds` get
+their defaults, `3` and `1`. Edit the file to change them.
+See [`.redeye.json`](#redeyejson).
 
 A provider on the command line (`npx redeye claude ...`) overrides the
-implement role, and the review role stays as configured.
+implement role, and the review role stays as configured in the JSON file.
 
 >
 > [!TIP]
@@ -227,7 +224,7 @@ implement role, and the review role stays as configured.
 ## Examples
 
 After you have the tickets, use the `redeye` loop to execute.
-`redeye` will executre the tickets in the most efficient, parallel way
+`redeye` will execute the tickets in the most efficient, parallel way
 possible, with respect to the ticket dependencies.
 
 ### Keep Your Machine Awake
@@ -356,7 +353,7 @@ the model ID in `~/.pi/agent/models.json`.
 ```
 
 >
-> [!TIP]
+> [!NOTE]
 > Export env variable `TIINY_API_KEY` in the shell that runs `redeye`.
 > 
 
