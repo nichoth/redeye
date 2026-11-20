@@ -43,8 +43,12 @@ so they can't drift as long as you install the skills with this package.
       - [Qwen/Qwen3.6-27B](#qwenqwen36-27b)
       - [GLM 4.7 flash -- 57% NPU](#glm-47-flash----57%25-npu)
     + [2. Run the Loop](#2-run-the-loop)
+      - [Qwen3.5-9B-Turbo](#qwen35-9b-turbo)
       - [Qwen3.6-35B-A3B-turbo](#qwen36-35b-a3b-turbo)
-      - [Qwen3.5-9B-turbo](#qwen35-9b-turbo)
+      - [Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo](#huihui-ornith-15-35b-a3b-abliterated-turbo)
+      - [Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo](#huihui-ornith-15-35b-a3b-abliterated-turbo-1)
+      - [Qwen3.8-27B-heretic-ara-Turbo](#qwen38-27b-heretic-ara-turbo)
+- [`.redeye.json`](#redeyejson)
 - [Command Line Arguments](#command-line-arguments)
   * [Notes](#notes)
   * [`--spec ` option](#--spec--option)
@@ -400,14 +404,22 @@ tiiny load zai-org/GLM-4.7-Flash
 
 #### 2. Run the Loop
 
+Keep `--concurrency 1` with every `tiiny` model. A higher value makes
+the agents evict each other's prompt cache (see
+[Local Model With `pi`](#local-model-with-pi)).
+
 ##### Qwen3.5-9B-Turbo
 
-[!TIP]
+>
+> [!TIP]
 > The fastest model.
+>
 
 ```sh
 caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.5-9B-Turbo --concurrency 1
 ```
+
+---
 
 ##### Qwen3.6-35B-A3B-turbo
 
@@ -415,9 +427,41 @@ caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.5-9B-Turbo --concurrency 1
 caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1
 ```
 
-Keep `--concurrency 1` with every `tiiny` model. A higher value makes
-the agents evict each other's prompt cache (see
-[Local Model With `pi`](#local-model-with-pi)).
+---
+
+##### Qwen3.6-27B-Turbo
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.8-27B-Turbo --concurrency 1
+```
+
+
+##### Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/huihui-ai/Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo --concurrency 1
+```
+
+
+##### Qwen3.8-27B-heretic-ara-Turbo
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/trohrbaugh/Qwen3.8-27B-heretic-ara-Turbo --concurrency 1
+```
+
+##### Ornith-1.5-35B-A3B-Turbo
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/ornith-ai/Ornith-1.5-35B-A3B-Turbo --concurrency 1
+```
+
+
+
+
+
+----------------------------
+
+
 
 
 ## `.redeye.json`
