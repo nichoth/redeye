@@ -86,6 +86,7 @@ merges into that branch.
 - `src/blockers.ts` -- `**Blocked by:**` parsing and resolution
 - `src/graph.ts` -- cross-feature waits: the `graph` command's
   suggestion and the picker's `waits on` label
+- `src/tiiny.ts` -- Tiiny run detection and provider config
 - `src/skills/` -- bundled skill definitions
 - `src/docs-templates/` -- doc templates copied to target projects
 
@@ -188,7 +189,7 @@ its tests.
 
 ### Module boundaries
 - `blockers`, `stats`, `retry`, `preflight`, `learnings`,
-  `rules` and `config` import no values from
+  `rules`, `config` and `tiiny` import no values from
   `src/orchestrator.ts`; `review`
   imports only its `AgentResult` type and takes `spawnAgent` and
   the process registry as injected `deps`.
