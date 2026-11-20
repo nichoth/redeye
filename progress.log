@@ -1,3 +1,30 @@
+## 2026-11-20 -- US-017: Add a worktree on an existing branch
+
+Added `addWorktreeForBranch` to `src/worktree.ts`: a queued function
+that creates a worktree for a branch that already exists, without
+resetting it. The worktree checks out at the branch's current head.
+
+src/worktree.ts:
+- `addWorktreeForBranchNow` -- internal function: cleans up stale
+  worktree at the target path, prunes, then `git worktree add`
+  without `-b` (uses existing branch instead of creating a new one)
+- `addWorktreeForBranch` -- exported, runs through `enqueue` on
+  `worktreeQueue` so concurrent calls cannot race
+
+test/worktree.test.ts (1 new test):
+- Creates a branch with a commit ahead of main, checks out main,
+  then calls `addWorktreeForBranch`; verifies the worktree path
+  exists, is on the correct branch, and HEAD matches the branch's
+  existing head
+
+Gotchas:
+- The key difference from `addWorktreeNow` is no `-b` flag and no
+  branch deletion before adding; `addWorktreeForBranchNow` preserves
+  the branch and all its commits
+- Stale worktree cleanup at the target path is still done (force
+  remove + prune), since an interrupted run may leave a registered
+  worktree entry behind
+
 ## 2026-11-20 -- US-016: Round limits
 
 Added minRounds and maxRounds enforcement to the per-ticket
