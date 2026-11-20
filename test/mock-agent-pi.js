@@ -94,6 +94,33 @@ if (responses && counterFile) {
             join(process.cwd(), '.redeye', 'findings.md'),
             'this is not valid findings format\n'
         )
+    } else if (response === 'verdict-fixed') {
+        mkdirSync(
+            join(process.cwd(), '.redeye'),
+            { recursive: true }
+        )
+        writeFileSync(
+            join(process.cwd(), '.redeye', 'findings.md'),
+            '- [confirmed-fixed] mock finding from pi\n'
+        )
+    } else if (response === 'verdict-withdraw') {
+        mkdirSync(
+            join(process.cwd(), '.redeye'),
+            { recursive: true }
+        )
+        writeFileSync(
+            join(process.cwd(), '.redeye', 'findings.md'),
+            '- [withdrawn] mock finding from pi\n'
+        )
+    } else if (response === 'verdict-open') {
+        mkdirSync(
+            join(process.cwd(), '.redeye'),
+            { recursive: true }
+        )
+        writeFileSync(
+            join(process.cwd(), '.redeye', 'findings.md'),
+            '- [still-open] mock finding from pi\n'
+        )
     }
 } else {
     const delegate = process.env.FAKE_PI_DELEGATE

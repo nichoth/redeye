@@ -488,6 +488,14 @@ before it can merge.
 | `maxRounds` | no | `3` | Maximum review/fix rounds per ticket |
 | `minRounds` | no | `1` | Minimum rounds before a clean review can pass the ticket |
 
+A ticket passes when a round ends with no open findings and
+at least `minRounds` rounds have run. With `minRounds: 2`, a
+clean first round is followed by a second review before the
+ticket merges. When the review in round `maxRounds` leaves
+findings open, the ticket becomes `ready-for-human` (unresolved)
+with its branch kept, and the fixer does not run after that
+final review.
+
 A missing file or a file with no `adversarial` key leaves
 behavior unchanged. Invalid JSON, a missing role, or an
 invalid role string stops the run before any branch or

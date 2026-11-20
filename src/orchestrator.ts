@@ -73,7 +73,6 @@ import {
     ticketReviewPath,
     renderTicketRound,
     renderTicketTerminal,
-    markFixed,
     type FindingWithVerdict,
     type ReviewDeps,
 } from './review.js'
@@ -2195,12 +2194,21 @@ async function runTicketAttempt (
         }
 
         let round = 0
+        let openFindings:FindingWithVerdict[] = []
+        let lastFixHead:string|undefined
         while (true) {
             round++
             d.setRoundLabel(
                 ticket.num, ticket.feature,
                 `review ${round}/${adv.maxRounds}`
             )
+
+            const unchangedHead =
+                openFindings.length > 0 &&
+                lastFixHead !== undefined &&
+                lastFixHead === headCommit(
+                    worktree.worktreePath
+                )
 
             const { findings, head: reviewHead } =
                 await runTicketReviewRound({
@@ -2222,6 +2230,10 @@ async function runTicketAttempt (
                     retries: 0,
                     retryDelay: 0,
                     log: (msg) => d.log(msg),
+                    priorFindings:
+                        openFindings.length > 0 ?
+                            openFindings : undefined,
+                    unchangedHead,
                 }, reviewDeps)
 
             if (findings === null) {
@@ -2257,7 +2269,13 @@ async function runTicketAttempt (
                 }
             }
 
-            if (findings.length === 0) {
+            // Separate closed verdicts from open
+            const stillOpen = findings.filter(f =>
+                f.verdict === 'open' ||
+                f.verdict === 'still-open'
+            )
+
+            if (stillOpen.length === 0) {
                 appendEntry(
                     reviewLogPath,
                     renderTicketRound({
@@ -2266,28 +2284,80 @@ async function runTicketAttempt (
                         implement: adv.implementStr,
                         review: adv.reviewStr,
                         head: reviewHead,
-                        findings: [],
+                        findings,
+                    })
+                )
+                if (round >= adv.minRounds) {
+                    appendEntry(
+                        reviewLogPath,
+                        renderTicketTerminal({
+                            attempt: opts.attempt,
+                            outcome: 'pass',
+                        })
+                    )
+                    break
+                }
+                // minRounds not yet met; loop
+                // for another review round
+                openFindings = []
+                continue
+            }
+
+            // maxRounds reached: unresolved, no fixer
+            if (round >= adv.maxRounds) {
+                appendEntry(
+                    reviewLogPath,
+                    renderTicketRound({
+                        attempt: opts.attempt,
+                        round,
+                        implement: adv.implementStr,
+                        review: adv.reviewStr,
+                        head: reviewHead,
+                        findings,
                     })
                 )
                 appendEntry(
                     reviewLogPath,
                     renderTicketTerminal({
                         attempt: opts.attempt,
-                        outcome: 'pass',
+                        outcome: 'unresolved',
                     })
                 )
-                break
+                d.setRoundLabel(
+                    ticket.num, ticket.feature,
+                    null
+                )
+                await removeWorktreeQuietly(
+                    worktree.worktreePath, d
+                )
+                return {
+                    kind: 'unresolved',
+                    branchName: worktree.branchName,
+                    completedItems:
+                        agentResult.completedItems,
+                    agentRun,
+                }
             }
 
-            // Findings exist -- run the fixer
+            // Open findings -- run the fixer
+            // Convert to Finding[] for the fixer
+            const fixerFindings = stillOpen.map(f =>
+                ({
+                    summary: f.summary,
+                    detail: f.detail,
+                    checked: false,
+                })
+            )
+
             d.setRoundLabel(
                 ticket.num, ticket.feature,
                 `fix ${round}/${adv.maxRounds}`
             )
             d.log(
                 `  ${ticket.filename}: reviewer ` +
-                `found ${findings.length} finding` +
-                `${findings.length === 1 ?
+                `found ${stillOpen.length} open ` +
+                'finding' +
+                `${stillOpen.length === 1 ?
                     '' : 's'}`
             )
 
@@ -2295,7 +2365,7 @@ async function runTicketAttempt (
                 await runTicketFixStep({
                     ticket,
                     specBody: ticketSpec,
-                    findings,
+                    findings: fixerFindings,
                     agentCmd: opts.agentCmd,
                     model: opts.model,
                     effort: opts.effort,
@@ -2313,22 +2383,43 @@ async function runTicketAttempt (
                     log: (msg) => d.log(msg),
                 }, reviewDeps)
 
-            const fixed = markFixed(
-                findings,
-                fixResult.completedItems
+            // Record fixer responses but do NOT
+            // close findings -- only the reviewer
+            // can do that via verdicts
+            const completedNorm = new Set(
+                fixResult.completedItems.map(
+                    s => s.replace(
+                        /\s+/g, ' '
+                    ).trim().toLowerCase()
+                )
             )
             const fwv:FindingWithVerdict[] =
-                fixed.map(f => ({
-                    summary: f.summary,
-                    detail: f.detail,
-                    verdict: 'open' as const,
-                    ...(f.checked ?
-                        {
-                            fixerResponse:
-                                'fixed' as const,
-                        } :
-                        {}),
-                }))
+                findings.map(f => {
+                    if (f.verdict === 'confirmed-fixed' ||
+                        f.verdict === 'withdrawn') {
+                        return f
+                    }
+                    const norm = f.summary
+                        .replace(/\s+/g, ' ')
+                        .trim().toLowerCase()
+                    const markedFixed =
+                        completedNorm.has(norm)
+                    const hasNotes =
+                        fixResult.notes !== null
+                    const resp:FindingWithVerdict = {
+                        ...f,
+                    }
+                    if (markedFixed) {
+                        resp.fixerResponse =
+                            'fixed'
+                    } else if (hasNotes) {
+                        resp.fixerResponse =
+                            'disputed'
+                        resp.fixerReason =
+                            fixResult.notes!
+                    }
+                    return resp
+                })
 
             appendEntry(
                 reviewLogPath,
@@ -2366,7 +2457,12 @@ async function runTicketAttempt (
                 }
             }
 
-            // Tests passed -- loop for next round
+            // Build open findings for next round
+            openFindings = fwv.filter(f =>
+                f.verdict === 'open' ||
+                f.verdict === 'still-open'
+            )
+            lastFixHead = fixResult.fixHead
         }
 
         d.setRoundLabel(

@@ -107,6 +107,12 @@ export function notesRule (unit:string, subject:string):string {
         'file; the orchestrator collects it.'
 }
 
+export const UNCHANGED_HEAD_RULE =
+    'The branch head is unchanged since the last round. ' +
+    'The fixer disputed rather than committed. Evaluate ' +
+    'the dispute reasons as the new information; new ' +
+    'findings are still allowed.'
+
 export function agentsMdRule (subject:string):string {
     return '- Before your final commit, record reusable ' +
         'learnings in the nearest AGENTS.md (in or ' +

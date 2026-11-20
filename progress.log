@@ -1,3 +1,33 @@
+## 2026-11-20 -- US-016: Round limits
+
+Added minRounds and maxRounds enforcement to the per-ticket
+adversarial review loop in src/orchestrator.ts.
+
+src/orchestrator.ts:
+- When `stillOpen.length === 0` but `round < minRounds`, the
+  loop continues to another review round instead of passing
+- When `round >= maxRounds` and findings are still open, the
+  ticket becomes unresolved (ready-for-human, branch kept,
+  worktree removed) and the fixer does NOT run after that
+  final review
+
+test/review-integration.test.ts (2 new tests):
+- minRounds 2 forces a second review even when round 1 is
+  clean; two rounds recorded, reviewer ran twice
+- maxRounds reached with open findings makes ticket
+  unresolved; status ready-for-human, branch kept, fixer
+  ran once (not after the final review), run exits 1
+
+README.md:
+- Documented the round rules in the .redeye.json section
+
+Gotchas:
+- The minRounds continuation resets `openFindings` to [] and
+  uses `continue` to skip the fixer since there's nothing to
+  fix; the next round is a fresh review
+- The maxRounds check runs before the fixer block, so the
+  fixer is never spawned on the final round
+
 ## 2026-11-20 -- US-014: Fix step with the implement role
 
 Added the fix step to the per-ticket adversarial review loop.
@@ -458,3 +488,56 @@ Gotchas:
   as `review 1/3` or `fix 2/3` when it calls `setRoundLabel`
 - `rowText` gives blocked-by priority over round label in the
   ternary, since a blocked ticket is never simultaneously running
+
+## US-015: Verdicts on open findings
+
+Implemented verdict system where only the reviewer model can close
+findings. The fixer's [x] marks or disputes are recorded but do not
+change the finding's open/closed status.
+
+### Changes
+
+src/rules.ts:
+- Added UNCHANGED_HEAD_RULE constant for when the fixer disputed
+  without committing (branch head unchanged)
+
+src/review.ts:
+- Added FindingWithVerdict type with verdict field
+  (open | confirmed-fixed | withdrawn | still-open) and optional
+  fixerResponse/fixerReason
+- Added parseVerdictFindings(text, priorSummaries) -- parses
+  reviewer verdict output, validates all prior findings have
+  verdicts, rejects "No findings." when priors exist
+- Added parseFindingsAsVerdicts(text) -- wraps parseFindings with
+  verdict:'open' for initial round
+- Added renderTicketReviewerVerdictPrompt -- renders prompt with
+  prior findings, fixer responses, verdict format instructions,
+  and optional unchanged-head rule
+- Updated runTicketReviewRound to use verdict prompt/parser when
+  priorFindings are provided, standard prompt/parser otherwise
+
+src/orchestrator.ts:
+- Rewrote the adversarial review loop to track openFindings as
+  FindingWithVerdict[] across rounds
+- Detects unchangedHead by comparing lastFixHead with current head
+- After verdict round, filters stillOpen vs closed findings
+- Fixer response recording preserves the reviewer's verdict
+  instead of forcing 'open'
+- Updated pre-existing tests from finding,clean to
+  finding,verdict-fixed since the second reviewer invocation now
+  receives priorFindings and must give verdicts
+
+test/mock-agent-pi.js:
+- Added verdict-fixed, verdict-withdraw, verdict-open response
+  types
+
+test/review.test.ts (8 new tests):
+- Verdict parsing: all priors covered, missing verdict, No findings
+  with/without priors, new finding for prior summary rejected,
+  still-open verdict, verdict prompt content, unchanged head rule
+
+test/review-integration.test.ts (4 new tests):
+- Fixer disputes without commit, reviewer withdraws
+- Fixer marks [x] but reviewer keeps it open (still-open)
+- Fixer fixes, reviewer confirms (confirmed-fixed), ticket merges
+- Fixer disputes, reviewer withdraws, ticket merges

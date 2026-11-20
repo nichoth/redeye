@@ -807,7 +807,7 @@ async t => {
         MOCK_TICKET: 'pass',
         MOCK_FIX: 'pass',
         FAKE_PI_RECORD_DIR: piRecDir,
-        FAKE_PI_RESPONSES: 'finding,clean',
+        FAKE_PI_RESPONSES: 'finding,verdict-fixed',
         FAKE_PI_COUNTER: counterFile,
     }, async h => {
         const result = await h.run(
@@ -1025,7 +1025,7 @@ test('per-ticket fix - fixer timeout with ' +
     await withHarness({
         MOCK_TICKET: 'pass',
         FAKE_PI_RECORD_DIR: piRecDir,
-        FAKE_PI_RESPONSES: 'finding,clean',
+        FAKE_PI_RESPONSES: 'finding,verdict-fixed',
         FAKE_PI_COUNTER: counterFile,
         MOCK_FIX_RESPONSES: 'hang',
         MOCK_FIX_COUNTER: fixCounterFile,
@@ -1091,4 +1091,459 @@ test('per-ticket fix - fixer timeout with ' +
         }
     })
     rmSync(piRecDir, { recursive: true, force: true })
+})
+
+// ---- US-015: Verdicts on open findings ----
+
+test('per-ticket verdict - fixer disputes without ' +
+    'commit, reviewer runs and withdraws',
+async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    const fixCounterFile = join(
+        piRecDir, 'fix-counter'
+    )
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES:
+            'finding,verdict-withdraw',
+        FAKE_PI_COUNTER: counterFile,
+        MOCK_FIX_RESPONSES: 'dispute',
+        MOCK_FIX_COUNTER: fixCounterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket passes after withdrawal')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+        t.equal(rounds.length, 2,
+            'two rounds recorded')
+
+        if (rounds[1].type === 'round') {
+            const f = rounds[1].findings.find(
+                f => f.summary ===
+                    'mock finding from pi'
+            )
+            t.ok(f, 'finding in verdict round')
+            t.equal(f?.verdict, 'withdrawn',
+                'verdict is withdrawn')
+        }
+
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 2,
+            'reviewer ran twice (finding + verdict)')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('per-ticket verdict - fixer marks [x] but ' +
+    'reviewer keeps it open', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    const fixCounterFile = join(
+        piRecDir, 'fix-counter'
+    )
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES:
+            'finding,verdict-open,verdict-fixed',
+        FAKE_PI_COUNTER: counterFile,
+        MOCK_FIX_RESPONSES: 'pass,pass',
+        MOCK_FIX_COUNTER: fixCounterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 5,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket eventually passes')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+
+        if (rounds[1].type === 'round') {
+            const f = rounds[1].findings.find(
+                f => f.summary ===
+                    'mock finding from pi'
+            )
+            t.ok(f, 'finding in round 2')
+            t.equal(f?.verdict, 'still-open',
+                'finding stays open despite fixer [x]')
+        }
+
+        t.equal(rounds.length, 3,
+            'three rounds total')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('per-ticket verdict - fixer fixes and ' +
+    'reviewer confirms, ticket merges after ' +
+    'two rounds', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    const fixCounterFile = join(
+        piRecDir, 'fix-counter'
+    )
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES:
+            'finding,verdict-fixed',
+        FAKE_PI_COUNTER: counterFile,
+        MOCK_FIX_RESPONSES: 'pass',
+        MOCK_FIX_COUNTER: fixCounterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket merges')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+        t.equal(rounds.length, 2,
+            'two rounds in log')
+
+        if (rounds[1].type === 'round') {
+            const f = rounds[1].findings.find(
+                f => f.summary ===
+                    'mock finding from pi'
+            )
+            t.equal(f?.verdict, 'confirmed-fixed',
+                'confirmed-fixed in round 2')
+        }
+
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 1,
+            'one terminal entry')
+        t.equal(
+            (terms[0] as TicketTerminalEntry)
+                .outcome,
+            'pass', 'pass outcome'
+        )
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('per-ticket verdict - fixer disputes and ' +
+    'reviewer withdraws, ticket merges',
+async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    const fixCounterFile = join(
+        piRecDir, 'fix-counter'
+    )
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES:
+            'finding,verdict-withdraw',
+        FAKE_PI_COUNTER: counterFile,
+        MOCK_FIX_RESPONSES: 'dispute',
+        MOCK_FIX_COUNTER: fixCounterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket merges after withdrawal')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 1,
+            'one terminal entry')
+        t.equal(
+            (terms[0] as TicketTerminalEntry)
+                .outcome,
+            'pass', 'pass outcome'
+        )
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+// ---- US-016: Round limits ----
+
+test('round limits - minRounds 2 forces a second ' +
+    'review even when round 1 is clean', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'clean,clean',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 5,
+                    minRounds: 2,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket passes after two clean rounds')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+        t.equal(rounds.length, 2,
+            'two rounds recorded')
+        if (rounds[0].type === 'round') {
+            t.equal(rounds[0].round, 1,
+                'first round is 1')
+        }
+        if (rounds[1].type === 'round') {
+            t.equal(rounds[1].round, 2,
+                'second round is 2')
+        }
+
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 1,
+            'one terminal entry')
+        t.equal(
+            (terms[0] as TicketTerminalEntry)
+                .outcome,
+            'pass', 'pass outcome'
+        )
+
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 2,
+            'reviewer ran twice')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('round limits - maxRounds reached with open ' +
+    'findings makes ticket unresolved', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    const fixCounterFile = join(
+        piRecDir, 'fix-counter'
+    )
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        // round 1: finding -> fixer disputes ->
+        // round 2: still-open (maxRounds hit)
+        FAKE_PI_RESPONSES:
+            'finding,verdict-open',
+        FAKE_PI_COUNTER: counterFile,
+        MOCK_FIX_RESPONSES: 'dispute',
+        MOCK_FIX_COUNTER: fixCounterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 2,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(!result.allDone,
+            'run reports not all done')
+
+        // Status is ready-for-human
+        const ticket = scanTickets(
+            join(
+                h.projectDir, '.scratch',
+                FEAT, 'issues'
+            ),
+            FEAT
+        )[0]
+        t.equal(ticket.status, 'ready-for-human',
+            'ticket is ready-for-human')
+
+        // Branch kept
+        const branches = execFileSync(
+            'git', ['branch', '--list'],
+            {
+                cwd: h.projectDir,
+                encoding: 'utf8',
+            }
+        ).trim()
+        t.ok(
+            branches.includes('01-only'),
+            'branch is kept'
+        )
+
+        // progress.md records done:false
+        const progress = readProgress(
+            join(
+                h.projectDir, '.scratch',
+                FEAT, 'progress.md'
+            )
+        )
+        t.ok(progress, 'progress exists')
+        if (progress) {
+            const tp = progress.tickets.find(
+                tp => tp.filename === '01-only.md'
+            )
+            t.equal(tp?.done, false,
+                'progress records done:false')
+        }
+
+        // Review log: 2 rounds + unresolved terminal
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+        t.equal(rounds.length, 2,
+            'two rounds recorded')
+
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 1,
+            'one terminal entry')
+        t.equal(
+            (terms[0] as TicketTerminalEntry)
+                .outcome,
+            'unresolved',
+            'terminal outcome is unresolved'
+        )
+
+        // Fixer ran once (round 1), not after
+        // round 2 (the final review)
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.fixer, 1,
+            'fixer ran once, not after final review')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
 })

@@ -18,13 +18,18 @@ import {
     parseTicketReviewLog,
     currentAttemptEntries,
     ticketReviewPath,
+    parseVerdictFindings,
+    renderTicketReviewerVerdictPrompt,
     type Finding,
     type ReviewEntry,
     type TicketRoundInput,
     type TicketTerminalInput,
     type FindingWithVerdict,
 } from '../src/review.js'
-import { subagentRule } from '../src/rules.js'
+import {
+    subagentRule,
+    UNCHANGED_HEAD_RULE,
+} from '../src/rules.js'
 
 const A = 'a'.repeat(40)
 const B = 'b'.repeat(40)
@@ -655,4 +660,143 @@ test('ticket round - fixer disputed with reason', t => {
         t.equal(f.fixerResponse, 'disputed', 'response')
         t.equal(f.fixerReason, 'This is by design', 'reason')
     }
+})
+
+// -- parseVerdictFindings --
+
+test('parseVerdictFindings - verdicts for all priors ' +
+    'returns findings', t => {
+    const text = [
+        '- [confirmed-fixed] Off-by-one in page count',
+        '    src/page.ts:12',
+        '- [withdrawn] Missing null check',
+        '- [ ] New issue found',
+        '    src/foo.ts:5',
+    ].join('\n')
+    const result = parseVerdictFindings(
+        text, ['Off-by-one in page count', 'Missing null check']
+    )
+    t.ok(result, 'parses successfully')
+    t.equal(result!.length, 3, 'three findings')
+    t.equal(result![0].verdict, 'confirmed-fixed',
+        'first is confirmed-fixed')
+    t.equal(result![1].verdict, 'withdrawn',
+        'second is withdrawn')
+    t.equal(result![2].verdict, 'open',
+        'new finding is open')
+    t.equal(result![2].summary, 'New issue found',
+        'new finding summary')
+})
+
+test('parseVerdictFindings - missing verdict for a ' +
+    'prior finding returns null', t => {
+    const text = [
+        '- [confirmed-fixed] Off-by-one in page count',
+    ].join('\n')
+    const result = parseVerdictFindings(
+        text,
+        ['Off-by-one in page count', 'Missing null check']
+    )
+    t.equal(result, null,
+        'missing verdict is unparseable')
+})
+
+test('parseVerdictFindings - No findings with open ' +
+    'priors returns null', t => {
+    const result = parseVerdictFindings(
+        'No findings.',
+        ['Off-by-one in page count']
+    )
+    t.equal(result, null,
+        'No findings with priors is unparseable')
+})
+
+test('parseVerdictFindings - No findings with no ' +
+    'priors returns empty', t => {
+    const result = parseVerdictFindings(
+        'No findings.', []
+    )
+    t.ok(result, 'parses')
+    t.equal(result!.length, 0, 'empty list')
+})
+
+test('parseVerdictFindings - new [ ] for a prior ' +
+    'summary is rejected', t => {
+    const text = '- [ ] Off-by-one in page count\n'
+    const result = parseVerdictFindings(
+        text, ['Off-by-one in page count']
+    )
+    t.equal(result, null,
+        'prior finding without verdict is unparseable')
+})
+
+test('parseVerdictFindings - still-open is a valid ' +
+    'verdict', t => {
+    const text = '- [still-open] Bug in parser\n'
+    const result = parseVerdictFindings(
+        text, ['Bug in parser']
+    )
+    t.ok(result, 'parses')
+    t.equal(result![0].verdict, 'still-open',
+        'still-open verdict')
+})
+
+// -- renderTicketReviewerVerdictPrompt --
+
+test('verdict prompt includes prior findings and ' +
+    'fixer responses', t => {
+    const prompt = renderTicketReviewerVerdictPrompt({
+        ticketFilename: '01-task.md',
+        ticketBody: '# Task',
+        specBody: 'SPEC',
+        from: A,
+        to: B,
+        priorFindings: [{
+            summary: 'Off-by-one',
+            detail: 'src/x.ts:1',
+            verdict: 'open',
+            fixerResponse: 'fixed',
+        }, {
+            summary: 'Null check',
+            detail: '',
+            verdict: 'open',
+            fixerResponse: 'disputed',
+            fixerReason: 'By design',
+        }],
+        unchangedHead: false,
+    })
+    t.ok(prompt.includes('Off-by-one'),
+        'includes finding summary')
+    t.ok(prompt.includes('Fixer response: fixed'),
+        'includes fixed response')
+    t.ok(prompt.includes('disputed: By design'),
+        'includes dispute reason')
+    t.ok(prompt.includes('[confirmed-fixed]'),
+        'shows verdict format')
+    t.ok(prompt.includes('[withdrawn]'),
+        'shows withdrawn format')
+    t.ok(prompt.includes('[still-open]'),
+        'shows still-open format')
+    t.ok(!prompt.includes(UNCHANGED_HEAD_RULE),
+        'no unchanged-head rule when head changed')
+})
+
+test('verdict prompt includes unchanged head rule ' +
+    'when set', t => {
+    const prompt = renderTicketReviewerVerdictPrompt({
+        ticketFilename: '01-task.md',
+        ticketBody: '# Task',
+        specBody: 'SPEC',
+        from: A,
+        to: B,
+        priorFindings: [{
+            summary: 'Bug',
+            detail: '',
+            verdict: 'open',
+            fixerResponse: 'disputed',
+        }],
+        unchangedHead: true,
+    })
+    t.ok(prompt.includes(UNCHANGED_HEAD_RULE),
+        'includes unchanged-head rule')
 })
