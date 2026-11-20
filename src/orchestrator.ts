@@ -2174,8 +2174,8 @@ async function runTicketAttempt (
                 repoRoot: opts.repoRoot,
                 timeout: opts.timeout,
                 logsDir: opts.logsDir,
-                retries: opts.retries,
-                retryDelay: opts.retryDelay,
+                retries: 0,
+                retryDelay: 0,
                 log: (msg) => d.log(msg),
             }, {
                 spawnAgent: async spawnOpts => {

@@ -309,3 +309,31 @@ Gotchas:
   responses work across separate process spawns
 - The response scripting path and the delegation path are
   mutually exclusive: FAKE_PI_RESPONSES takes priority
+
+## 2026-11-19 -- US-011: One review step gates each ticket
+
+Fixed the per-ticket adversarial review step that was already
+scaffolded (code + tests from a prior session) but had a bug
+causing the tests to fail.
+
+Bug: `runTicketAttempt` passed the ticket's own `retries` count
+to `runTicketReviewRound`, giving the reviewer internal retries
+equal to the ticket retries. This meant a reviewer exit-1
+followed by a clean response would succeed on the reviewer's
+internal retry within a single ticket attempt, instead of
+failing the attempt and triggering the ticket retry policy.
+
+Fix: changed `retries: opts.retries` to `retries: 0` (and
+`retryDelay: 0`) in the `runTicketReviewRound` call inside
+`runTicketAttempt`. The reviewer gets one shot per ticket
+attempt; if it fails, the ticket retry policy handles retries.
+
+Gotchas:
+- The reviewer's retry count must be independent of the ticket
+  retry count. The end-of-run reviewer in `runReviewPass` still
+  uses its own `retries` from `ReviewPassOpts`, which is correct
+  for that path
+- The per-ticket reviewer retries are 0 because the ticket
+  retry policy already wraps the entire attempt including the
+  review step, so double-retrying would waste pi calls on the
+  same failing reviewer
