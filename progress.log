@@ -1,3 +1,47 @@
+## 2026-11-20 -- US-018: Resume an interrupted loop
+
+Added resume detection and execution to the per-ticket adversarial
+review loop, so a crash or interruption does not throw away finished
+review rounds.
+
+src/orchestrator.ts:
+- `branchHead(repoRoot, branchName)` -- reads a branch's HEAD via
+  `git rev-parse` without a worktree
+- `detectResume(opts)` -- checks whether a ticket's adversarial
+  loop is resumable: branch exists, review log has current-attempt
+  round entries with no terminal, and the last recorded head
+  (fixHead if present, else head) matches the branch's actual HEAD.
+  Returns `ResumeState` with nextRound, openFindings and
+  lastFixHead, or null for fresh start
+- `runAdversarialFromResume(ctx)` -- runs the adversarial loop
+  from a resume state, sharing the same review/fix loop logic as
+  the normal path but with a synthetic agentRun (implementation
+  skipped) and round counter starting from the resume point
+- `runTicketAttempt` -- before `createWorktree`, calls
+  `detectResume`; on a resumable state, uses
+  `addWorktreeForBranch` (US-017) to recreate the worktree and
+  delegates to `runAdversarialFromResume`; otherwise falls through
+  to the existing fresh-start path (stale branch deleted by
+  `createWorktree`)
+
+test/review-integration.test.ts (4 new tests):
+- Interrupted after recorded round resumes at next round without
+  running implementation; ticket passes and merges
+- Branch head mismatch starts fresh; implementation runs again
+- Log ending in terminal entry starts fresh
+- Earlier attempt failed + current attempt round matches branch
+  head -> resumes at next round
+
+Gotchas:
+- Resume detection uses `currentAttemptEntries` (US-009 helper),
+  so terminal entries from earlier attempts or runs do not block
+  it
+- The recorded head is `fixHead` when present (the fixer ran),
+  else `head` (only the reviewer ran); this correctly handles
+  both interrupted-after-review and interrupted-after-fix cases
+- `addWorktreeForBranch` preserves the branch's commits, unlike
+  `createWorktree` which force-deletes and recreates the branch
+
 ## 2026-11-20 -- US-017: Add a worktree on an existing branch
 
 Added `addWorktreeForBranch` to `src/worktree.ts`: a queued function

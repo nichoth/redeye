@@ -3,7 +3,7 @@ import {
     mkdtempSync, mkdirSync, writeFileSync, readFileSync,
     readdirSync, existsSync, rmSync,
 } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execFileSync, execSync } from 'node:child_process'
 import type { Display } from '../src/display.js'
@@ -16,6 +16,8 @@ import {
     parseReviewEntries,
     parseTicketReviewLog,
     ticketReviewPath,
+    renderTicketRound,
+    renderTicketTerminal,
     type TicketTerminalEntry,
 } from '../src/review.js'
 import { subagentRule } from '../src/rules.js'
@@ -1542,6 +1544,447 @@ test('round limits - maxRounds reached with open ' +
         const roles = countRoles(h.recordDir)
         t.equal(roles.fixer, 1,
             'fixer ran once, not after final review')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+// ---- US-018: Resume an interrupted loop ----
+
+test('resume - interrupted after recorded round ' +
+    'resumes without running implementation',
+async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'verdict-fixed',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const repoName = basename(h.projectDir)
+        const branchName =
+            `${repoName}--feat-01-only`
+
+        // Simulate a previous run: create the
+        // ticket branch with agent + fixer work
+        git(h.projectDir,
+            ['checkout', '-b', branchName])
+        writeFileSync(
+            join(h.projectDir, 'agent-work.ts'),
+            'export const x = 1'
+        )
+        git(h.projectDir, ['add', '-A'])
+        git(h.projectDir,
+            ['commit', '-m', 'agent work'])
+        const agentHead = git(h.projectDir,
+            ['rev-parse', 'HEAD'])
+
+        writeFileSync(
+            join(h.projectDir, 'fix-work.ts'),
+            'export const y = 2'
+        )
+        git(h.projectDir, ['add', '-A'])
+        git(h.projectDir,
+            ['commit', '-m', 'fixer work'])
+        const fixHead = git(h.projectDir,
+            ['rev-parse', 'HEAD'])
+
+        // Switch back to main
+        git(h.projectDir, ['checkout', 'main'])
+
+        // Write review log with round 1 entry
+        // (interrupted before round 2 reviewer)
+        const reviewDir = join(
+            h.projectDir, '.scratch',
+            FEAT, 'reviews'
+        )
+        mkdirSync(reviewDir, { recursive: true })
+        const reviewLogPath = join(
+            reviewDir, '01-only.md'
+        )
+        writeFileSync(reviewLogPath,
+            renderTicketRound({
+                attempt: 1,
+                round: 1,
+                implement: 'mock-agent-review',
+                review: 'pi',
+                head: agentHead,
+                findings: [{
+                    summary:
+                        'mock finding from pi',
+                    detail: '',
+                    verdict: 'open',
+                    fixerResponse: 'fixed',
+                }],
+                fixHead,
+                testResult: 'pass',
+            })
+        )
+        git(h.projectDir,
+            ['add', '--force', reviewLogPath])
+        git(h.projectDir,
+            ['commit', '-m', 'save review log'])
+
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket passes after resumed review')
+
+        // Implementation was skipped
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.ticket, 0,
+            'no ticket agent (implementation skipped)')
+        t.equal(roles.fixer, 0,
+            'no fixer (reviewer confirmed-fixed)')
+
+        // Reviewer ran once (round 2)
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 1,
+            'reviewer ran once for round 2')
+
+        // Review log has 2 rounds + pass terminal
+        const logEntries = parseTicketReviewLog(
+            readFileSync(reviewLogPath, 'utf8')
+        )
+        const rounds = logEntries.filter(
+            e => e.type === 'round'
+        )
+        t.equal(rounds.length, 2,
+            'two rounds in log')
+        if (rounds[0].type === 'round') {
+            t.equal(rounds[0].round, 1,
+                'first round is 1 (from prev run)')
+        }
+        if (rounds[1].type === 'round') {
+            t.equal(rounds[1].round, 2,
+                'second round is 2 (from resume)')
+        }
+        const terms = logEntries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 1,
+            'one terminal entry')
+        t.equal(
+            (terms[0] as TicketTerminalEntry)
+                .outcome,
+            'pass', 'pass outcome'
+        )
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('resume - branch head mismatch ' +
+    'starts fresh', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'clean',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const repoName = basename(h.projectDir)
+        const branchName =
+            `${repoName}--feat-01-only`
+
+        // Create branch with agent work
+        git(h.projectDir,
+            ['checkout', '-b', branchName])
+        writeFileSync(
+            join(h.projectDir, 'agent-work.ts'),
+            'export const x = 1'
+        )
+        git(h.projectDir, ['add', '-A'])
+        git(h.projectDir,
+            ['commit', '-m', 'agent work'])
+        const agentHead = git(h.projectDir,
+            ['rev-parse', 'HEAD'])
+
+        // Add another commit that the log
+        // does not know about
+        writeFileSync(
+            join(h.projectDir, 'extra.ts'),
+            'export const z = 3'
+        )
+        git(h.projectDir, ['add', '-A'])
+        git(h.projectDir,
+            ['commit', '-m', 'extra work'])
+
+        git(h.projectDir, ['checkout', 'main'])
+
+        // Write review log with head = agentHead
+        // (not matching the branch's current HEAD)
+        const reviewDir = join(
+            h.projectDir, '.scratch',
+            FEAT, 'reviews'
+        )
+        mkdirSync(reviewDir, { recursive: true })
+        const reviewLogPath = join(
+            reviewDir, '01-only.md'
+        )
+        writeFileSync(reviewLogPath,
+            renderTicketRound({
+                attempt: 1,
+                round: 1,
+                implement: 'mock-agent-review',
+                review: 'pi',
+                head: agentHead,
+                findings: [],
+            })
+        )
+        git(h.projectDir,
+            ['add', '--force', reviewLogPath])
+        git(h.projectDir,
+            ['commit', '-m', 'save review log'])
+
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket passes (fresh start)')
+
+        // Implementation ran again
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.ticket, 1,
+            'ticket agent ran (fresh start)')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('resume - log ends in terminal ' +
+    'starts fresh', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'clean',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const repoName = basename(h.projectDir)
+        const branchName =
+            `${repoName}--feat-01-only`
+
+        // Create branch with agent work
+        git(h.projectDir,
+            ['checkout', '-b', branchName])
+        writeFileSync(
+            join(h.projectDir, 'agent-work.ts'),
+            'export const x = 1'
+        )
+        git(h.projectDir, ['add', '-A'])
+        git(h.projectDir,
+            ['commit', '-m', 'agent work'])
+        const agentHead = git(h.projectDir,
+            ['rev-parse', 'HEAD'])
+
+        git(h.projectDir, ['checkout', 'main'])
+
+        // Write review log: round + terminal
+        const reviewDir = join(
+            h.projectDir, '.scratch',
+            FEAT, 'reviews'
+        )
+        mkdirSync(reviewDir, { recursive: true })
+        const reviewLogPath = join(
+            reviewDir, '01-only.md'
+        )
+        writeFileSync(reviewLogPath,
+            renderTicketRound({
+                attempt: 1,
+                round: 1,
+                implement: 'mock-agent-review',
+                review: 'pi',
+                head: agentHead,
+                findings: [],
+            }) +
+            renderTicketTerminal({
+                attempt: 1,
+                outcome: 'failed',
+            })
+        )
+        git(h.projectDir,
+            ['add', '--force', reviewLogPath])
+        git(h.projectDir,
+            ['commit', '-m', 'save review log'])
+
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket passes (fresh start)')
+
+        // Implementation ran again
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.ticket, 1,
+            'ticket agent ran (fresh start)')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('resume - earlier attempt failed, current ' +
+    'attempt round matches, resumes',
+async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'verdict-fixed',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const repoName = basename(h.projectDir)
+        const branchName =
+            `${repoName}--feat-01-only`
+
+        // Create branch with work
+        git(h.projectDir,
+            ['checkout', '-b', branchName])
+        writeFileSync(
+            join(h.projectDir, 'agent-work.ts'),
+            'export const x = 1'
+        )
+        git(h.projectDir, ['add', '-A'])
+        git(h.projectDir,
+            ['commit', '-m', 'agent work'])
+        const agentHead = git(h.projectDir,
+            ['rev-parse', 'HEAD'])
+
+        writeFileSync(
+            join(h.projectDir, 'fix-work.ts'),
+            'export const y = 2'
+        )
+        git(h.projectDir, ['add', '-A'])
+        git(h.projectDir,
+            ['commit', '-m', 'fixer work'])
+        const fixHead = git(h.projectDir,
+            ['rev-parse', 'HEAD'])
+
+        git(h.projectDir, ['checkout', 'main'])
+
+        // Write review log: attempt 1 failed,
+        // then attempt 2 round 1 (interrupted)
+        const reviewDir = join(
+            h.projectDir, '.scratch',
+            FEAT, 'reviews'
+        )
+        mkdirSync(reviewDir, { recursive: true })
+        const reviewLogPath = join(
+            reviewDir, '01-only.md'
+        )
+        writeFileSync(reviewLogPath,
+            renderTicketRound({
+                attempt: 1,
+                round: 1,
+                implement: 'mock-agent-review',
+                review: 'pi',
+                head: agentHead,
+                findings: [],
+            }) +
+            renderTicketTerminal({
+                attempt: 1,
+                outcome: 'failed',
+            }) +
+            renderTicketRound({
+                attempt: 2,
+                round: 1,
+                implement: 'mock-agent-review',
+                review: 'pi',
+                head: agentHead,
+                findings: [{
+                    summary:
+                        'mock finding from pi',
+                    detail: '',
+                    verdict: 'open',
+                    fixerResponse: 'fixed',
+                }],
+                fixHead,
+                testResult: 'pass',
+            })
+        )
+        git(h.projectDir,
+            ['add', '--force', reviewLogPath])
+        git(h.projectDir,
+            ['commit', '-m', 'save review log'])
+
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket passes after resumed review')
+
+        // Implementation was skipped
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.ticket, 0,
+            'no ticket agent (resumed)')
+
+        // Reviewer ran once (round 2 of attempt 2)
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 1,
+            'reviewer ran once')
     })
     rmSync(piRecDir, {
         recursive: true, force: true,
