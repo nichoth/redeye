@@ -1,3 +1,32 @@
+## 2026-11-20 -- US-020: The end-of-run pass uses both configured roles
+
+No new code needed -- the implementation was completed as part of
+US-019's refactor:
+
+src/orchestrator.ts:4339-4362:
+- When adversarial is configured, the end-of-run reviewer uses
+  adv.review (the review role's provider/model/effort)
+- The fixer uses runRole, which is the implement role's
+  provider/model when adversarial is set (resolved in index.ts)
+- Without adversarial, both roles use the run's CLI provider
+
+src/orchestrator.ts:4330:
+- `if (opts.review)` gates the end-of-run pass, so --no-review
+  skips it; the per-ticket loop is unaffected since it reads
+  opts.adversarial independently
+
+test/review-integration.test.ts:1996-2110 (3 tests, all passing):
+- Adversarial: pi as reviewer, mock-agent-review as fixer
+- No adversarial: run provider for both
+- --no-review + adversarial: end-of-run skipped, per-ticket loop
+  still runs
+
+Gotchas:
+- The fixer role does not need an explicit adversarial.implement
+  reference because index.ts resolves the implement role into the
+  top-level agentCmd/model before calling runWavesIsolated; the
+  runRole object built from those fields IS the implement role
+
 ## 2026-11-20 -- US-019: Split the end-of-run review pass into two roles
 
 Refactored ReviewPassOpts to carry separate reviewer and fixer
