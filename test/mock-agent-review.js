@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
@@ -9,6 +9,8 @@ import { randomUUID } from 'node:crypto'
 //             findings | clean | none
 //   fixer     (prompt has the findings marker) per MOCK_FIX:
 //             pass | break
+//          or per MOCK_FIX_RESPONSES + MOCK_FIX_COUNTER:
+//             pass | break | hang | dispute
 //   ticket    otherwise, per MOCK_TICKET: pass | fail
 // Each run writes { time, role, cwd, prompt } into MOCK_RECORD_DIR.
 
@@ -32,6 +34,30 @@ function writeFindings (text) {
     writeFileSync(
         join(process.cwd(), '.redeye', 'findings.md'), text
     )
+}
+
+function writeNotes (text) {
+    mkdirSync(join(process.cwd(), '.redeye'), { recursive:true })
+    writeFileSync(
+        join(process.cwd(), '.redeye', 'notes.md'), text
+    )
+}
+
+function getFixMode () {
+    const responses = process.env.MOCK_FIX_RESPONSES
+    const counterFile = process.env.MOCK_FIX_COUNTER
+    if (responses && counterFile) {
+        const list = responses.split(',')
+        let idx = 0
+        try {
+            idx = parseInt(readFileSync(counterFile, 'utf8'), 10)
+        } catch {
+            // first invocation
+        }
+        writeFileSync(counterFile, String(idx + 1))
+        return list[idx] || 'pass'
+    }
+    return process.env.MOCK_FIX || 'pass'
 }
 
 function run (prompt) {
@@ -62,7 +88,20 @@ function run (prompt) {
         process.exit(0)
     }
     if (role === 'fixer') {
-        if (process.env.MOCK_FIX === 'break') {
+        const fixMode = getFixMode()
+        if (fixMode === 'hang') {
+            writeFileSync(
+                join(process.cwd(), 'pending-fix.ts'),
+                String(Date.now())
+            )
+            setInterval(() => {}, 60000)
+            return
+        }
+        if (fixMode === 'dispute') {
+            writeNotes('Disputed: the finding is a false positive')
+            process.exit(0)
+        }
+        if (fixMode === 'break') {
             commitFile('broken.txt')
         } else {
             commitFile(`fix-${randomUUID()}.ts`)

@@ -1,3 +1,36 @@
+## 2026-11-20 -- US-014: Fix step with the implement role
+
+Added the fix step to the per-ticket adversarial review loop.
+
+src/review.ts:
+- `runTicketFixStep` -- spawns the implement-role agent with
+  `renderFixPrompt`, uses `runWithRetries` for fix-retry on test
+  failure, auto-commits dirty changes on timeout, runs the test
+  gate after fix, returns `TicketFixResult` with fixHead,
+  testResult, completedItems, notes, timedOut
+- `TicketFixOpts` and `TicketFixResult` types
+- Exported `ReviewDeps` type for the orchestrator import
+
+src/orchestrator.ts:
+- Replaced single-review-then-unresolved with a `while (true)`
+  review-fix loop: reviewer finds issues -> fixer runs -> test
+  gate -> if pass, loop back to reviewer; if fail, fail attempt
+- `markFixed` maps fixer's completedItems to FindingWithVerdict
+  entries; round entry records fixHead and testResult
+
+test/mock-agent-review.js:
+- `getFixMode()` with MOCK_FIX_RESPONSES + MOCK_FIX_COUNTER for
+  ordered response sequencing
+- `hang` mode (uncommitted file + keep alive) for timeout tests
+- `dispute` mode (notes only, no commit)
+
+test/review-integration.test.ts:
+- Updated US-012 tests: open findings now trigger fix step instead
+  of immediately going to unresolved; first test verifies fix +
+  clean review -> pass; second test verifies broken fix -> failed
+- Two new US-014 tests: fixer test failures fail attempt with
+  retry; fixer timeout auto-commits and next review round runs
+
 ## 2026-11-19 -- US-001: Parse role strings
 
 Created `src/config.ts` with:

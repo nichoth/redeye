@@ -69,10 +69,13 @@ import {
     runReviewPass,
     renderReviewSummary,
     runTicketReviewRound,
+    runTicketFixStep,
     ticketReviewPath,
     renderTicketRound,
     renderTicketTerminal,
+    markFixed,
     type FindingWithVerdict,
+    type ReviewDeps,
 } from './review.js'
 import {
     addRun,
@@ -2175,116 +2178,199 @@ async function runTicketAttempt (
                 ticket.feature, ticket.filename
             )
         )
+        const ticketSpec = lookupSpec(
+            opts.specBodies,
+            opts.specBody,
+            ticket.feature,
+        )
+        const reviewDeps:ReviewDeps = {
+            spawnAgent: async spawnOpts => {
+                const result = await spawnAgent(
+                    spawnOpts
+                )
+                opts.onAgentRun?.(result)
+                return result
+            },
+            registry: runningAgents,
+        }
 
-        const { findings, head: reviewHead } =
-            await runTicketReviewRound({
-                ticket,
-                specBody: lookupSpec(
-                    opts.specBodies,
-                    opts.specBody,
-                    ticket.feature,
-                ),
-                agentCmd: adv.review.provider,
-                model: adv.review.model ?? null,
-                effort: adv.review.effort as
-                    EffortLevel|undefined,
-                maxTurns: adv.review.maxTurns,
-                preferSubagent:
-                    adv.review.preferSubagent,
-                baseBranch: opts.baseBranch,
-                worktreePath: worktree.worktreePath,
-                repoRoot: opts.repoRoot,
-                timeout: opts.timeout,
-                logsDir: opts.logsDir,
-                retries: 0,
-                retryDelay: 0,
-                log: (msg) => d.log(msg),
-            }, {
-                spawnAgent: async spawnOpts => {
-                    const result = await spawnAgent(
-                        spawnOpts
-                    )
-                    opts.onAgentRun?.(result)
-                    return result
-                },
-                registry: runningAgents,
-            })
+        let round = 0
+        while (true) {
+            round++
+            d.setRoundLabel(
+                ticket.num, ticket.feature,
+                `review ${round}/${adv.maxRounds}`
+            )
 
-        const fwv:FindingWithVerdict[] =
-            findings === null ?
-                [] :
-                findings.map(f => ({
+            const { findings, head: reviewHead } =
+                await runTicketReviewRound({
+                    ticket,
+                    specBody: ticketSpec,
+                    agentCmd: adv.review.provider,
+                    model: adv.review.model ?? null,
+                    effort: adv.review.effort as
+                        EffortLevel|undefined,
+                    maxTurns: adv.review.maxTurns,
+                    preferSubagent:
+                        adv.review.preferSubagent,
+                    baseBranch: opts.baseBranch,
+                    worktreePath:
+                        worktree.worktreePath,
+                    repoRoot: opts.repoRoot,
+                    timeout: opts.timeout,
+                    logsDir: opts.logsDir,
+                    retries: 0,
+                    retryDelay: 0,
+                    log: (msg) => d.log(msg),
+                }, reviewDeps)
+
+            if (findings === null) {
+                appendEntry(
+                    reviewLogPath,
+                    renderTicketRound({
+                        attempt: opts.attempt,
+                        round,
+                        implement: adv.implementStr,
+                        review: adv.reviewStr,
+                        head: reviewHead,
+                        findings: [],
+                    })
+                )
+                appendEntry(
+                    reviewLogPath,
+                    renderTicketTerminal({
+                        attempt: opts.attempt,
+                        outcome: 'failed',
+                    })
+                )
+                await removeWorktreeQuietly(
+                    worktree.worktreePath, d
+                )
+                return {
+                    kind: 'failed',
+                    reason: 'review',
+                    branchName: worktree.branchName,
+                    exitCode: 1,
+                    completedItems:
+                        agentResult.completedItems,
+                    agentRun,
+                }
+            }
+
+            if (findings.length === 0) {
+                appendEntry(
+                    reviewLogPath,
+                    renderTicketRound({
+                        attempt: opts.attempt,
+                        round,
+                        implement: adv.implementStr,
+                        review: adv.reviewStr,
+                        head: reviewHead,
+                        findings: [],
+                    })
+                )
+                appendEntry(
+                    reviewLogPath,
+                    renderTicketTerminal({
+                        attempt: opts.attempt,
+                        outcome: 'pass',
+                    })
+                )
+                break
+            }
+
+            // Findings exist -- run the fixer
+            d.setRoundLabel(
+                ticket.num, ticket.feature,
+                `fix ${round}/${adv.maxRounds}`
+            )
+            d.log(
+                `  ${ticket.filename}: reviewer ` +
+                `found ${findings.length} finding` +
+                `${findings.length === 1 ?
+                    '' : 's'}`
+            )
+
+            const fixResult =
+                await runTicketFixStep({
+                    ticket,
+                    specBody: ticketSpec,
+                    findings,
+                    agentCmd: opts.agentCmd,
+                    model: opts.model,
+                    effort: opts.effort,
+                    maxTurns: opts.maxTurns,
+                    preferSubagent:
+                        opts.preferSubagent,
+                    worktreePath:
+                        worktree.worktreePath,
+                    timeout: opts.timeout,
+                    logsDir: opts.logsDir,
+                    testCmd: opts.testCmd,
+                    installCmd: opts.installCmd,
+                    retries: opts.retries,
+                    retryDelay: opts.retryDelay,
+                    log: (msg) => d.log(msg),
+                }, reviewDeps)
+
+            const fixed = markFixed(
+                findings,
+                fixResult.completedItems
+            )
+            const fwv:FindingWithVerdict[] =
+                fixed.map(f => ({
                     summary: f.summary,
                     detail: f.detail,
                     verdict: 'open' as const,
+                    ...(f.checked ?
+                        {
+                            fixerResponse:
+                                'fixed' as const,
+                        } :
+                        {}),
                 }))
 
-        appendEntry(
-            reviewLogPath,
-            renderTicketRound({
-                attempt: opts.attempt,
-                round: 1,
-                implement: adv.implementStr,
-                review: adv.reviewStr,
-                head: reviewHead,
-                findings: fwv,
-            })
-        )
-
-        if (findings === null) {
             appendEntry(
                 reviewLogPath,
-                renderTicketTerminal({
+                renderTicketRound({
                     attempt: opts.attempt,
-                    outcome: 'failed',
+                    round,
+                    implement: adv.implementStr,
+                    review: adv.reviewStr,
+                    head: reviewHead,
+                    findings: fwv,
+                    fixHead: fixResult.fixHead,
+                    testResult: fixResult.testResult,
                 })
             )
-            await removeWorktreeQuietly(
-                worktree.worktreePath, d
-            )
-            return {
-                kind: 'failed',
-                reason: 'review',
-                branchName: worktree.branchName,
-                exitCode: 1,
-                completedItems:
-                    agentResult.completedItems,
-                agentRun,
+
+            if (fixResult.testResult === 'fail') {
+                appendEntry(
+                    reviewLogPath,
+                    renderTicketTerminal({
+                        attempt: opts.attempt,
+                        outcome: 'failed',
+                    })
+                )
+                await removeWorktreeQuietly(
+                    worktree.worktreePath, d
+                )
+                return {
+                    kind: 'failed',
+                    reason: 'tests',
+                    branchName: worktree.branchName,
+                    exitCode: 1,
+                    completedItems:
+                        agentResult.completedItems,
+                    agentRun,
+                }
             }
+
+            // Tests passed -- loop for next round
         }
 
-        if (findings.length > 0) {
-            appendEntry(
-                reviewLogPath,
-                renderTicketTerminal({
-                    attempt: opts.attempt,
-                    outcome: 'unresolved',
-                })
-            )
-            d.log(
-                `  ${ticket.filename}: reviewer found ` +
-                `${findings.length} finding` +
-                `${findings.length === 1 ? '' : 's'}` +
-                '; unresolved'
-            )
-            await removeWorktreeQuietly(
-                worktree.worktreePath, d
-            )
-            return {
-                kind: 'unresolved',
-                branchName: worktree.branchName,
-                completedItems:
-                    agentResult.completedItems,
-                agentRun,
-            }
-        }
-
-        appendEntry(
-            reviewLogPath,
-            renderTicketTerminal({
-                attempt: opts.attempt,
-                outcome: 'pass',
-            })
+        d.setRoundLabel(
+            ticket.num, ticket.feature, null
         )
     }
 

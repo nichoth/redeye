@@ -1295,6 +1295,191 @@ export async function runTicketReviewRound (
     return { findings, head }
 }
 
+export type TicketFixOpts = {
+    ticket:{ filename:string; body:string; feature:string }
+    specBody:string
+    findings:ReadonlyArray<Finding>
+    agentCmd:string
+    model:string|null
+    effort?:EffortLevel
+    maxTurns?:number
+    preferSubagent?:string
+    worktreePath:string
+    timeout:number
+    logsDir:string
+    testCmd:string
+    installCmd?:string
+    retries:number
+    retryDelay:number
+    log:(msg:string) => void
+}
+
+export type TicketFixResult = {
+    fixHead:string
+    testResult:'pass'|'fail'
+    completedItems:string[]
+    notes:string|null
+    timedOut:boolean
+}
+
+export async function runTicketFixStep (
+    opts:TicketFixOpts,
+    deps:ReviewDeps
+):Promise<TicketFixResult> {
+    const stem =
+        opts.ticket.filename.replace(/\.md$/, '')
+    let previous:{
+        reason:FixFailure; notes:string|null
+    }|undefined
+    let lastNotes:string|null = null
+    let lastCompleted:string[] = []
+    let lastTimedOut = false
+
+    const result = await runWithRetries<{
+        fixHead:string; testResult:'pass'|'fail'
+    }>({
+        maxAttempts: opts.retries + 1,
+        retryDelay: opts.retryDelay,
+        agentCmd: opts.agentCmd,
+        effort: opts.effort,
+        label: `${opts.ticket.filename} fix`,
+        log: opts.log,
+    }, async (attempt, effort) => {
+        const agent = await deps.spawnAgent({
+            prompt: renderFixPrompt({
+                specBody: opts.specBody,
+                findings: opts.findings,
+                testCmd: opts.testCmd,
+                installCmd: opts.installCmd,
+                preferSubagent: opts.preferSubagent,
+                previous,
+            }),
+            agentCmd: opts.agentCmd,
+            model: opts.model,
+            timeout: opts.timeout,
+            logPath: logPath(
+                opts.logsDir, `${stem}.fix`,
+                attempt, '.log'
+            ),
+            cwd: opts.worktreePath,
+            label: `${stem} fix`,
+            maxTurns: opts.maxTurns,
+            effort,
+            preferSubagent: opts.preferSubagent,
+            onLine: opts.log,
+            progress: {
+                label: `${stem} fix`,
+                onLine: opts.log,
+            },
+        })
+
+        lastNotes = collectNotes(opts.worktreePath)
+        lastCompleted = agent.completedItems
+        lastTimedOut = agent.timedOut
+
+        if (agent.timedOut) {
+            opts.log(
+                `  ${opts.ticket.filename}: fixer ` +
+                'timed out; keeping work'
+            )
+        } else if (agent.exitCode !== 0) {
+            opts.log(
+                `  ${opts.ticket.filename}: fixer ` +
+                `exited ${agent.exitCode}`
+            )
+            previous = {
+                reason: 'exit', notes: lastNotes,
+            }
+            return {
+                result: {
+                    fixHead: headCommit(
+                        opts.worktreePath
+                    ),
+                    testResult: 'fail' as const,
+                },
+                stop: false,
+            }
+        }
+
+        if (isDirty(opts.worktreePath)) {
+            await commitDirty(
+                opts.worktreePath,
+                'redeye: auto-commit ' +
+                `${opts.ticket.filename} fix`
+            )
+        }
+
+        const fixHead = headCommit(opts.worktreePath)
+
+        if (opts.testCmd === '') {
+            opts.log(
+                `  ${opts.ticket.filename}: ` +
+                'no test gate'
+            )
+            return {
+                result: {
+                    fixHead,
+                    testResult: 'pass' as const,
+                },
+                stop: true,
+            }
+        }
+
+        const testLogPath = logPath(
+            opts.logsDir, `${stem}.fix`,
+            attempt, '.test.log'
+        )
+        const testRes = await runTestCmd({
+            cmd: opts.testCmd,
+            cwd: opts.worktreePath,
+            timeout: opts.timeout,
+            registry: deps.registry,
+            progress: {
+                label: `${stem} fix test`,
+                onLine: opts.log,
+            },
+        })
+        writeFileSync(testLogPath, testRes.output)
+
+        if (testRes.exitCode === 0) {
+            opts.log(
+                `  ${opts.ticket.filename}: ` +
+                'fix tests passed'
+            )
+            return {
+                result: {
+                    fixHead,
+                    testResult: 'pass' as const,
+                },
+                stop: true,
+            }
+        }
+
+        opts.log(
+            `  ${opts.ticket.filename}: fix ` +
+            `tests failed (exit ${testRes.exitCode})`
+        )
+        previous = {
+            reason: 'tests', notes: lastNotes,
+        }
+        return {
+            result: {
+                fixHead,
+                testResult: 'fail' as const,
+            },
+            stop: false,
+        }
+    })
+
+    return {
+        fixHead: result.fixHead,
+        testResult: result.testResult,
+        completedItems: lastCompleted,
+        notes: lastNotes,
+        timedOut: lastTimedOut,
+    }
+}
+
 // Reviews everything since the last reviewed commit, runs one fix
 // pass when there are findings, and appends and commits one entry
 // to the review log. Skips entirely when the range only touches
