@@ -4329,6 +4329,13 @@ export async function runWavesIsolated (opts:{
     let reviewLine:string|null = null
     if (opts.review) {
         try {
+            const runRole = {
+                agentCmd: opts.agentCmd,
+                model: opts.model,
+                effort: opts.effort,
+                maxTurns: opts.maxTurns,
+                preferSubagent: opts.preferSubagent,
+            }
             const outcome = await runReviewPass({
                 repoRoot,
                 repoName,
@@ -4339,15 +4346,12 @@ export async function runWavesIsolated (opts:{
                 specBody: reviewSpecBody(
                     opts.specBody, opts.specBodies
                 ),
-                agentCmd: opts.agentCmd,
-                model: opts.model,
+                reviewer: runRole,
+                fixer: runRole,
                 timeout: opts.timeout,
                 logsDir: opts.logsDir,
                 testCmd: opts.testCmd,
                 installCmd: opts.installCmd,
-                maxTurns: opts.maxTurns,
-                effort: opts.effort,
-                preferSubagent: opts.preferSubagent,
                 retries,
                 retryDelay,
                 log: (msg) => d.log(msg),

@@ -67,6 +67,10 @@ function passOpts (
 ):ReviewPassOpts {
     const logsDir = join(repoRoot, '.scratch', 'feat', 'logs')
     mkdirSync(logsDir, { recursive: true })
+    const defaultRole = {
+        agentCmd: 'node',
+        model: null as string|null,
+    }
     return {
         repoRoot,
         repoName: basename(repoRoot),
@@ -74,8 +78,8 @@ function passOpts (
         reviewPath: join(repoRoot, '.scratch', 'feat', 'review.md'),
         launchCommit: git(repoRoot, ['rev-parse', 'HEAD~1']),
         specBody: 'SPEC',
-        agentCmd: 'node',
-        model: null,
+        reviewer: { ...defaultRole },
+        fixer: { ...defaultRole },
         timeout: 30,
         logsDir,
         testCmd: 'true',

@@ -1,3 +1,38 @@
+## 2026-11-20 -- US-019: Split the end-of-run review pass into two roles
+
+Refactored ReviewPassOpts to carry separate reviewer and fixer
+roles instead of a single agentCmd/model. No behavior change --
+both roles default to the run's provider.
+
+src/review.ts:
+- Added `ReviewRole` type (agentCmd, model, effort, maxTurns,
+  preferSubagent)
+- `ReviewPassOpts` replaces `agentCmd`, `model`, `effort`,
+  `maxTurns`, `preferSubagent` with `reviewer:ReviewRole` and
+  `fixer:ReviewRole`
+- `runReviewer` uses `opts.reviewer.*` for its agent and retry
+  effort ladder
+- `runFixer` uses `opts.fixer.*` for its agent and retry effort
+  ladder
+
+src/orchestrator.ts:
+- The `runReviewPass` call site builds a `runRole` object from
+  the run's provider/model/effort/maxTurns/preferSubagent and
+  passes it as both `reviewer` and `fixer`, preserving current
+  behavior
+
+test/review-pass.test.ts:
+- `passOpts` helper builds a `defaultRole` and passes it as
+  both `reviewer` and `fixer`
+
+Gotchas:
+- Each role's `agentCmd` is passed to `runWithRetries`, which
+  uses `basename(agentCmd)` for the effort ladder lookup; this
+  means the reviewer and fixer can have different providers with
+  different effort ladders (US-020 will use this)
+- `runStep` (install/test commands) only uses `opts.timeout` and
+  `opts.log`, not the role fields, so it needed no changes
+
 ## 2026-11-20 -- US-018: Resume an interrupted loop
 
 Added resume detection and execution to the per-ticket adversarial

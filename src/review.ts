@@ -504,6 +504,14 @@ export type ReviewDeps = {
     registry?:Set<number>
 }
 
+export type ReviewRole = {
+    agentCmd:string
+    model:string|null
+    effort?:EffortLevel
+    maxTurns?:number
+    preferSubagent?:string
+}
+
 export type ReviewPassOpts = {
     repoRoot:string
     repoName:string
@@ -514,16 +522,12 @@ export type ReviewPassOpts = {
     forkedFrom?:string
     launchCommit:string
     specBody:string
-    agentCmd:string
-    model:string|null
+    reviewer:ReviewRole
+    fixer:ReviewRole
     timeout:number
     logsDir:string
     testCmd:string
     installCmd?:string
-    maxTurns?:number
-    effort?:EffortLevel
-    // claude only: model for subagents; unset = off
-    preferSubagent?:string
     retries:number
     retryDelay:number
     log:(msg:string) => void
@@ -597,11 +601,12 @@ export async function runReviewer (
     deps:ReviewDeps,
     range:{ from:string; to:string }
 ):Promise<Finding[]|null> {
+    const { reviewer } = opts
     return runWithRetries({
         maxAttempts: opts.retries + 1,
         retryDelay: opts.retryDelay,
-        agentCmd: opts.agentCmd,
-        effort: opts.effort,
+        agentCmd: reviewer.agentCmd,
+        effort: reviewer.effort,
         label: 'review',
         log: opts.log,
     }, async (attempt, effort) => {
@@ -628,17 +633,17 @@ export async function runReviewer (
                     exclude: reviewExcludeFor(
                         opts.repoRoot, opts.reviewPath
                     ),
-                    preferSubagent: opts.preferSubagent,
+                    preferSubagent: reviewer.preferSubagent,
                 }),
-                agentCmd: opts.agentCmd,
-                model: opts.model,
+                agentCmd: reviewer.agentCmd,
+                model: reviewer.model,
                 timeout: opts.timeout,
                 logPath: logPath(opts.logsDir, 'review', attempt, '.log'),
                 cwd: wt.worktreePath,
                 label: 'review',
-                maxTurns: opts.maxTurns,
+                maxTurns: reviewer.maxTurns,
                 effort,
-                preferSubagent: opts.preferSubagent,
+                preferSubagent: reviewer.preferSubagent,
                 onLine: opts.log,
                 progress: { label: 'review', onLine: opts.log },
             })
@@ -676,12 +681,13 @@ export async function runFixer (
 ):Promise<FixResult> {
     const unchecked = findings.map(f => ({ ...f, checked: false }))
     let previous:{ reason:FixFailure; notes:string|null }|undefined
+    const { fixer } = opts
 
     return runWithRetries<FixResult>({
         maxAttempts: opts.retries + 1,
         retryDelay: opts.retryDelay,
-        agentCmd: opts.agentCmd,
-        effort: opts.effort,
+        agentCmd: fixer.agentCmd,
+        effort: fixer.effort,
         label: 'review fix',
         log: opts.log,
     }, async (attempt, effort) => {
@@ -731,19 +737,19 @@ export async function runFixer (
                     testCmd: opts.testCmd,
                     installCmd: opts.installCmd,
                     previous,
-                    preferSubagent: opts.preferSubagent,
+                    preferSubagent: fixer.preferSubagent,
                 }),
-                agentCmd: opts.agentCmd,
-                model: opts.model,
+                agentCmd: fixer.agentCmd,
+                model: fixer.model,
                 timeout: opts.timeout,
                 logPath: logPath(
                     opts.logsDir, 'review-fix', attempt, '.log'
                 ),
                 cwd: wt.worktreePath,
                 label: 'review-fix',
-                maxTurns: opts.maxTurns,
+                maxTurns: fixer.maxTurns,
                 effort,
-                preferSubagent: opts.preferSubagent,
+                preferSubagent: fixer.preferSubagent,
                 onLine: opts.log,
                 progress: { label: 'review-fix', onLine: opts.log },
             })
