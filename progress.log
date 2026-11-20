@@ -337,3 +337,60 @@ Gotchas:
   retry policy already wraps the entire attempt including the
   review step, so double-retrying would waste pi calls on the
   same failing reviewer
+
+## 2026-11-20 -- US-012: Unresolved outcome
+
+Added the `unresolved` ticket outcome for the per-ticket
+adversarial review loop. When the reviewer finds open issues,
+the ticket becomes `ready-for-human` with its branch kept.
+
+Changes in `src/orchestrator.ts`:
+- `TicketOutcome` gains an `unresolved` kind carrying
+  `branchName`, `completedItems` and `agentRun`
+- `runTicketAttempt`: when `findings.length > 0`, writes an
+  `unresolved` terminal entry and returns `unresolved` instead
+  of `failed`
+- `runTicketAttempts`: stops retrying on `unresolved`
+  (`stop: true`)
+- `attemptEntry`: maps `unresolved` to learnings outcome
+  `review`
+- New `markHuman(ticket)` sets the ticket's **Status:** to
+  `ready-for-human` on disk
+- Outcome processing in `runWavesIsolated`: handles `unresolved`
+  by calling `markHuman`, removing the worktree (not the
+  branch), recording `done:false` in progress, and adding to
+  `failedKeys`
+- `allDone` now checks `failedKeys.size === 0` in addition to
+  `remaining.length === 0`, so unresolved tickets (whose status
+  is `ready-for-human`, not `ready-for-agent`) correctly make
+  the run exit 1
+
+Changes in `src/display.ts`:
+- `TicketStatus` gains `'ready-for-human'`
+- `renderDot` renders it as a yellow filled dot
+
+Changes in `AGENTS.md`:
+- Narrowed 'review pass is advisory' to end-of-run pass
+- Added invariant: per-ticket loop is a gate whose errors decide
+  the ticket outcome
+- Described the per-ticket review log under 'Logs on disk'
+
+Added 2 integration tests in `test/review-integration.test.ts`:
+- Open findings make ticket unresolved: status, progress, branch
+  kept, worktree removed, review log, no retry
+- Unresolved is not retried even with retries > 0
+
+Gotchas:
+- `failedKeys` now serves double duty: it tracks both failed and
+  unresolved tickets. This is correct because both prevent the
+  ticket from being selected in later waves and both block
+  downstream tickets
+- The existing `findBlockedTickets` already treats non-done,
+  non-ready-for-agent tickets as dead blockers, so a
+  ready-for-human ticket naturally blocks its dependents without
+  any change to the blocker logic
+- The `allDone` change (`&& failedKeys.size === 0`) is safe for
+  existing behavior because failed tickets keep their
+  `ready-for-agent` status, so `remaining.length` was already
+  non-zero for them; the new check only matters for unresolved
+  tickets whose status changes to `ready-for-human`

@@ -7,11 +7,17 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execFileSync, execSync } from 'node:child_process'
 import type { Display } from '../src/display.js'
-import { runWavesIsolated, scanTickets } from '../src/orchestrator.js'
+import {
+    runWavesIsolated,
+    scanTickets,
+    HUMAN_STATUS,
+} from '../src/orchestrator.js'
+import { readProgress } from '../src/progress.js'
 import {
     parseReviewEntries,
     parseTicketReviewLog,
     ticketReviewPath,
+    type TicketTerminalEntry,
 } from '../src/review.js'
 import { subagentRule } from '../src/rules.js'
 import { renderRunStats } from '../src/stats.js'
@@ -779,6 +785,166 @@ test('per-ticket review - no adversarial key means ' +
         )
         t.ok(!existsSync(logPath),
             'no review log')
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
+})
+
+// ---- US-012: Unresolved outcome ----
+
+test('per-ticket review - open findings make ticket ' +
+    'unresolved with branch kept', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'finding',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(
+            !result.allDone,
+            'run reports not all done'
+        )
+
+        // Ticket status is ready-for-human
+        const ticketBody = readFileSync(
+            join(
+                h.projectDir, '.scratch',
+                FEAT, 'issues', '01-only.md'
+            ),
+            'utf8'
+        )
+        const statusMatch = ticketBody.match(
+            /\*\*Status:\*\*\s*(.+)/i
+        )
+        t.equal(
+            statusMatch?.[1]?.trim(),
+            HUMAN_STATUS,
+            'ticket status is ready-for-human'
+        )
+
+        // progress.md records done:false
+        const progress = readProgress(
+            join(
+                h.projectDir, '.scratch',
+                FEAT, 'progress.md'
+            )
+        )
+        t.ok(progress, 'progress exists')
+        if (progress) {
+            const tp = progress.tickets.find(
+                tp => tp.filename === '01-only.md'
+            )
+            t.ok(tp, 'ticket in progress')
+            t.equal(tp?.done, false,
+                'progress records done:false')
+        }
+
+        // Branch is kept
+        const branches = git(
+            h.projectDir, ['branch', '--list']
+        ).split('\n').map(b => b.trim())
+        const ticketBranch = branches.find(
+            b => b.includes('01-only')
+        )
+        t.ok(ticketBranch,
+            'ticket branch is kept')
+
+        // Worktree is removed (only the main
+        // worktree remains)
+        const worktrees = git(
+            h.projectDir,
+            ['worktree', 'list', '--porcelain']
+        )
+        const wtCount = worktrees
+            .split('\n')
+            .filter(l => l.startsWith('worktree ')).length
+        t.equal(wtCount, 1,
+            'only the main worktree remains')
+
+        // Review log ends with unresolved entry
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        t.ok(existsSync(logPath),
+            'review log exists')
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 1,
+            'one terminal entry')
+        t.equal(
+            (terms[0] as TicketTerminalEntry).outcome,
+            'unresolved',
+            'terminal outcome is unresolved'
+        )
+
+        // Not retried (retries:0 and only one
+        // ticket agent invocation)
+        t.deepEqual(
+            countRoles(h.recordDir),
+            { reviewer: 0, fixer: 0, ticket: 1 },
+            'no retry -- one ticket agent only'
+        )
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
+})
+
+test('per-ticket review - unresolved ticket is not ' +
+    'retried even with retries > 0', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'finding',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 2,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(!result.allDone, 'not all done')
+
+        // Only one ticket agent invocation -- the
+        // unresolved outcome stops the retry loop
+        t.deepEqual(
+            countRoles(h.recordDir),
+            { reviewer: 0, fixer: 0, ticket: 1 },
+            'unresolved is not retried'
+        )
     })
     rmSync(piRecDir, { recursive: true, force: true })
 })

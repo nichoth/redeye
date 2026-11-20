@@ -510,6 +510,22 @@ export function markDone (ticket:Ticket):void {
     ticket.body = updated
 }
 
+export function markHuman (ticket:Ticket):void {
+    let body:string
+    try {
+        body = readFileSync(ticket.filepath, 'utf8')
+    } catch {
+        body = ticket.body
+    }
+    const updated = body.replace(
+        /\*\*Status:\*\*\s*.+/i,
+        `**Status:** ${HUMAN_STATUS}`
+    )
+    writeFileSync(ticket.filepath, updated)
+    ticket.status = HUMAN_STATUS
+    ticket.body = updated
+}
+
 // Drops one markdown section from a spec. Used to keep the
 // per-ticket prompt short: the User Stories list is useful
 // to humans and to to-tickets but not to an implementing agent.
@@ -1851,6 +1867,12 @@ type TicketOutcome =
         agentRun:AgentRunRecord
     }
     | {
+        kind:'unresolved'
+        branchName:string
+        completedItems:string[]
+        agentRun:AgentRunRecord
+    }
+    | {
         kind:'ready'
         worktreePath:string
         branchName:string
@@ -2236,22 +2258,21 @@ async function runTicketAttempt (
                 reviewLogPath,
                 renderTicketTerminal({
                     attempt: opts.attempt,
-                    outcome: 'failed',
+                    outcome: 'unresolved',
                 })
             )
             d.log(
                 `  ${ticket.filename}: reviewer found ` +
                 `${findings.length} finding` +
-                `${findings.length === 1 ? '' : 's'}`
+                `${findings.length === 1 ? '' : 's'}` +
+                '; unresolved'
             )
             await removeWorktreeQuietly(
                 worktree.worktreePath, d
             )
             return {
-                kind: 'failed',
-                reason: 'review',
+                kind: 'unresolved',
                 branchName: worktree.branchName,
-                exitCode: 1,
                 completedItems:
                     agentResult.completedItems,
                 agentRun,
@@ -2359,6 +2380,13 @@ function attemptEntry (opts:{
                 run: outcome.agentRun,
                 effort,
             }
+        case 'unresolved':
+            return {
+                ...base,
+                outcome: 'review',
+                run: outcome.agentRun,
+                effort,
+            }
         case 'error':
         case 'worktree-error':
             return {
@@ -2450,12 +2478,13 @@ async function runTicketAttempts (
         }
         record(outcome)
         if (outcome.kind === 'ready') {
-            // The agent is no longer running, but the branch is
-            // only merged once the whole wave has finished.
             d.setTicketStatus(
                 ticket.num, 'awaiting-merge',
                 ticket.feature,
             )
+            return { result: outcome, stop: true }
+        }
+        if (outcome.kind === 'unresolved') {
             return { result: outcome, stop: true }
         }
         return {
@@ -3377,6 +3406,35 @@ export async function runWavesIsolated (opts:{
                 continue
             }
 
+            if (outcome.kind === 'unresolved') {
+                failedKeys.add(key)
+                checkItems(ticket, outcome.completedItems)
+                markHuman(ticket)
+                d.setTicketStatus(
+                    ticket.num, HUMAN_STATUS, ticket.feature
+                )
+                checkTicket(
+                    tracker.dataFor(ticket.feature),
+                    ticket.num,
+                    {
+                        branch: outcome.branchName,
+                        exitCode: 0,
+                        done: false,
+                    }
+                )
+                await saveProgress(
+                    repoRoot,
+                    tracker.pathFor(ticket.feature),
+                    tracker.dataFor(ticket.feature),
+                    `redeye: ${ticket.filename} unresolved`,
+                    d,
+                )
+                await commitTicketFiles(
+                    repoRoot, [ticket], d
+                )
+                continue
+            }
+
             checkItems(ticket, outcome.completedItems)
             d.log(
                 `  ${ticket.filename}: agent finished, ` +
@@ -3701,5 +3759,9 @@ export async function runWavesIsolated (opts:{
     d.log(`Work is on ${baseBranch}`)
     d.cleanup()
 
-    return { allDone: remaining.length === 0, branch: baseBranch }
+    return {
+        allDone: remaining.length === 0 &&
+            failedKeys.size === 0,
+        branch: baseBranch,
+    }
 }

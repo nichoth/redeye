@@ -138,9 +138,13 @@ its tests.
 - A throw inside one ticket attempt fails that ticket, never the
   wave. Every terminal failure is recorded in `progress.md` with
   `done:false`.
-- Learnings, the review pass and stats are advisory: their errors
-  are logged through the display and never change a ticket
-  outcome, a retry decision, `allDone` or the exit code.
+- Learnings, the end-of-run review pass and stats are advisory:
+  their errors are logged through the display and never change a
+  ticket outcome, a retry decision, `allDone` or the exit code.
+- The per-ticket adversarial review loop is a gate, not advisory:
+  its result decides the ticket outcome. Open findings make the
+  ticket `unresolved` (status `ready-for-human`, branch kept,
+  worktree removed, not merged, not retried).
 - Exit codes: 0 when every ticket finished or nothing was ready, 1
   when tickets were left unfinished or on a usage error (with help
   text), 2 on a runtime error (`formatErrorMessage`, no stack).
@@ -176,6 +180,11 @@ its tests.
   text inside free-text fields is neutralized, so an entry cannot
   forge another, and the parsers drop malformed entries instead of
   throwing.
+- The per-ticket review log at
+  `.scratch/<feature>/reviews/<ticket file name>` records every
+  round and terminal entry for the adversarial review loop. It
+  follows the same sentinel and append-only conventions as the
+  other logs.
 
 ### Module boundaries
 - `blockers`, `stats`, `retry`, `preflight`, `learnings`,

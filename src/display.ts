@@ -7,6 +7,7 @@ export type TicketStatus =
     | 'done'
     | 'failed'
     | 'blocked'
+    | 'ready-for-human'
 
 export type DisplayTicket = {
     readonly num:number
@@ -226,6 +227,8 @@ export function renderDot (status:TicketStatus):string {
             // Ticket cannot run this session because an upstream
             // ticket failed or needs a human.
             return color.dim(FILLED_DOT)
+        case 'ready-for-human':
+            return color.yellow(FILLED_DOT)
     }
 }
 
