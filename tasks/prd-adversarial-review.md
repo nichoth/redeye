@@ -1,8 +1,8 @@
 # PRD: Per-ticket cross-model adversarial review
 
-Source: `.scratch/adversarial-review/spec.md` (status
-ready-for-agent). The stories below are a finer split of tickets
-01-07 in `.scratch/adversarial-review/issues/`. Each story names the
+Source: `.scratch/adversarial-review/spec.md` (status ready-for-agent).
+The stories below are a finer split of tickets 01-07 in
+`.scratch/adversarial-review/issues/`. Each story names the
 ticket it comes from. Stories are in dependency order: implement
 them top to bottom.
 
@@ -684,7 +684,7 @@ the per-ticket loop cannot be disabled by accident.
   Development" (builder and cynical reviewer in a loop, with a fresh
   reviewer context each turn) and the cross-model finder/verifier
   design of `bluesky-social/roast`. Research is in
-  `../adversary/adversarial-review-tools-report.md`. Independence
+  `docs/adversarial-review-tools-report.md`. Independence
   between author and reviewer matters more than the number of
   reviewers. Extra debate rounds have diminishing returns, which is
   why `maxRounds` defaults to 3.

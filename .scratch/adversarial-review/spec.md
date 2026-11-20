@@ -370,7 +370,7 @@ exactly as it does today.
   a fresh reviewer context each turn) and the cross-model
   finder/verifier design of `bluesky-social/roast`. The research behind
   the design decisions is in
-  `../adversary/adversarial-review-tools-report.md`. Its main points:
+  `docs/adversarial-review-tools-report.md`. Its main points:
   independence between author and reviewer models matters more than
   how many reviewers there are; the author should not be the final
   judge of findings against its own code; and extra debate rounds have
