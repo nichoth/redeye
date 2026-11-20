@@ -1990,3 +1990,121 @@ async t => {
         recursive: true, force: true,
     })
 })
+
+// ---- End-of-run pass uses both configured roles (US-020) ----
+
+test('US-020 end-of-run pass uses review role as reviewer ' +
+    'and implement role as fixer', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        MOCK_FIX: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        // 1st pi call = per-ticket reviewer (clean)
+        // 2nd pi call = end-of-run reviewer (finding)
+        FAKE_PI_RESPONSES: 'clean,finding',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const result = await h.run(
+            true, quietDisplay(), undefined,
+            {
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone, 'tickets done')
+
+        // Pi was invoked twice: per-ticket + end-of-run
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 2,
+            'pi ran twice (per-ticket + end-of-run)')
+
+        // MOCK handled ticket + end-of-run fixer
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.ticket, 1, 'one ticket agent')
+        t.equal(roles.fixer, 1, 'one end-of-run fixer')
+        t.equal(roles.reviewer, 0,
+            'no MOCK reviewer (pi was used)')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('US-020 without adversarial, end-of-run reviewer ' +
+    'and fixer use the run provider', async t => {
+    await withHarness({
+        MOCK_REVIEW: 'findings',
+        MOCK_FIX: 'pass',
+        MOCK_TICKET: 'pass',
+    }, async h => {
+        const result = await h.run()
+        t.ok(result.allDone, 'tickets done')
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.reviewer, 1,
+            'MOCK reviewer (run provider)')
+        t.equal(roles.fixer, 1,
+            'MOCK fixer (run provider)')
+        t.equal(roles.ticket, 1, 'one ticket agent')
+    })
+})
+
+test('US-020 --no-review with adversarial skips ' +
+    'end-of-run pass but per-ticket loop runs', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'clean',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone, 'ticket done')
+
+        // Pi ran once: per-ticket reviewer only
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 1,
+            'pi ran once (per-ticket only)')
+
+        // No end-of-run review log
+        t.ok(!existsSync(h.reviewPath),
+            'no end-of-run review log')
+
+        // Per-ticket review log exists
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        t.ok(existsSync(logPath),
+            'per-ticket review log exists')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})

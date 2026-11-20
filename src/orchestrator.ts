@@ -4336,6 +4336,18 @@ export async function runWavesIsolated (opts:{
                 maxTurns: opts.maxTurns,
                 preferSubagent: opts.preferSubagent,
             }
+            const adv = opts.adversarial
+            const reviewerRole = adv ?
+                {
+                    agentCmd: adv.review.provider,
+                    model: adv.review.model ?? null,
+                    effort: adv.review.effort as
+                        EffortLevel|undefined,
+                    maxTurns: adv.review.maxTurns,
+                    preferSubagent:
+                        adv.review.preferSubagent,
+                } :
+                runRole
             const outcome = await runReviewPass({
                 repoRoot,
                 repoName,
@@ -4346,7 +4358,7 @@ export async function runWavesIsolated (opts:{
                 specBody: reviewSpecBody(
                     opts.specBody, opts.specBodies
                 ),
-                reviewer: runRole,
+                reviewer: reviewerRole,
                 fixer: runRole,
                 timeout: opts.timeout,
                 logsDir: opts.logsDir,
