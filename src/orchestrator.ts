@@ -2095,6 +2095,23 @@ async function runAdversarialLoop (ctx:{
         },
         registry: runningAgents,
     }
+    // Each entry is committed as it lands, so a run interrupted
+    // mid-loop leaves a clean base tree and a log the next run
+    // can resume from.
+    const recordEntry = async (text:string):Promise<void> => {
+        appendEntry(reviewLogPath, text)
+        try {
+            await commitProgress(
+                opts.repoRoot, reviewLogPath,
+                `redeye: ${ticket.filename} review log`
+            )
+        } catch (err) {
+            d.log(
+                '  Failed to commit review log: ' +
+                formatErrorMessage(err)
+            )
+        }
+    }
 
     let round = start.nextRound - 1
     let openFindings = start.openFindings
@@ -2141,8 +2158,7 @@ async function runAdversarialLoop (ctx:{
             }, reviewDeps)
 
         if (findings === null) {
-            appendEntry(
-                reviewLogPath,
+            await recordEntry(
                 renderTicketRound({
                     attempt: opts.attempt,
                     round,
@@ -2152,8 +2168,7 @@ async function runAdversarialLoop (ctx:{
                     findings: [],
                 })
             )
-            appendEntry(
-                reviewLogPath,
+            await recordEntry(
                 renderTicketTerminal({
                     attempt: opts.attempt,
                     outcome: 'failed',
@@ -2178,8 +2193,7 @@ async function runAdversarialLoop (ctx:{
         )
 
         if (stillOpen.length === 0) {
-            appendEntry(
-                reviewLogPath,
+            await recordEntry(
                 renderTicketRound({
                     attempt: opts.attempt,
                     round,
@@ -2190,9 +2204,8 @@ async function runAdversarialLoop (ctx:{
                 })
             )
             if (round >= adv.minRounds) {
-                appendEntry(
-                    reviewLogPath,
-                    renderTicketTerminal({
+                await recordEntry(
+                renderTicketTerminal({
                         attempt: opts.attempt,
                         outcome: 'pass',
                     })
@@ -2204,8 +2217,7 @@ async function runAdversarialLoop (ctx:{
         }
 
         if (round >= adv.maxRounds) {
-            appendEntry(
-                reviewLogPath,
+            await recordEntry(
                 renderTicketRound({
                     attempt: opts.attempt,
                     round,
@@ -2215,8 +2227,7 @@ async function runAdversarialLoop (ctx:{
                     findings,
                 })
             )
-            appendEntry(
-                reviewLogPath,
+            await recordEntry(
                 renderTicketTerminal({
                     attempt: opts.attempt,
                     outcome: 'unresolved',
@@ -2311,9 +2322,8 @@ async function runAdversarialLoop (ctx:{
                 return resp
             })
 
-        appendEntry(
-            reviewLogPath,
-            renderTicketRound({
+        await recordEntry(
+                renderTicketRound({
                 attempt: opts.attempt,
                 round,
                 implement: adv.implementStr,
@@ -2326,8 +2336,7 @@ async function runAdversarialLoop (ctx:{
         )
 
         if (fixResult.testResult === 'fail') {
-            appendEntry(
-                reviewLogPath,
+            await recordEntry(
                 renderTicketTerminal({
                     attempt: opts.attempt,
                     outcome: 'failed',
