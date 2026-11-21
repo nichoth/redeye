@@ -22,7 +22,7 @@ standalone list gets `src/config.ts`); new `test/config.test.ts`
 added to `TESTS` in `scripts/test.sh`; `test/integration.test.ts`
 (`spawnCli` cases)
 
-**Status:** ready-for-agent
+**Status:** done
 
 Notes:
 
