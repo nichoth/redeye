@@ -175,6 +175,12 @@ its tests.
 - Provider-specific options (`--max-turns`, `--prefer-subagent`)
   warn and are dropped on providers without them. Each provider's
   effort ladder is in `src/retry.ts`.
+- `resolveRoles` in `src/config.ts` is the one place that decides
+  each role's provider and flags: a CLI provider replaces
+  `implement` whole, each role's own flags win, and run-wide CLI
+  flags fill in the rest. `runExecute` reads effort, max turns,
+  model and prefer-subagent from the resolved roles, never from
+  `argv` directly.
 - In-place `runWaves` (outside a git repo) is the reduced path: no
   test gate, no learnings, no review.
 

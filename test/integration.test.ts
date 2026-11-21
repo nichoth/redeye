@@ -7240,3 +7240,205 @@ test('CLI subprocess - in-place path with adversarial ' +
         rmSync(projectDir, { recursive: true, force: true })
     }
 })
+
+// --- Running with the implement and review roles ---
+
+const FAKE_PI = join(process.cwd(), 'test', 'fake-pi', 'pi')
+const FAKE_PI_KEYS = [
+    'FAKE_PI_RECORD_DIR',
+    'FAKE_PI_RESPONSES',
+    'FAKE_PI_COUNTER',
+    'FAKE_PI_DELEGATE',
+]
+
+// fakeClaudeEnv without the fake pi keys either, plus `extra`
+function rolesEnv (
+    extra:Record<string, string> = {}
+):NodeJS.ProcessEnv {
+    const env = fakeClaudeEnv()
+    for (const key of FAKE_PI_KEYS) delete env[key]
+    return { ...env, ...extra }
+}
+
+function readArgvLog (file:string):string[][] {
+    return readFileSync(file, 'utf8')
+        .split('\n')
+        .filter(line => line !== '')
+        .map(line => JSON.parse(line) as string[])
+}
+
+function readPiRecords (dir:string):{ model:string|null }[] {
+    return readdirSync(dir).map(name => {
+        return JSON.parse(
+            readFileSync(join(dir, name), 'utf8')
+        ) as { model:string|null }
+    })
+}
+
+// The value after `flag` in an argv list, or undefined
+function flagValue (argv:string[], flag:string):string|undefined {
+    const i = argv.indexOf(flag)
+    return i === -1 ? undefined : argv[i + 1]
+}
+
+test('CLI subprocess - bare redeye runs tickets with the ' +
+    'implement role; role flags win, CLI flags fill in',
+async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const logDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: `${FAKE_CLAUDE} -m role-model`,
+                    review: FAKE_PI,
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const argvLog = join(logDir, 'argv.log')
+        const recordDir = join(logDir, 'pi')
+        mkdirSync(recordDir)
+        const { code, stdout, stderr } = await spawnCli([
+            '--spec', FEAT,
+            '-m', 'cli-model',
+            '--effort', 'high',
+            '--timeout', '10',
+            '--test-cmd', 'true',
+            '--retries', '0',
+            '--no-review',
+        ], {
+            cwd: projectDir,
+            env: rolesEnv({
+                FAKE_CLAUDE_DELEGATE: MOCK_PASS,
+                FAKE_CLAUDE_ARGV_LOG: argvLog,
+                FAKE_PI_RECORD_DIR: recordDir,
+                FAKE_PI_RESPONSES: 'clean',
+                FAKE_PI_COUNTER: join(logDir, 'counter'),
+            }),
+            closeStdin: true,
+        })
+
+        t.equal(code, 0, 'exits 0: ' + stdout + stderr)
+        const runs = readArgvLog(argvLog)
+        t.equal(runs.length, 1, 'the implement provider ran once')
+        t.equal(flagValue(runs[0], '--model'), 'role-model',
+            'the role string model wins over -m')
+        t.equal(flagValue(runs[0], '--effort'), 'high',
+            'the CLI effort fills in what the role leaves out')
+        const reviews = readPiRecords(recordDir)
+        t.equal(reviews.length, 1, 'the review role ran once')
+        t.equal(reviews[0].model, 'cli-model',
+            'the CLI model fills in the review role')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(logDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
+    }
+})
+
+test('CLI subprocess - a CLI provider overrides implement in ' +
+    'a run and says so', async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const logDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'redeye-no-such-impl -m role-model',
+                    review: FAKE_PI,
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const argvLog = join(logDir, 'argv.log')
+        const { code, stdout, stderr } = await spawnCli([
+            FAKE_CLAUDE,
+            '--spec', FEAT,
+            '--timeout', '10',
+            '--test-cmd', 'true',
+            '--retries', '0',
+            '--no-review',
+        ], {
+            cwd: projectDir,
+            env: rolesEnv({
+                FAKE_CLAUDE_DELEGATE: MOCK_PASS,
+                FAKE_CLAUDE_ARGV_LOG: argvLog,
+                FAKE_PI_RESPONSES: 'clean',
+                FAKE_PI_COUNTER: join(logDir, 'counter'),
+            }),
+            closeStdin: true,
+        })
+
+        t.equal(code, 0, 'exits 0: ' + stdout + stderr)
+        t.ok(stdout.includes('overrides implement'),
+            'logs that the CLI provider overrides implement')
+        const runs = readArgvLog(argvLog)
+        t.equal(runs.length, 1, 'the CLI provider ran the ticket')
+        t.equal(flagValue(runs[0], '--model'), undefined,
+            'the implement role model does not carry over')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(logDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
+    }
+})
+
+test('CLI subprocess - same provider and model warns in a run ' +
+    'and the run goes ahead', async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const logDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        // Only the review role names a model; -m fills in the
+        // implement role, so both resolve to the same model.
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: FAKE_CLAUDE,
+                    review: `${FAKE_CLAUDE} -m opus`,
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { stdout, stderr } = await spawnCli([
+            '--spec', FEAT,
+            '-m', 'opus',
+            '--timeout', '10',
+            '--test-cmd', 'true',
+            '--retries', '0',
+            '--no-review',
+        ], {
+            cwd: projectDir,
+            env: rolesEnv({ FAKE_CLAUDE_DELEGATE: MOCK_PASS }),
+            closeStdin: true,
+        })
+
+        const all = stdout + stderr
+        t.equal(all.split('same model').length - 1, 1,
+            'warns once about the same model')
+        t.notEqual(integrationBranches(projectDir), '',
+            'the run went ahead and created its branch')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(logDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
+    }
+})

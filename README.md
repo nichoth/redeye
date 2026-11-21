@@ -502,6 +502,27 @@ is not an object, a missing role, or an invalid role string
 stops the run before any branch or worktree is created
 (exit 2).
 
+With `adversarial` set, a bare `redeye` runs tickets with the
+`implement` role. A provider on the command line replaces the
+whole `implement` role for that run (its flags do not carry
+over), and redeye logs one line saying so. Flags inside a role
+string win for that role; run-wide flags such as `-m` or
+`--effort` fill in whatever the string leaves out, for both
+roles:
+
+```sh
+# .redeye.json: implement "claude -m opus", review "pi"
+redeye --effort high -m qwen
+# implement: claude, model opus, effort high
+# review: pi, model qwen, effort high
+```
+
+Both role executables are checked before the run starts; a
+missing one exits 2 before any branch is created. When both
+roles resolve to the same provider and model, redeye warns once
+(also in `--dry-run`) and runs anyway. Outside a git repo the
+loop does not run, and redeye logs that it was skipped.
+
 A role string with `--max-turns` or `--prefer-subagent` on a
 provider that does not support them is not an error -- redeye
 warns and drops the flag for that role, the same as the CLI

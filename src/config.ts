@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import yargs from 'yargs'
 import { ALL_EFFORT_LEVELS } from './retry.js'
 
@@ -123,6 +123,56 @@ export function mergeRoleWithCli (
         preferSubagent: role.preferSubagent ??
             cli.preferSubagent,
     }
+}
+
+export interface ResolvedRoles {
+    // the role that implements tickets in this run
+    implement:ParsedRole
+    // null when .redeye.json has no adversarial key
+    review:ParsedRole|null
+    // true when a command-line provider replaced `implement`
+    overridden:boolean
+}
+
+// The effective roles for a run. A command-line provider replaces
+// the whole implement role, so its flags do not carry over; with
+// no provider, `implement` is used. Each role's own flags win and
+// the CLI flags fill in the rest. Throws when there is neither a
+// provider nor a config.
+export function resolveRoles (
+    cliProvider:string|undefined,
+    cli:CliOptions,
+    adv:AdversarialConfig|null
+):ResolvedRoles {
+    const review = adv ? mergeRoleWithCli(adv.review, cli) : null
+    if (cliProvider) {
+        return {
+            implement: mergeRoleWithCli(
+                { provider: cliProvider },
+                cli
+            ),
+            review,
+            overridden: adv !== null,
+        }
+    }
+    if (!adv) {
+        throw new Error(
+            'Specify a provider (e.g. redeye claude) ' +
+            'or set implement in .redeye.json'
+        )
+    }
+    return {
+        implement: mergeRoleWithCli(adv.implement, cli),
+        review,
+        overridden: false,
+    }
+}
+
+// True when two roles run the same provider (by basename) and the
+// same model. A role with no model runs its provider's default.
+export function sameModel (a:ParsedRole, b:ParsedRole):boolean {
+    return basename(a.provider) === basename(b.provider) &&
+        (a.model ?? '') === (b.model ?? '')
 }
 
 export interface AdversarialConfig {
