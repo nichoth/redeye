@@ -2,7 +2,10 @@
 
 Started: 2026-11-21T02:50:08.544Z
 
-- [ ] 01-load-and-validate-redeye-json.md
+- [x] 01-load-and-validate-redeye-json.md
+  branch: redeye--adversarial-review-01-load-and-validate-redeye-json
+  exit: 0
+  completed: 2026-11-21T02:58:54.064Z
 - [ ] 02-run-with-the-implement-role.md
 - [ ] 03-init-asks-about-adversarial-loops.md
 - [ ] 04-review-round-gates-each-ticket.md
