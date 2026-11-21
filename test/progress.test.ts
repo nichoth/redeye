@@ -578,6 +578,33 @@ test(
 )
 
 test(
+    'commitProgress calls made at once all commit their files',
+    async t => {
+        const repoRoot = initTempRepo()
+        const names = Array.from(
+            { length: 8 }, (_, i) => `log-${i}.md`
+        )
+        for (const name of names) {
+            writeFileSync(join(repoRoot, name), `# ${name}\n`)
+        }
+
+        const results = await Promise.allSettled(names.map(name =>
+            commitProgress(repoRoot, name, `commit ${name}`)
+        ))
+
+        t.ok(
+            results.every(r => r.status === 'fulfilled'),
+            'every concurrent commit succeeds'
+        )
+        const status = execSync(
+            'git status --porcelain',
+            { cwd: repoRoot }
+        ).toString().trim()
+        t.equal(status, '', 'no file is left uncommitted')
+    }
+)
+
+test(
     'commitProgress accepts an array of paths and commits both',
     async t => {
         const repoRoot = initTempRepo()

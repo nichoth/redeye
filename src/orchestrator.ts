@@ -174,28 +174,8 @@ async function commitTicketFiles (
     const paths = tickets.map(t => t.filepath)
     if (paths.length === 0) return
     try {
-        await execFileAsync(
-            'git',
-            ['add', '--force', ...paths],
-            { cwd: repoRoot }
-        )
-        try {
-            await execFileAsync(
-                'git',
-                ['diff', '--cached', '--quiet',
-                    '--', ...paths],
-                { cwd: repoRoot }
-            )
-            return
-        } catch {
-            // staged files differ from HEAD
-        }
-        await execFileAsync(
-            'git',
-            ['commit', '-m',
-                'redeye: update ticket checklists',
-                '--', ...paths],
-            { cwd: repoRoot }
+        await commitProgress(
+            repoRoot, paths, 'redeye: update ticket checklists'
         )
     } catch (err) {
         d.log(
