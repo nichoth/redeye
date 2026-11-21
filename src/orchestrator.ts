@@ -1,5 +1,5 @@
 import {
-    spawn, execFile, execFileSync,
+    spawn, execFileSync,
 } from 'node:child_process'
 import {
     createWriteStream,
@@ -13,9 +13,6 @@ import {
 import { tmpdir } from 'node:os'
 import { join, dirname, basename, relative } from 'node:path'
 import { createInterface } from 'node:readline'
-import { promisify } from 'node:util'
-
-const execFileAsync = promisify(execFile)
 import {
     getRepoRoot,
     getRepoName,

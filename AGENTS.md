@@ -132,6 +132,13 @@ its tests.
   ticket statuses, `progress.md`, `learnings.md` and `review.md`
   are committed at every terminal point (with `git add --force`,
   since `.scratch/` may be ignored).
+- Every commit in the base checkout goes through `commitProgress`
+  in `src/progress.ts`, which runs them one at a time on its
+  `commitQueue`: tickets in a wave commit their bookkeeping
+  concurrently, and two git commits at once collide on
+  `.git/index.lock`. New base-checkout commits join that queue.
+- A worktree recreated on resume needs the install command like a
+  fresh one: untracked dependencies do not come with the branch.
 - Agents stay inside their worktree and never `git push`; the
   prompt rules in `src/rules.ts` say so.
 - `redeye graph` is read-only: no git, no provider preflight,
@@ -186,7 +193,10 @@ its tests.
   nothing-ready explanation) and `graph`, so the wording cannot
   drift between them.
 - Provider-specific options (`--max-turns`, `--prefer-subagent`)
-  warn and are dropped on providers without them. Each provider's
+  warn and are dropped on providers without them, for every role:
+  `resolveRoles` drops `--prefer-subagent` (its `warnings` are
+  printed by `src/index.ts`), and `spawnAgent` drops `--max-turns`
+  per spawn. Each provider's
   effort ladder is in `src/retry.ts`.
 - `resolveRoles` in `src/config.ts` is the one place that decides
   each role's provider and flags: a CLI provider replaces
