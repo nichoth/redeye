@@ -10,7 +10,9 @@ import { randomUUID } from 'node:crypto'
 //   fixer     (prompt has the findings marker) per MOCK_FIX:
 //             pass | break
 //          or per MOCK_FIX_RESPONSES + MOCK_FIX_COUNTER:
-//             pass | break | hang | dispute
+//             pass | break | hang | dispute | fix-all
+//             (fix-all commits a fix and prints [x] for every
+//             finding listed in its prompt)
 //   ticket    otherwise, per MOCK_TICKET: pass | fail
 // Each run writes { time, role, cwd, prompt } into MOCK_RECORD_DIR.
 
@@ -99,6 +101,16 @@ function run (prompt) {
         }
         if (fixMode === 'dispute') {
             writeNotes('Disputed: the finding is a false positive')
+            process.exit(0)
+        }
+        if (fixMode === 'fix-all') {
+            commitFile(`fix-${randomUUID()}.ts`)
+            const findings = prompt
+                .split('---- REVIEW FINDINGS ----')[1] ?? ''
+            for (const line of findings.split('\n')) {
+                const m = line.match(/^- \[ \] (.+)$/)
+                if (m) process.stdout.write(`[x] ${m[1]}\n`)
+            }
             process.exit(0)
         }
         if (fixMode === 'break') {

@@ -18,6 +18,7 @@ import {
     ticketReviewPath,
     renderTicketRound,
     renderTicketTerminal,
+    type TicketRoundEntry,
     type TicketTerminalEntry,
 } from '../src/review.js'
 import { subagentRule } from '../src/rules.js'
@@ -1290,7 +1291,7 @@ test('per-ticket verdict - fixer fixes and ' +
         FAKE_PI_RESPONSES:
             'finding,verdict-fixed',
         FAKE_PI_COUNTER: counterFile,
-        MOCK_FIX_RESPONSES: 'pass',
+        MOCK_FIX_RESPONSES: 'fix-all',
         MOCK_FIX_COUNTER: fixCounterFile,
     }, async h => {
         const result = await h.run(
@@ -1309,6 +1310,13 @@ test('per-ticket verdict - fixer fixes and ' +
         )
         t.ok(result.allDone,
             'ticket merges')
+        const merged = git(h.projectDir, [
+            'log', 'main', '--name-only', '--format=',
+        ])
+        t.ok(merged.includes('mock-change-'),
+            'the ticket change is on the base branch')
+        t.ok(merged.includes('fix-'),
+            'the fix is on the base branch')
 
         const logPath = join(
             h.projectDir,
@@ -1322,6 +1330,17 @@ test('per-ticket verdict - fixer fixes and ' +
         )
         t.equal(rounds.length, 2,
             'two rounds in log')
+
+        const r1 = rounds[0] as TicketRoundEntry
+        t.equal(r1.findings[0]?.fixerResponse, 'fixed',
+            'round 1 records the fixer marked it fixed')
+        t.equal(r1.testResult, 'pass',
+            'round 1 records the test gate result')
+        t.ok(r1.fixHead && r1.fixHead !== r1.head,
+            'round 1 records a new head after the fix')
+        const r2 = rounds[1] as TicketRoundEntry
+        t.equal(r2.head, r1.fixHead,
+            'round 2 reviews the post-fix head')
 
         if (rounds[1].type === 'round') {
             const f = rounds[1].findings.find(
