@@ -830,6 +830,11 @@ const PROVIDER_ARGS:Record<string, string[]> = {
         '--approve', '--no-session',
         '--mode', 'json',
     ],
+    // --yolo is a root option, so it goes before the subcommand;
+    // --model is a chat option, and spawnAgent appends it after
+    // these. --query-file - reads the prompt from stdin, and
+    // --quiet makes the turn one-shot, so hermes exits when done.
+    hermes: ['--yolo', 'chat', '--query-file', '-', '--quiet'],
 }
 
 export function getProviderArgs (cmd:string):string[] {
