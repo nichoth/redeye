@@ -63,6 +63,9 @@ merges into that branch.
   findings. To have the fixer mark a fake pi finding (so the
   ticket review log records `fixed`), use `fix-all`, which marks
   every finding in its prompt
+- The fake pi's `FAKE_PI_RESPONSES` takes `hang` (never exits),
+  for interrupting a CLI run mid-loop: wait until
+  `FAKE_PI_COUNTER` shows the hanging call started, then SIGINT
 - tapzero's `t.throws` is async: when `fn` does not throw, the
   failing assert lands after a sync test has ended. Make the test
   `async` and `await t.throws(...)` so a missing throw fails as
@@ -204,7 +207,13 @@ its tests.
   `.scratch/<feature>/reviews/<ticket file name>` records every
   round and terminal entry for the adversarial review loop. It
   follows the same sentinel and append-only conventions as the
-  other logs.
+  other logs. Each entry is committed as it is appended, not only
+  at terminal points: resume reads the log from the base checkout,
+  and an uncommitted log would trip the dirty-tree check on the
+  next run, so the interrupted loop could never resume.
+- Fresh and resumed attempts share one round loop,
+  `runAdversarialLoop` in `src/orchestrator.ts`; a resume only
+  changes its start round. Keep round logic there.
 
 ### Module boundaries
 - `blockers`, `stats`, `retry`, `preflight`, `learnings`,

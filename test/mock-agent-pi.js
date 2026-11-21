@@ -9,6 +9,7 @@
 //   clean       -- writes "No findings." to .redeye/findings.md
 //   unparseable -- writes garbage to .redeye/findings.md
 //   exit1       -- exits with code 1
+//   hang        -- never exits, until killed
 // FAKE_PI_RECORD_DIR: writes { provider, model, prompt, cwd }
 // as one JSON file per invocation.
 import { spawnSync } from 'node:child_process'
@@ -66,6 +67,8 @@ if (responses && counterFile) {
     const response = list[idx] || 'clean'
     if (response === 'exit1') {
         process.exitCode = 1
+    } else if (response === 'hang') {
+        setInterval(() => {}, 1000)
     } else if (response === 'finding') {
         mkdirSync(
             join(process.cwd(), '.redeye'),

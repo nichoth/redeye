@@ -1983,6 +1983,8 @@ test('resume - branch head mismatch ' +
         const roles = countRoles(h.recordDir)
         t.equal(roles.ticket, 1,
             'ticket agent ran (fresh start)')
+        t.ok(!existsSync(join(h.projectDir, 'extra.ts')),
+            'the stale branch is not merged')
     })
     rmSync(piRecDir, {
         recursive: true, force: true,
@@ -2069,6 +2071,8 @@ test('resume - log ends in terminal ' +
         const roles = countRoles(h.recordDir)
         t.equal(roles.ticket, 1,
             'ticket agent ran (fresh start)')
+        t.ok(!existsSync(join(h.projectDir, 'agent-work.ts')),
+            'the stale branch is not merged')
     })
     rmSync(piRecDir, {
         recursive: true, force: true,
