@@ -38,20 +38,20 @@ Notes:
 - Add a short `.redeye.json` section to the README describing the
   file's shape and the role-string syntax.
 
-- [ ] A role string with a provider and the allowed flags parses to
+- [x] A role string with a provider and the allowed flags parses to
   its provider, model, effort, max turns and prefer-subagent
   values; an unknown flag or an extra positional is rejected
-- [ ] `maxRounds` and `minRounds` default to 3 and 1; a value that
+- [x] `maxRounds` and `minRounds` default to 3 and 1; a value that
   is not a positive integer, or `minRounds` greater than
   `maxRounds`, is rejected
-- [ ] A missing `implement` or `review` inside `adversarial` is
+- [x] A missing `implement` or `review` inside `adversarial` is
   rejected
-- [ ] A `.redeye.json` that is not valid JSON makes the run exit 2
+- [x] A `.redeye.json` that is not valid JSON makes the run exit 2
   and creates no branch or worktree
-- [ ] An `adversarial` role string with an unsupported flag makes
+- [x] An `adversarial` role string with an unsupported flag makes
   the run exit 2 and creates no branch or worktree
-- [ ] `--dry-run` with `adversarial` configured prints the implement
+- [x] `--dry-run` with `adversarial` configured prints the implement
   and review role strings, `maxRounds` and `minRounds`
-- [ ] With no `.redeye.json`, or one without an `adversarial` key,
+- [x] With no `.redeye.json`, or one without an `adversarial` key,
   a run behaves as it does today (existing integration tests stay
   green)
