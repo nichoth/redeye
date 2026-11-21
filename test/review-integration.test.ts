@@ -1245,7 +1245,7 @@ test('per-ticket verdict - fixer marks [x] but ' +
         FAKE_PI_RESPONSES:
             'finding,verdict-open,verdict-fixed',
         FAKE_PI_COUNTER: counterFile,
-        MOCK_FIX_RESPONSES: 'pass,pass',
+        MOCK_FIX_RESPONSES: 'fix-all,fix-all',
         MOCK_FIX_COUNTER: fixCounterFile,
     }, async h => {
         const result = await h.run(
@@ -1276,6 +1276,11 @@ test('per-ticket verdict - fixer marks [x] but ' +
             e => e.type === 'round'
         )
 
+        t.equal(
+            (rounds[0] as TicketRoundEntry).findings[0]
+                ?.fixerResponse,
+            'fixed', 'the fixer marked the finding [x] in round 1')
+
         if (rounds[1].type === 'round') {
             const f = rounds[1].findings.find(
                 f => f.summary ===
@@ -1288,6 +1293,8 @@ test('per-ticket verdict - fixer marks [x] but ' +
 
         t.equal(rounds.length, 3,
             'three rounds total')
+        t.equal(countRoles(h.recordDir).fixer, 2,
+            'the kept finding goes back to the fixer')
     })
     rmSync(piRecDir, {
         recursive: true, force: true,
