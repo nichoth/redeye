@@ -13,6 +13,7 @@ import {
 } from '../src/orchestrator.js'
 import { readProgress } from '../src/progress.js'
 import {
+    FIX_FAILURE_TEXT,
     parseReviewEntries,
     parseTicketReviewLog,
     ticketReviewPath,
@@ -1035,8 +1036,28 @@ test('per-ticket fix - fixer test failures fail ' +
         const roles = countRoles(h.recordDir)
         t.equal(roles.ticket, 2,
             'two ticket agent invocations (retried)')
-        t.ok(roles.fixer >= 2,
-            'fixer ran at least twice')
+        t.equal(roles.fixer, 4,
+            'two fix attempts in each ticket attempt')
+        const fixPrompts = promptsByRole(h.recordDir).fixer
+        t.equal(fixPrompts.filter(p =>
+            p.includes(FIX_FAILURE_TEXT.tests)).length, 2,
+        'each retried fix sees the previous test failure')
+
+        const ticket = scanTickets(
+            join(h.projectDir, '.scratch', FEAT, 'issues'),
+            FEAT
+        )[0]
+        t.notEqual(ticket.status, 'ready-for-human',
+            'a failed loop is not unresolved')
+        const progress = readProgress(join(
+            h.projectDir, '.scratch', FEAT, 'progress.md'
+        ))
+        t.equal(progress?.tickets.find(
+            p => p.filename === '01-only.md'
+        )?.done, false, 'progress records done:false')
+        t.ok(!git(h.projectDir, [
+            'log', 'main', '--name-only', '--format=',
+        ]).includes('mock-change-'), 'nothing is merged')
 
         const logPath = join(
             h.projectDir,
@@ -1050,12 +1071,10 @@ test('per-ticket fix - fixer test failures fail ' +
         const terms = entries.filter(
             e => e.type === 'terminal'
         )
-        t.ok(
-            terms.some(
-                e => e.type === 'terminal' &&
-                    e.outcome === 'failed'
-            ),
-            'at least one failed terminal entry'
+        t.deepEqual(
+            terms.map(e => (e as TicketTerminalEntry).outcome),
+            ['failed', 'failed'],
+            'both attempts end failed'
         )
     })
     rmSync(piRecDir, { recursive: true, force: true })
