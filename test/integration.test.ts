@@ -3169,13 +3169,13 @@ test('setup-then-execute composition', async t => {
             }),
         )
 
-        const { code } = await spawnCli([
+        const { code, stdout, stderr } = await spawnCli([
             MOCK_AGENT,
             '--spec', feature,
             '--timeout', '10',
         ], { cwd: projectDir })
 
-        t.equal(code, 0, 'exit code 0')
+        t.equal(code, 0, 'exit code 0: ' + stdout + stderr)
 
         const ticket1 = readFileSync(
             join(issuesDir, '01-alpha.md'), 'utf8'
