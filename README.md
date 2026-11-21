@@ -105,10 +105,13 @@ If a skill with the same name is already installed and differs from the
 bundled copy, `init` asks before overwriting it. The default is to keep
 yours. This applies with or without `-g`.
 
-After picking a tracker, `init` asks whether to enable adversarial
-review loops. On yes it prompts for an implement command and a review
-command (the same role-string syntax as `.redeye.json`), validates each
-one, and writes the result to `.redeye.json`.
+After picking a tracker, `init` asks whether to run an adversarial
+review loop on each ticket (default no). On yes it prompts for an
+implement command and a review command (the same role-string syntax
+as [`.redeye.json`](#redeyejson)) and asks again if either one is
+invalid. It then writes the `adversarial` key, with `maxRounds: 3` and
+`minRounds: 1`, to `.redeye.json`, keeping any other keys already in
+the file. On no, `.redeye.json` is not created or changed.
 
 ```sh
 npx redeye init

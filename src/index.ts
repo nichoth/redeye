@@ -66,6 +66,17 @@ export { findFeatureDirs, resolveIssuesDir }
 
 const scriptDir = getScriptDir(import.meta.url)
 
+// Return value follows @inquirer/prompts: true accepts the input,
+// a string is shown as the error and the question is asked again.
+function validateRoleString (value:string):true|string {
+    try {
+        parseRoleString(value)
+        return true
+    } catch (err) {
+        return err instanceof Error ? err.message : String(err)
+    }
+}
+
 yargs(hideBin(process.argv))
     .scriptName('redeye')
     .usage('$0 <command>')
@@ -110,6 +121,31 @@ yargs(hideBin(process.argv))
                 }
             }
 
+            let adversarial:AdversarialSetup|undefined
+            const wantAdversarial = await confirm({
+                message: 'Run an adversarial review loop on ' +
+                    'each ticket?',
+                default: false,
+            })
+            if (wantAdversarial) {
+                const implement = await input({
+                    message: 'Implement command ' +
+                        '(e.g. claude -m opus)',
+                    validate: validateRoleString,
+                })
+                const review = await input({
+                    message: 'Review command ' +
+                        '(e.g. pi -m sonnet)',
+                    validate: validateRoleString,
+                })
+                adversarial = {
+                    implement,
+                    review,
+                    maxRounds: 3,
+                    minRounds: 1,
+                }
+            }
+
             const home = homedir()
             const skillsRoot = argv.global ? home : process.cwd()
             const bundledSkillsDir = join(scriptDir, 'skills')
@@ -130,48 +166,6 @@ yargs(hideBin(process.argv))
                     default: false,
                 })
                 if (!overwrite) skip.add(skill)
-            }
-
-            let adversarial:AdversarialSetup|undefined
-            const wantAdversarial = await confirm({
-                message: 'Enable adversarial review loops?',
-                default: false,
-            })
-            if (wantAdversarial) {
-                const impl = await input({
-                    message: 'Implement command ' +
-                        '(e.g. claude -m opus)',
-                    validate: (v:string) => {
-                        try {
-                            parseRoleString(v)
-                            return true
-                        } catch (err) {
-                            return err instanceof Error ?
-                                err.message :
-                                String(err)
-                        }
-                    },
-                })
-                const rev = await input({
-                    message: 'Review command ' +
-                        '(e.g. pi -m sonnet)',
-                    validate: (v:string) => {
-                        try {
-                            parseRoleString(v)
-                            return true
-                        } catch (err) {
-                            return err instanceof Error ?
-                                err.message :
-                                String(err)
-                        }
-                    },
-                })
-                adversarial = {
-                    implement: impl,
-                    review: rev,
-                    maxRounds: 3,
-                    minRounds: 1,
-                }
             }
 
             setup({
