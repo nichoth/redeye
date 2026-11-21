@@ -1402,6 +1402,11 @@ async t => {
         )
         t.ok(result.allDone,
             'ticket merges after withdrawal')
+        const merged = git(h.projectDir, [
+            'log', 'main', '--name-only', '--format=',
+        ])
+        t.ok(merged.includes('mock-change-'),
+            'the ticket change is on the base branch')
 
         const logPath = join(
             h.projectDir,
@@ -1410,6 +1415,26 @@ async t => {
         const entries = parseTicketReviewLog(
             readFileSync(logPath, 'utf8')
         )
+        const r1 = entries.find(
+            e => e.type === 'round'
+        ) as TicketRoundEntry
+        const f1 = r1.findings[0]
+        t.equal(f1?.fixerResponse, 'disputed',
+            'round 1 records the dispute')
+        t.ok(f1?.fixerReason?.includes('false positive'),
+            'the dispute reason comes from the notes file')
+        t.equal(r1.testResult, 'pass',
+            'round 1 records the test gate result')
+
+        const reviews = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+            .sort()
+            .map(f => JSON.parse(readFileSync(
+                join(piRecDir, f), 'utf8'
+            )) as { prompt:string })
+        t.ok(reviews[1]?.prompt.includes('false positive'),
+            'the next reviewer sees the dispute reason')
+
         const terms = entries.filter(
             e => e.type === 'terminal'
         )
