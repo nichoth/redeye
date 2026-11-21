@@ -53,6 +53,10 @@ merges into that branch.
   `FAKE_ENV_KEYS` in `test/orchestrator.test.ts`, `ENV_KEYS`
   in `test/review-integration.test.ts`), so a test that sets a
   new key must add it to its file's list
+- tapzero's `t.throws` is async: when `fn` does not throw, the
+  failing assert lands after a sync test has ended. Make the test
+  `async` and `await t.throws(...)` so a missing throw fails as
+  `not ok`
 - `npm version` -- `postversion` publishes, and `prepublishOnly`
   builds and tests first, so a red suite leaves the version
   commit and tag local

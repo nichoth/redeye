@@ -140,6 +140,12 @@ function isPositiveInteger (v:unknown):v is number {
         v > 0
 }
 
+function isPlainObject (
+    v:unknown
+):v is Record<string, unknown> {
+    return v !== null && typeof v === 'object' && !Array.isArray(v)
+}
+
 // Reads .redeye.json from `root`. Returns null when the file
 // is absent or has no adversarial key (loop off). Throws on
 // any validation error so the caller can exit before work
@@ -162,18 +168,17 @@ export function loadConfig (
         )
     }
 
-    if (
-        raw === null ||
-        typeof raw !== 'object' ||
-        !('adversarial' in raw)
-    ) {
-        return null
+    if (!isPlainObject(raw)) {
+        throw new Error('.redeye.json: must be a JSON object')
     }
+    if (!('adversarial' in raw)) return null
 
-    const adv = (raw as Record<string, unknown>)
-        .adversarial as Record<string, unknown>|null
-    if (adv === null || typeof adv !== 'object') {
-        return null
+    const adv = raw.adversarial
+    if (!isPlainObject(adv)) {
+        throw new Error(
+            '.redeye.json: adversarial must be an object ' +
+            'with implement and review role strings'
+        )
     }
 
     if (typeof adv.implement !== 'string') {

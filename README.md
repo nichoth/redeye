@@ -497,9 +497,10 @@ with its branch kept, and the fixer does not run after that
 final review.
 
 A missing file or a file with no `adversarial` key leaves
-behavior unchanged. Invalid JSON, a missing role, or an
-invalid role string stops the run before any branch or
-worktree is created (exit 2).
+behavior unchanged. Invalid JSON, an `adversarial` value that
+is not an object, a missing role, or an invalid role string
+stops the run before any branch or worktree is created
+(exit 2).
 
 A role string with `--max-turns` or `--prefer-subagent` on a
 provider that does not support them is not an error -- redeye

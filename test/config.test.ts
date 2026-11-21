@@ -206,6 +206,41 @@ test('loadConfig - missing review rejects', t => {
     }
 })
 
+test('loadConfig - adversarial of the wrong shape ' +
+    'rejects', async t => {
+    const shapes:unknown[] = ['claude', null, 3, ['claude', 'pi']]
+    for (const adversarial of shapes) {
+        const dir = tmp()
+        try {
+            writeFileSync(
+                join(dir, '.redeye.json'),
+                JSON.stringify({ adversarial })
+            )
+            await t.throws(
+                () => loadConfig(dir),
+                /adversarial/i,
+                `rejects ${JSON.stringify(adversarial)}`
+            )
+        } finally {
+            rmSync(dir, { recursive: true, force: true })
+        }
+    }
+})
+
+test('loadConfig - top-level value that is not an object ' +
+    'rejects', async t => {
+    const dir = tmp()
+    try {
+        writeFileSync(join(dir, '.redeye.json'), '[]')
+        await t.throws(
+            () => loadConfig(dir),
+            /object/i
+        )
+    } finally {
+        rmSync(dir, { recursive: true, force: true })
+    }
+})
+
 test('loadConfig - invalid JSON rejects', t => {
     const dir = tmp()
     try {
