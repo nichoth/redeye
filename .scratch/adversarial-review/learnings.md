@@ -102,3 +102,36 @@ titles switched to `test.only`, bundle with esbuild, run with
 GIT_CONFIG_GLOBAL pointing at a file with `useConfigOnly = true`.
 
 ---
+<!-- redeye:entry ticket=adversarial-review:4 attempt=1 outcome=done -->
+## 2026-11-20 19:18 -- adversarial-review/04 attempt 1 -- done
+
+Effort: medium. Agent exit: 0. Subagents: 0. Cost: $1.38. Checked items: "A ticket whose reviewer writes `No findings.` merges, and its review log has one round", "A ticket whose reviewer writes an open finding is not merged, its status is `ready-for-human`, its branch still exists, `progress.md` records it as not done, and the run exits 1", "A ticket blocked by an unresolved ticket is reported as blocked and does not run", "A reviewer that exits non-zero or writes unparseable findings fails the attempt, and the ticket goes through the existing retry path", "The reviewer runs with the review role's provider and model, and implementation runs with the implement role's", "The ticket review log round-trips through render and parse, neutralizes sentinel text in free-text fields, and drops malformed entries", "With no `adversarial` key, the agent invocations in a run match today's (no reviewer is spawned for a ticket)".
+
+### Agent notes
+# Ticket 04: review round gates each ticket
+
+Almost all of this ticket was already on the branch from earlier
+US-009..US-020 commits (round runner, unresolved outcome, ticket
+review log, fake pi, setRoundLabel, AGENTS.md invariants). I mapped
+each checklist item to existing tests and filled the gaps.
+
+Already covered by existing tests:
+- review log round-trip, sentinel neutralization, malformed drop
+  (test/review.test.ts)
+- no adversarial key -> no reviewer (review-integration)
+- review role provider/model vs implement role (integration.test.ts,
+  ticket 02's "bare redeye" CLI test)
+
+Added (tests pass against existing code, so these were test-after,
+not red-first; the behaviour pre-existed):
+- CLI test, maxRounds 1 + fake pi "finding": exit 1, ready-for-human,
+  change not merged, ticket branch kept, worktree removed,
+  progress.md done:false, dependent 02 never runs and is listed,
+  01 not retried with --retries 1.
+- review-integration: unparseable and exit1 reviewer fail attempt 1,
+  retry passes (log terminals failed, pass; implementation ran twice).
+- clean-review test now asserts the change is on the base branch.
+
+No src changes were needed.
+
+---
