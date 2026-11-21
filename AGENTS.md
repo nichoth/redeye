@@ -58,6 +58,11 @@ merges into that branch.
   `FAKE_ENV_KEYS` in `test/orchestrator.test.ts`, `ENV_KEYS`
   in `test/review-integration.test.ts`), so a test that sets a
   new key must add it to its file's list
+- `test/mock-agent-review.js` as fixer: mode `pass` prints a
+  fixed `[x] mock finding one`, which matches only `MOCK_REVIEW`
+  findings. To have the fixer mark a fake pi finding (so the
+  ticket review log records `fixed`), use `fix-all`, which marks
+  every finding in its prompt
 - tapzero's `t.throws` is async: when `fn` does not throw, the
   failing assert lands after a sync test has ended. Make the test
   `async` and `await t.throws(...)` so a missing throw fails as

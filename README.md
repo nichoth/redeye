@@ -491,13 +491,42 @@ before it can merge.
 | `maxRounds` | no | `3` | Maximum review/fix rounds per ticket |
 | `minRounds` | no | `1` | Minimum rounds before a clean review can pass the ticket |
 
+Each ticket that passes the test gate goes through rounds in its
+own worktree:
+
+1. The `review` role reads the ticket, the spec and the branch's
+   diff, and writes findings. It cannot change anything.
+2. If findings are open and rounds remain, the `implement` role
+   acts as the fixer. It fixes each finding with `/tdd` and marks
+   it `[x]`, or disputes it by leaving it unchecked and writing
+   the reason in its notes file.
+3. The test gate runs again. A failure gets another fix attempt
+   with the failure in its prompt; when the fix attempts run out,
+   the ticket attempt fails and the normal `--retries` policy
+   applies.
+4. The next round's reviewer sees each open finding with the
+   fixer's response, and gives every one a verdict: confirmed
+   fixed, withdrawn, or still open. It may add new findings.
+   `No findings.` is only accepted when nothing was open.
+
+Only the reviewer closes a finding. A fixer's `[x]` stays open
+until the reviewer confirms it, and a dispute stays open until
+the reviewer withdraws the finding.
+
 A ticket passes when a round ends with no open findings and
 at least `minRounds` rounds have run. With `minRounds: 2`, a
 clean first round is followed by a second review before the
 ticket merges. When the review in round `maxRounds` leaves
 findings open, the ticket becomes `ready-for-human` (unresolved)
 with its branch kept, and the fixer does not run after that
-final review.
+final review. A reviewer that exits non-zero, times out or writes
+findings redeye cannot parse fails the attempt.
+
+Every round is appended to
+`.scratch/<feature>/reviews/<ticket file name>`: the findings and
+their verdicts, the fixer's response to each (fixed, or disputed
+with its reason), the test result and the branch head after the
+fix.
 
 A missing file or a file with no `adversarial` key leaves
 behavior unchanged. Invalid JSON, an `adversarial` value that
