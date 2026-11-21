@@ -7442,3 +7442,99 @@ test('CLI subprocess - same provider and model warns in a run ' +
         rmSync(templateDir, { recursive: true, force: true })
     }
 })
+
+test('CLI subprocess - an open review finding leaves the ticket ' +
+    'unresolved, unmerged and blocking its dependent; exit 1',
+async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const logDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(issuesDir, '02-after.md'),
+            makeTicketBody({ status: 'ready-for-agent', blockers: [1] })
+        )
+        // maxRounds 1: a single review decides the outcome
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: FAKE_CLAUDE,
+                    review: FAKE_PI,
+                    maxRounds: 1,
+                    minRounds: 1,
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const argvLog = join(logDir, 'argv.log')
+        const { code, stdout, stderr } = await spawnCli([
+            '--spec', FEAT,
+            '--timeout', '10',
+            '--test-cmd', 'true',
+            '--retries', '1',
+            '--no-review',
+        ], {
+            cwd: projectDir,
+            env: rolesEnv({
+                FAKE_CLAUDE_DELEGATE: MOCK_PASS,
+                FAKE_CLAUDE_ARGV_LOG: argvLog,
+                FAKE_PI_RESPONSES: 'finding',
+                FAKE_PI_COUNTER: join(logDir, 'counter'),
+            }),
+            closeStdin: true,
+        })
+        const all = stdout + stderr
+
+        t.equal(code, 1, 'exits 1: ' + all)
+        t.equal(readArgvLog(argvLog).length, 1,
+            'only ticket 01 ran, once: not retried, 02 never ran')
+
+        const integration = integrationBranches(projectDir)
+        const status = (name:string) => {
+            const body = gitOut(projectDir, [
+                'show', `${integration}:.scratch/${FEAT}/issues/${name}`,
+            ])
+            return /\*\*Status:\*\*\s*(\S+)/.exec(body)?.[1]
+        }
+        t.equal(status('01-task.md'), 'ready-for-human',
+            'the unresolved ticket is ready-for-human')
+        t.equal(status('02-after.md'), 'ready-for-agent',
+            'the dependent is untouched')
+        t.ok(all.includes('02-after.md'),
+            'the dependent is reported')
+
+        const changed = gitOut(projectDir, [
+            'log', integration, '--name-only', '--format=',
+        ])
+        t.ok(!changed.includes('mock-agent-change-'),
+            'the ticket change is not merged')
+        const branches = gitOut(projectDir, [
+            'branch', '--list', '--format=%(refname:short)',
+        ]).split('\n')
+        t.ok(branches.some(b => b.includes('01-task') &&
+            b !== integration), 'the ticket branch is kept')
+        const worktrees = gitOut(projectDir, [
+            'worktree', 'list', '--porcelain',
+        ]).split('\n').filter(l => l.startsWith('worktree '))
+        t.equal(worktrees.length, 1, 'the ticket worktree is removed')
+
+        const progress = gitOut(projectDir, [
+            'show', `${integration}:.scratch/${FEAT}/progress.md`,
+        ])
+        const progressFile = join(logDir, 'progress.md')
+        writeFileSync(progressFile, progress)
+        const entry = readProgress(progressFile)?.tickets.find(
+            p => p.filename === '01-task.md'
+        )
+        t.equal(entry?.done, false, 'progress.md records 01 as not done')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(logDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
+    }
+})
