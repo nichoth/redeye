@@ -30,6 +30,8 @@ so they can't drift as long as you install the skills with this package.
 - [Examples](#examples)
   * [Keep Your Machine Awake](#keep-your-machine-awake)
     + [Mac OS](#mac-os)
+  * [Hermes](#hermes)
+  * [Hermes + Local Model](#hermes--local-model)
   * [Claude Opus 4.6](#claude-opus-46)
   * [Claude Opus 5.5](#claude-opus-55)
   * [Claude Sonnet 5.5](#claude-sonnet-55)
@@ -236,6 +238,79 @@ This is expected to run for a long time, like overnight. I use command
 
 Use `caffeinate` to prevent your machine from sleeping. These examples will
 keep the machine awake, but the display can still go dark.
+
+
+---
+
+### Hermes
+
+Use [Hermes Agent](https://hermes-agent.nousresearch.com/docs).
+The model ID uses the slug of the provider set in your Hermes config.
+
+```sh
+caffeinate -i npx redeye hermes -m anthropic/claude-sonnet-4.6
+```
+
+>
+> [!NOTE]  
+> `--effort`, `--max-turns` and `--prefer-subagent` do not apply to `hermes`.
+> Set reasoning effort in your Hermes config instead.
+>
+
+---
+
+### Hermes + Local Model
+
+Run Hermes with a Tiiny box. Give each model an alias in
+`~/.hermes/config.yaml`. The alias carries the endpoint and the key,
+and `-m` takes the alias name.
+
+`~/.hermes/config.yaml`:
+
+```yaml
+model_aliases:
+  qwen-turbo:
+    model: Qwen/Qwen3.6-35B-A3B-turbo
+    provider: custom
+    base_url: "http://openai.api.tiiny/v1"
+    key_env: TIINY_API_KEY
+  qwen-9b:
+    model: Qwen/Qwen3.5-9B-Turbo
+    provider: custom
+    base_url: "http://openai.api.tiiny/v1"
+    key_env: TIINY_API_KEY
+```
+
+>
+> [!TIP]
+> Export env variable `TIINY_API_KEY` in the shell that runs `redeye`.
+>
+
+>
+> [!NOTE]  
+> Add `model_aliases` next to the `model:` block that `hermes setup`
+> writes; don't use it in place of that block. With aliases alone,
+> Hermes says it "isn't configured yet" and exits before running the
+> query.
+>
+
+Load the matching model on the box, then run the loop:
+
+```sh
+tiiny load Qwen/Qwen3.6-35B-A3B-turbo
+```
+
+```sh
+caffeinate -i npx redeye hermes -m qwen-turbo --concurrency 1
+```
+
+>
+> [!NOTE]  
+> The `tiiny` notes under
+> [Local Model With `pi`](#local-model-with-pi) apply here too:
+> keep `--concurrency 1`, and the alias must name the model that is
+> loaded on the box.
+>
 
 
 ---
@@ -553,7 +628,7 @@ Flags:
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `[provider]` | no | -- | Agent harness to spawn (e.g. `claude`, `codex`, `pi`). Optional when `.redeye.json` sets `implement` -- the implement role's provider is used. A CLI provider overrides implement |
+| `[provider]` | no | -- | Agent harness to spawn (e.g. `claude`, `codex`, `pi`, `hermes`). Optional when `.redeye.json` sets `implement` -- the implement role's provider is used. A CLI provider overrides implement |
 | `[turns]` | no | -- | Max agentic turns per agent run (positional shorthand for `--max-turns`) |
 | `-m`, `--model` | no | -- | Model flag passed to the agent |
 | `--spec <name>` | no | auto | Feature name (resolves `.scratch/<name>/`) |
@@ -670,6 +745,9 @@ Flags:
   * `pi`: `-p --verbose --approve --no-session --mode json`
     (prompt delivered via temp file; `--approve` auto-accepts
     tool-use proposals so the agent runs non-interactively)
+  * `hermes`: `--yolo chat --query-file - --quiet` (prompt read
+    from stdin; `--quiet` makes the turn one-shot so hermes exits
+    when done; `--yolo` skips approval prompts)
 
 
 ### `--spec <name>` option
