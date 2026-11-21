@@ -18,6 +18,9 @@ Started: 2026-11-21T02:50:08.544Z
   branch: redeye--adversarial-review-04-review-round-gates-each-ticket
   exit: 0
   completed: 2026-11-21T03:18:40.713Z
-- [ ] 05-fix-rounds-with-verdicts-and-disputes.md
+- [x] 05-fix-rounds-with-verdicts-and-disputes.md
+  branch: redeye--adversarial-review-05-fix-rounds-with-verdicts-and-disputes
+  exit: 0
+  completed: 2026-11-21T03:30:57.713Z
 - [ ] 06-resume-an-interrupted-loop.md
 - [ ] 07-end-of-run-review-pass-uses-both-roles.md
