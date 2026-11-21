@@ -132,6 +132,25 @@ export interface ResolvedRoles {
     review:ParsedRole|null
     // true when a command-line provider replaced `implement`
     overridden:boolean
+    // one line per provider that lost an unsupported option
+    warnings:string[]
+}
+
+// claude is the only provider with subagents, so every other
+// role loses prefer-subagent, with one warning per provider.
+function dropUnsupported (
+    roles:ParsedRole[],
+    warnings:string[]
+):void {
+    for (const role of roles) {
+        if (!role.preferSubagent) continue
+        const name = basename(role.provider)
+        if (name === 'claude') continue
+        role.preferSubagent = undefined
+        const warning =
+            `--prefer-subagent not supported by ${name}, skipping`
+        if (!warnings.includes(warning)) warnings.push(warning)
+    }
 }
 
 // The effective roles for a run. A command-line provider replaces
@@ -145,26 +164,22 @@ export function resolveRoles (
     adv:AdversarialConfig|null
 ):ResolvedRoles {
     const review = adv ? mergeRoleWithCli(adv.review, cli) : null
-    if (cliProvider) {
-        return {
-            implement: mergeRoleWithCli(
-                { provider: cliProvider },
-                cli
-            ),
-            review,
-            overridden: adv !== null,
-        }
-    }
-    if (!adv) {
+    if (!cliProvider && !adv) {
         throw new Error(
             'Specify a provider (e.g. redeye claude) ' +
             'or set implement in .redeye.json'
         )
     }
+    const implement = cliProvider ?
+        mergeRoleWithCli({ provider: cliProvider }, cli) :
+        mergeRoleWithCli(adv!.implement, cli)
+    const warnings:string[] = []
+    dropUnsupported(review ? [implement, review] : [implement], warnings)
     return {
-        implement: mergeRoleWithCli(adv.implement, cli),
+        implement,
         review,
-        overridden: false,
+        overridden: !!cliProvider && adv !== null,
+        warnings,
     }
 }
 

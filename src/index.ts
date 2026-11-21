@@ -705,17 +705,10 @@ async function runExecute (argv:{
         providerPath ?? provider :
         provider
 
-    // claude is the only provider with subagents. Warn once here
-    // and drop the value, so no agent gets the env var or the rule.
-    let preferSubagent = implement.preferSubagent || undefined
-    const providerName = basename(provider)
-    if (preferSubagent && providerName !== 'claude') {
-        console.warn(
-            '--prefer-subagent not supported by ' +
-            `${providerName}, skipping`
-        )
-        preferSubagent = undefined
-    }
+    // resolveRoles dropped options a role's provider lacks, so
+    // no agent gets the env var or the rule. Warn once here.
+    for (const warning of roles.warnings) console.warn(warning)
+    const preferSubagent = implement.preferSubagent || undefined
 
     const isolated = isGitRepo()
     const featureNames = [...loaded.specBodies.keys()]

@@ -529,6 +529,34 @@ test('resolveRoles - a CLI provider replaces implement', t => {
     t.equal(roles.review?.model, 'opus', 'review role kept')
 })
 
+test('resolveRoles - prefer-subagent is dropped from a review ' +
+    'role whose provider has no subagents', t => {
+    const adv = advConfig('claude', 'pi -m qwen')
+    const roles = resolveRoles(
+        'claude', { preferSubagent: 'haiku' }, adv
+    )
+    t.equal(roles.implement.preferSubagent, 'haiku',
+        'claude keeps prefer-subagent')
+    t.equal(roles.review?.preferSubagent, undefined,
+        'pi gets no prefer-subagent')
+    t.equal(roles.warnings.length, 1, 'one warning for pi')
+})
+
+test('resolveRoles - prefer-subagent in a non-claude role ' +
+    'string is dropped too', t => {
+    const adv = advConfig('pi --prefer-subagent haiku', 'claude')
+    const roles = resolveRoles(undefined, {}, adv)
+    t.equal(roles.implement.preferSubagent, undefined,
+        'pi implement role gets no prefer-subagent')
+    t.equal(roles.warnings.length, 1, 'one warning')
+})
+
+test('resolveRoles - no prefer-subagent, no warnings', t => {
+    const adv = advConfig('pi', 'claude')
+    const roles = resolveRoles(undefined, {}, adv)
+    t.deepEqual(roles.warnings, [])
+})
+
 test('resolveRoles - no provider and no config throws', async t => {
     await t.throws(() => resolveRoles(undefined, {}, null))
 })
