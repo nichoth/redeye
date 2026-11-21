@@ -30,6 +30,11 @@ merges into that branch.
   repo must set `user.name` and `user.email` in its own config
   (env vars on the test's git calls do not reach the git that
   `src/` runs)
+- To run one test, copy its file with that test switched to
+  `test.only`, bundle it with esbuild (`--bundle --platform=node
+  --format=esm --packages=external`) and run it with
+  `GIT_CONFIG_GLOBAL` pointing at a file that sets
+  `user.useConfigOnly = true`, as `scripts/test.sh` does
 - `npm run lint` -- eslint
 - Both file lists are explicit: a new `src/` module must be
   added to the second esbuild call in `build-esm`

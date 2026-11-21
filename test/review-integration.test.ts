@@ -656,6 +656,12 @@ test('per-ticket review - clean reviewer lets ticket ' +
             }
         )
         t.ok(result.allDone, 'ticket is done')
+        t.ok(
+            git(h.projectDir, [
+                'log', result.branch, '--name-only', '--format=',
+            ]).includes('mock-change-'),
+            'the ticket change is merged'
+        )
 
         const logPath = join(
             h.projectDir,
@@ -762,6 +768,44 @@ test('per-ticket review - reviewer failure retries ' +
     })
     rmSync(piRecDir, { recursive: true, force: true })
 })
+
+for (const bad of ['unparseable', 'exit1']) {
+    test(`per-ticket review - a reviewer that gives ${bad} fails ` +
+        'the attempt and the ticket is retried', async t => {
+        const piRecDir = mkdtempSync(join(tmpdir(), 'redeye-pirec-'))
+        await withHarness({
+            MOCK_TICKET: 'pass',
+            FAKE_PI_RECORD_DIR: piRecDir,
+            // attempt 1's review is bad, attempt 2's is clean
+            FAKE_PI_RESPONSES: `${bad},clean`,
+            FAKE_PI_COUNTER: join(piRecDir, 'counter'),
+        }, async h => {
+            const result = await h.run(false, quietDisplay(), undefined, {
+                retries: 1,
+                adversarial: {
+                    implementStr: 'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            })
+            t.ok(result.allDone, 'the retried attempt passes')
+            t.equal(countRoles(h.recordDir).ticket, 2,
+                'implementation ran again on the retry')
+            const terms = parseTicketReviewLog(readFileSync(
+                join(h.projectDir, ticketReviewPath(FEAT, '01-only.md')),
+                'utf8'
+            )).filter(e => e.type === 'terminal')
+            t.deepEqual(
+                terms.map(e => (e as TicketTerminalEntry).outcome),
+                ['failed', 'pass'],
+                'attempt 1 failed, attempt 2 passed'
+            )
+        })
+        rmSync(piRecDir, { recursive: true, force: true })
+    })
+}
 
 test('per-ticket review - no adversarial key means ' +
     'no reviewer', async t => {
