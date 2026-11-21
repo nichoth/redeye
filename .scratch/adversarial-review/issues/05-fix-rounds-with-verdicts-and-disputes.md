@@ -63,5 +63,5 @@ Notes:
   a second review before the ticket merges
 - [ ] A fixer whose changes keep failing the test gate fails the
   attempt, and the ticket goes through the existing retry path
-- [ ] A finding the fixer marks `[x]` stays open when the next
+- [x] A finding the fixer marks `[x]` stays open when the next
   reviewer keeps it open

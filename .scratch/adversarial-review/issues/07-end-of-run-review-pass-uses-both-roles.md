@@ -27,11 +27,11 @@ Notes:
 - Each role's effort ladder comes from its own provider
   (`runWithRetries` takes the role's command).
 
-- [ ] With `adversarial` configured, the end-of-run reviewer runs
+- [x] With `adversarial` configured, the end-of-run reviewer runs
   with the review role's provider and model, and the end-of-run
   fixer runs with the implement role's
-- [ ] Without `adversarial`, the end-of-run reviewer and fixer run
+- [x] Without `adversarial`, the end-of-run reviewer and fixer run
   with the run's provider, as today
-- [ ] With `adversarial` configured and `--no-review`, no end-of-run
+- [x] With `adversarial` configured and `--no-review`, no end-of-run
   review runs, but each ticket is still reviewed by the per-ticket
   loop
