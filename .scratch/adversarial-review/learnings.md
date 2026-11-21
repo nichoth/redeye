@@ -234,3 +234,65 @@ fails when the reviewer is switched back to the run role):
 - "without adversarial" is covered by the existing AC6.1 test.
 
 ---
+<!-- redeye:entry ticket=adversarial-review:6 attempt=1 outcome=done -->
+## 2026-11-20 19:43 -- adversarial-review/06 attempt 1 -- done
+
+Effort: medium. Agent exit: 0. Subagents: 0. Cost: $2.52. Checked items: none.
+
+### Agent notes
+# Ticket 06: resume an interrupted loop
+
+Resume was already on the branch (`detectResume`,
+`runAdversarialFromResume`, `addWorktreeForBranch` on
+`worktreeQueue`) with in-process tests in
+review-integration.test.ts that hand-build the interrupted state
+and commit the review log themselves.
+
+Helper: `.redeye/one.sh <suite> '<test name prefix>'` runs one
+test (not committed). Run `npm run build` first for CLI tests.
+
+## Item 1 (interrupted run resumes and merges)
+
+Read the item as "a real interrupted run", so added a CLI test
+(integration.test.ts, last test): fake pi `finding,hang,...`, wait
+until the round 2 reviewer starts, SIGINT, rerun.
+
+Red: the rerun exited 1 with "Working tree is dirty". The loop
+appended to `.scratch/<f>/reviews/<ticket>` in the base checkout but
+only committed it at terminal points, so an interrupt left it
+untracked and the dirty-tree check blocked every later run. Resume
+could never happen after a real interrupt.
+
+Fix: the loop commits the log after every entry it appends
+(`recordEntry` in `runAdversarialLoop`, via `commitProgress`;
+failure is logged, like saveProgress).
+
+Refactor first (own commit): the fresh and resume paths had two
+copies of the whole round loop; merged into `runAdversarialLoop`
+with a `start` round, so the fix lands once. review-integration
+suite green before and after.
+
+Added fake pi response `hang` (test/mock-agent-pi.js).
+
+## Items 2 and 3 (head mismatch / terminal entry start fresh)
+
+Behaviour and tests already existed ("resume - branch head mismatch
+starts fresh", "resume - log ends in terminal starts fresh"). These
+were test-after, so checked them by mutation: disabling the head
+check, and ignoring terminals, each makes its test fail
+("ticket agent ran (fresh start)"). Added an assertion to each
+that the stale branch's commit is not on main after the run.
+No src change.
+
+## Wrap-up
+
+Docs: README `.redeye.json` section explains resume and per-entry
+commits; AGENTS.md notes per-entry log commits, the shared
+`runAdversarialLoop`, and the fake pi `hang` response.
+Final gate: build + `npm test` exit 0, no `not ok`; lint clean.
+
+Left alone: concurrent per-entry commits from tickets in the same
+wave can hit git's index.lock, the same risk `saveProgress` already
+has. A failed commit is logged, not fatal.
+
+---
