@@ -21,7 +21,7 @@ both); `src/config.ts` (role resolution and merging with CLI flags,
 same-model check); `src/preflight.ts` if needed;
 `test/integration.test.ts`, `test/config.test.ts`
 
-**Status:** ready-for-agent
+**Status:** done
 
 Notes:
 

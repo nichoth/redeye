@@ -16,7 +16,7 @@ adversarial config; `setup()` writes or merges `.redeye.json`);
 `src/index.ts` (the `init` command's `@inquirer/prompts` questions);
 `test/setup.test.ts`
 
-**Status:** ready-for-agent
+**Status:** done
 
 Notes:
 
