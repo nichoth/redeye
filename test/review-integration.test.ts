@@ -838,6 +838,89 @@ test('per-ticket review - no adversarial key means ' +
     rmSync(piRecDir, { recursive: true, force: true })
 })
 
+// ---- End-of-run review pass with adversarial roles ----
+
+function piRecords (dir:string):{ model:string|null }[] {
+    return readdirSync(dir)
+        .filter(f => f.endsWith('.json'))
+        .map(f => JSON.parse(readFileSync(join(dir, f), 'utf8')))
+}
+
+test('review pass - with adversarial set, the reviewer runs ' +
+    'with the review role and the fixer with the implement ' +
+    'role', async t => {
+    const piRecDir = mkdtempSync(join(tmpdir(), 'redeye-pirec-'))
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        MOCK_FIX: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        // the ticket's round is clean, the end-of-run review
+        // finds something
+        FAKE_PI_RESPONSES: 'clean,finding',
+        FAKE_PI_COUNTER: join(piRecDir, 'counter'),
+    }, async h => {
+        const result = await h.run(true, quietDisplay(), undefined, {
+            adversarial: {
+                implementStr: 'mock-agent-review',
+                reviewStr: 'pi -m rev-model',
+                review: { provider: FAKE_PI, model: 'rev-model' },
+                maxRounds: 3,
+                minRounds: 1,
+            },
+        })
+        t.ok(result.allDone, 'ticket is done')
+        const records = piRecords(piRecDir)
+        t.equal(records.length, 2,
+            'the review role ran the ticket round and the ' +
+            'end-of-run review')
+        t.ok(records.every(r => r.model === 'rev-model'),
+            'every review-role run got the review model')
+        t.deepEqual(countRoles(h.recordDir),
+            { reviewer: 0, fixer: 1, ticket: 1 },
+            'the implement role ran the ticket and the ' +
+            'end-of-run fix, and no review')
+        const entries = committedEntries(h.projectDir, h.reviewPath)
+        t.equal(entries.length, 1, 'one end-of-run entry')
+        t.equal(entries[0].status, 'fixed', 'the fix merged')
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
+})
+
+test('review pass - with adversarial set and review off, only ' +
+    'the per-ticket loop reviews', async t => {
+    const piRecDir = mkdtempSync(join(tmpdir(), 'redeye-pirec-'))
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'clean,finding',
+        FAKE_PI_COUNTER: join(piRecDir, 'counter'),
+    }, async h => {
+        const result = await h.run(false, quietDisplay(), undefined, {
+            adversarial: {
+                implementStr: 'mock-agent-review',
+                reviewStr: 'pi',
+                review: { provider: FAKE_PI },
+                maxRounds: 3,
+                minRounds: 1,
+            },
+        })
+        t.ok(result.allDone, 'ticket is done')
+        t.equal(piRecords(piRecDir).length, 1,
+            'only the ticket round ran a reviewer')
+        const log = parseTicketReviewLog(readFileSync(
+            join(h.projectDir, ticketReviewPath(FEAT, '01-only.md')),
+            'utf8'
+        ))
+        t.equal(log.filter(e => e.type === 'round').length, 1,
+            'the ticket was reviewed')
+        t.deepEqual(countRoles(h.recordDir),
+            { reviewer: 0, fixer: 0, ticket: 1 },
+            'no end-of-run review or fix')
+        t.ok(!existsSync(h.reviewPath), 'no end-of-run review log')
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
+})
+
 // ---- US-012: Unresolved outcome ----
 // With US-014's fix step, open findings trigger the fixer
 // instead of immediately going to unresolved. These tests
