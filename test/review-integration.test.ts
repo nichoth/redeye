@@ -1481,6 +1481,13 @@ test('round limits - minRounds 2 forces a second ' +
         )
         t.ok(result.allDone,
             'ticket passes after two clean rounds')
+        const merged = git(h.projectDir, [
+            'log', 'main', '--name-only', '--format=',
+        ])
+        t.ok(merged.includes('mock-change-'),
+            'the ticket change is on the base branch')
+        t.equal(countRoles(h.recordDir).fixer, 0,
+            'no fixer runs between clean rounds')
 
         const logPath = join(
             h.projectDir,
