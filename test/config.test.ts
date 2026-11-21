@@ -557,6 +557,18 @@ test('resolveRoles - no prefer-subagent, no warnings', t => {
     t.deepEqual(roles.warnings, [])
 })
 
+test('resolveRoles - the implement string names the role ' +
+    'that runs', t => {
+    const adv = advConfig('pi -m qwen', 'claude -m opus')
+    t.equal(resolveRoles(undefined, {}, adv).implementStr,
+        'pi -m qwen', 'the config string without an override')
+    t.equal(
+        resolveRoles('claude', { model: 'sonnet' }, adv).implementStr,
+        'claude -m sonnet',
+        'the command-line provider and its flags on an override'
+    )
+})
+
 test('resolveRoles - no provider and no config throws', async t => {
     await t.throws(() => resolveRoles(undefined, {}, null))
 })

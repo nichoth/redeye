@@ -7394,6 +7394,17 @@ test('CLI subprocess - a CLI provider overrides implement in ' +
         t.equal(runs.length, 1, 'the CLI provider ran the ticket')
         t.equal(flagValue(runs[0], '--model'), undefined,
             'the implement role model does not carry over')
+
+        const integration = integrationBranches(projectDir)
+        const logText = gitOut(projectDir, [
+            'show',
+            `${integration}:${ticketReviewPath(FEAT, '01-task.md')}`,
+        ])
+        const rounds = parseTicketReviewLog(logText)
+            .filter(e => e.type === 'round') as TicketRoundEntry[]
+        t.equal(rounds.length, 1, 'the log has one round')
+        t.equal(rounds[0]?.implement, FAKE_CLAUDE,
+            'the log records the implement role that ran')
     } finally {
         removeWorktreesAndRepo(projectDir)
         rmSync(logDir, { recursive: true, force: true })

@@ -134,6 +134,21 @@ export interface ResolvedRoles {
     overridden:boolean
     // one line per provider that lost an unsupported option
     warnings:string[]
+    // the implement role as a command string, for logs: the
+    // config string, or the command-line provider and flags
+    implementStr:string
+}
+
+// A role as a role string, in the form parseRoleString reads
+export function renderRoleString (role:ParsedRole):string {
+    const parts = [role.provider]
+    if (role.model) parts.push('-m', role.model)
+    if (role.effort) parts.push('--effort', role.effort)
+    if (role.maxTurns) parts.push('--max-turns', String(role.maxTurns))
+    if (role.preferSubagent) {
+        parts.push('--prefer-subagent', role.preferSubagent)
+    }
+    return parts.join(' ')
 }
 
 // claude is the only provider with subagents, so every other
@@ -180,6 +195,9 @@ export function resolveRoles (
         review,
         overridden: !!cliProvider && adv !== null,
         warnings,
+        implementStr: cliProvider || !adv ?
+            renderRoleString(implement) :
+            adv.implementStr,
     }
 }
 
