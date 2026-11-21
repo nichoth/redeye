@@ -16,7 +16,7 @@ add a worktree on an existing branch, on `worktreeQueue`);
 `src/review.ts` (round runner starts at a given round, reading the
 log through its parser); `test/review-integration.test.ts`
 
-**Status:** ready-for-agent
+**Status:** done
 
 Notes:
 
@@ -26,10 +26,10 @@ Notes:
   a failure. The review log needs one written at every terminal
   point if ticket 05 did not already add it.
 
-- [ ] A run interrupted after a recorded round resumes that ticket
+- [x] A run interrupted after a recorded round resumes that ticket
   at the next round without running implementation again, and the
   ticket can pass and merge
-- [ ] A ticket whose branch head no longer matches its review log
+- [x] A ticket whose branch head no longer matches its review log
   starts fresh, with implementation running again
-- [ ] A ticket whose review log ends in a terminal entry starts
+- [x] A ticket whose review log ends in a terminal entry starts
   fresh
