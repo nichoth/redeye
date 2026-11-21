@@ -73,20 +73,20 @@ Notes:
   review log next to `learnings.md` and `review.md` under "Logs on
   disk".
 
-- [ ] A ticket whose reviewer writes `No findings.` merges, and its
+- [x] A ticket whose reviewer writes `No findings.` merges, and its
   review log has one round
-- [ ] A ticket whose reviewer writes an open finding is not merged,
+- [x] A ticket whose reviewer writes an open finding is not merged,
   its status is `ready-for-human`, its branch still exists,
   `progress.md` records it as not done, and the run exits 1
-- [ ] A ticket blocked by an unresolved ticket is reported as
+- [x] A ticket blocked by an unresolved ticket is reported as
   blocked and does not run
-- [ ] A reviewer that exits non-zero or writes unparseable findings
+- [x] A reviewer that exits non-zero or writes unparseable findings
   fails the attempt, and the ticket goes through the existing retry
   path
-- [ ] The reviewer runs with the review role's provider and model,
+- [x] The reviewer runs with the review role's provider and model,
   and implementation runs with the implement role's
-- [ ] The ticket review log round-trips through render and parse,
+- [x] The ticket review log round-trips through render and parse,
   neutralizes sentinel text in free-text fields, and drops malformed
   entries
-- [ ] With no `adversarial` key, the agent invocations in a run
+- [x] With no `adversarial` key, the agent invocations in a run
   match today's (no reviewer is spawned for a ticket)
