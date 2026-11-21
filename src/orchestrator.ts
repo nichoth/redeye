@@ -2205,7 +2205,7 @@ async function runAdversarialLoop (ctx:{
             )
             if (round >= adv.minRounds) {
                 await recordEntry(
-                renderTicketTerminal({
+                    renderTicketTerminal({
                         attempt: opts.attempt,
                         outcome: 'pass',
                     })
@@ -2323,7 +2323,7 @@ async function runAdversarialLoop (ctx:{
             })
 
         await recordEntry(
-                renderTicketRound({
+            renderTicketRound({
                 attempt: opts.attempt,
                 round,
                 implement: adv.implementStr,

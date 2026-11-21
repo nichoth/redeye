@@ -526,7 +526,14 @@ Every round is appended to
 `.scratch/<feature>/reviews/<ticket file name>`: the findings and
 their verdicts, the fixer's response to each (fixed, or disputed
 with its reason), the test result and the branch head after the
-fix.
+fix. Each entry is committed as it is written.
+
+If a run is interrupted mid-loop, the next run resumes the ticket
+at the round after the last one recorded, without implementing it
+again. This happens only when the ticket branch still exists, its
+head matches the head the log last recorded, and the log has no
+pass, unresolved or failed entry after that round. Otherwise the
+stale branch is removed and the ticket starts fresh.
 
 A missing file or a file with no `adversarial` key leaves
 behavior unchanged. Invalid JSON, an `adversarial` value that
