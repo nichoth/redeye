@@ -135,3 +135,102 @@ not red-first; the behaviour pre-existed):
 No src changes were needed.
 
 ---
+<!-- redeye:entry ticket=adversarial-review:5 attempt=1 outcome=done -->
+## 2026-11-20 19:29 -- adversarial-review/05 attempt 1 -- done
+
+Effort: medium. Agent exit: 0. Subagents: 0. Cost: $2.13. Checked items: "A finding the fixer marks `[x]` stays open when the next reviewer keeps it open".
+
+### Agent notes
+# Ticket 05: fix rounds with verdicts and disputes
+
+The loop (fix step, verdict prompt, round limits, unresolved) was
+already on the branch from the US-014..US-018 commits. Work here is
+closing test gaps against each checklist item and documenting the
+round rules.
+
+Helper: `.redeye/one.sh <suite> '<test name prefix>'` runs one test
+from a temp copy (not committed).
+
+Item 1 (fix + confirm, two rounds): the mock fixer's `pass` mode
+prints `[x] mock finding one`, which never matches the pi finding,
+so no test exercised a recorded `fixed` response. Added mock fixer
+mode `fix-all` (marks every finding in its prompt) and assertions:
+round 1 records fixerResponse fixed, testResult pass, a new fixHead;
+round 2 reviews that head; change and fix are on main. Red
+(fixerResponse undefined) -> green by the mock change only; src was
+already right.
+
+Item 2 (dispute + withdraw): added assertions that round 1 records
+fixerResponse disputed with the notes text as reason, testResult
+pass, the round-2 reviewer prompt carries the reason, and the change
+is on main. Passed first run (test-after; behaviour pre-existed).
+
+Item 3 (dispute kept until maxRounds): the runWavesIsolated test
+"round limits - maxRounds reached" already covered status, branch,
+progress and fixer-not-after-final-review, but not exit 1. Added a
+CLI test (integration.test.ts, last test): fake claude delegating to
+mock-agent-review (dispute), fake pi finding,verdict-open,
+maxRounds 2. Asserts exit 1, implemented once, fixer once,
+ready-for-human, unmerged, branch kept, committed log has both rounds
+(disputed then still-open) and an unresolved terminal. Passed first
+run (test-after). Seen but not touched: the finish summary for this
+run says "0 completed, 1 failed, 1 need a human" -- the unresolved
+ticket appears to be counted in "failed" too. Out of scope here.
+
+Item 4 (minRounds 2): existing "round limits - minRounds 2" test
+already checked two rounds, reviewer twice, pass terminal. Added that
+the change is on main and no fixer ran. Test-after.
+
+Item 5 (fixer keeps failing tests): strengthened "per-ticket fix -
+fixer test failures fail the attempt and ticket retries": exactly 4
+fixer runs (2 fix attempts x 2 ticket attempts with --retries 1),
+the retried fix prompts carry FIX_FAILURE_TEXT.tests, both attempts
+end with a failed terminal, status not ready-for-human, progress
+done:false, nothing merged. Test-after.
+
+Item 6 ([x] stays open): the existing test used fixer mode `pass`,
+which never marked the pi finding, so it did not test a fixer [x] at
+all. Switched to `fix-all,fix-all`, asserted round 1 records
+fixerResponse fixed, round 2 verdict still-open, and the fixer runs
+again (2 fixer runs). The fixed assertion is red under `pass`.
+
+Docs (no test, docs-only): README `.redeye.json` section now lists
+the round steps, the fixer contract, that only the reviewer closes a
+finding, reviewer failure, and what each log entry records.
+AGENTS.md: note on mock-agent-review fixer modes (`fix-all`).
+
+Final gate: `npm run build && npm test` exit 0, no `not ok`. Lint
+clean. No src/ changes were needed: the loop was already correct.
+
+Pre-existing, not touched: `tsc --noEmit -p .` reports type errors
+in test files (display.test.ts `never`, integration.test.ts display
+stubs missing `setRoundLabel`); esbuild does not type-check, so the
+suite still runs.
+
+---
+<!-- redeye:entry ticket=adversarial-review:7 attempt=1 outcome=done -->
+## 2026-11-20 19:30 -- adversarial-review/07 attempt 1 -- done
+
+Effort: medium. Agent exit: 0. Subagents: 0. Cost: $0.97. Checked items: "With `adversarial` configured, the end-of-run reviewer runs with the review role's provider and model, and the end-of-run fixer runs with the implement role's", "Without `adversarial`, the end-of-run reviewer and fixer run with the run's provider, as today", "With `adversarial` configured and `--no-review`, no end-of-run review runs, but each ticket is still reviewed by the per-ticket loop".
+
+### Agent notes
+# Ticket 07: end-of-run review pass uses both roles
+
+The src side was already on the branch: `ReviewPassOpts` has separate
+`reviewer`/`fixer` `ReviewRole`s, `runWavesIsolated` builds the
+reviewer from `opts.adversarial.review` (else the run role) and the
+fixer from the run role (which is the implement role, since
+runExecute reads it from resolveRoles). `index.ts` passes
+`review: undefined` on `--no-review` and still passes `adversarial`.
+
+No src changes. Added tests in test/review-integration.test.ts
+(test-after, the behaviour pre-existed; I confirmed the first test
+fails when the reviewer is switched back to the run role):
+- adversarial + review on: fake pi (review role, model rev-model)
+  runs the ticket round and the end-of-run review; the mock
+  (implement role) runs the ticket and the end-of-run fix.
+- adversarial + review off: only the ticket round reviews; no
+  end-of-run review, fix, or review.md.
+- "without adversarial" is covered by the existing AC6.1 test.
+
+---
