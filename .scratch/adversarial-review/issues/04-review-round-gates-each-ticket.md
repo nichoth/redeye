@@ -49,7 +49,7 @@ to `test/fake-claude/claude`; `test/review-integration.test.ts`
 (new `FAKE_*` keys added to `ENV_KEYS`); `test/review.test.ts`;
 `AGENTS.md`
 
-**Status:** ready-for-agent
+**Status:** done
 
 Notes:
 
