@@ -34,6 +34,8 @@ import {
     ROLE_OPTIONS,
     loadConfig,
     parseRoleString,
+    resolveRoles,
+    sameModel,
 } from './config.js'
 import { detectTestCmd, detectInstallCmd } from './testcmd.js'
 import { resolveExecutable } from './preflight.js'
@@ -627,17 +629,22 @@ async function runExecute (argv:{
     // Validation errors stop the run before anything is created.
     const adversarial = loadConfig(process.cwd())
 
-    // Resolve the effective provider: CLI arg wins, then
-    // the implement role from .redeye.json. The .check()
-    // in the yargs builder already rejects no-config +
-    // no-provider before the handler runs.
-    const cliOverride = !!argv.provider && !!adversarial
-    const provider = argv.provider ??
-        adversarial?.implement.provider ?? ''
-    const model = argv.model ??
-        (!argv.provider && adversarial ?
-            adversarial.implement.model :
-            undefined)
+    // The effective roles: a CLI provider replaces implement,
+    // each role's own flags win and the CLI flags fill in the
+    // rest. The .check() in the yargs builder already rejects
+    // no-config + no-provider before the handler runs.
+    const roles = resolveRoles(argv.provider, {
+        model: argv.model,
+        effort: argv.effort,
+        maxTurns: argv.maxTurns,
+        preferSubagent: argv.preferSubagent,
+    }, adversarial)
+    const cliOverride = roles.overridden
+    const implement = roles.implement
+    const provider = implement.provider
+    const model = implement.model
+    const effort = implement.effort as EffortLevel|undefined
+    const maxTurns = implement.maxTurns
     // Stop before the dry run, provider lookup and any branch work
     // when every ready-for-agent ticket is blocked. A resumed
     // integration branch is checked after its re-scan instead.
@@ -688,24 +695,13 @@ async function runExecute (argv:{
     }
 
     // Warn when both roles resolve to the same model
-    if (adversarial) {
-        const implBase = basename(
-            cliOverride ? provider : adversarial.implement.provider
+    if (roles.review && sameModel(implement, roles.review)) {
+        const name = basename(provider) +
+            (model ? ' ' + model : '')
+        console.warn(
+            `Implement and review use the same model (${name})` +
+            ' -- the cross-model check is lost'
         )
-        const revBase = basename(
-            adversarial.review.provider
-        )
-        const implModel = cliOverride ?
-            (model ?? '') :
-            (adversarial.implement.model ?? '')
-        const revModel = adversarial.review.model ?? ''
-        if (implBase === revBase && implModel === revModel) {
-            console.warn(
-                'Implement and review use the same model ' +
-                `(${implBase}${implModel ? ' ' + implModel : ''})` +
-                ' -- the cross-model check is lost'
-            )
-        }
     }
 
     // Worktrees spawn with their own cwd, so a relative path must
@@ -717,7 +713,7 @@ async function runExecute (argv:{
 
     // claude is the only provider with subagents. Warn once here
     // and drop the value, so no agent gets the env var or the rule.
-    let preferSubagent = argv.preferSubagent || undefined
+    let preferSubagent = implement.preferSubagent || undefined
     const providerName = basename(provider)
     if (preferSubagent && providerName !== 'claude') {
         console.warn(
@@ -834,7 +830,7 @@ async function runExecute (argv:{
                     .next().value!,
                 testCmd,
                 installCmd,
-                effort: argv.effort,
+                effort,
                 retries: argv.retries,
                 retryDelay: argv.retryDelay,
                 concurrency: argv.concurrency,
@@ -881,8 +877,8 @@ async function runExecute (argv:{
             display,
             testCmd,
             installCmd,
-            maxTurns: argv.maxTurns,
-            effort: argv.effort,
+            maxTurns,
+            effort,
             retries: argv.retries,
             retryDelay: argv.retryDelay,
             concurrency: argv.concurrency,
@@ -899,7 +895,7 @@ async function runExecute (argv:{
                 {
                     implementStr: adversarial.implementStr,
                     reviewStr: adversarial.reviewStr,
-                    review: adversarial.review,
+                    review: roles.review!,
                     maxRounds: adversarial.maxRounds,
                     minRounds: adversarial.minRounds,
                 } :
@@ -919,8 +915,8 @@ async function runExecute (argv:{
             logsDir,
             testCmd,
             display,
-            argv.maxTurns,
-            argv.effort,
+            maxTurns,
+            effort,
             argv.retries,
             argv.retryDelay,
             argv.concurrency,
