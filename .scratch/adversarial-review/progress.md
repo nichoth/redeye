@@ -22,7 +22,10 @@ Started: 2026-11-21T02:50:08.544Z
   branch: redeye--adversarial-review-05-fix-rounds-with-verdicts-and-disputes
   exit: 0
   completed: 2026-11-21T03:30:57.713Z
-- [ ] 06-resume-an-interrupted-loop.md
+- [x] 06-resume-an-interrupted-loop.md
+  branch: redeye--adversarial-review-06-resume-an-interrupted-loop
+  exit: 0
+  completed: 2026-11-21T03:43:38.571Z
 - [x] 07-end-of-run-review-pass-uses-both-roles.md
   branch: redeye--adversarial-review-07-end-of-run-review-pass-uses-both-roles
   exit: 0
