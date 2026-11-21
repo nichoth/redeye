@@ -42,7 +42,7 @@ result and post-fix head); `src/rules.ts`; `src/orchestrator.ts`
 and failing-tests behavior); `test/review-integration.test.ts`
 (`ENV_KEYS`); `test/review.test.ts`
 
-**Status:** ready-for-agent
+**Status:** done
 
 Notes:
 
@@ -52,16 +52,16 @@ Notes:
   result and the branch head after the fix.
 - Document the round rules in the README section on `.redeye.json`.
 
-- [ ] A finding the fixer fixes and the next reviewer confirms lets
+- [x] A finding the fixer fixes and the next reviewer confirms lets
   the ticket merge after two rounds, and the log shows both rounds
-- [ ] A finding the fixer disputes and the next reviewer withdraws
+- [x] A finding the fixer disputes and the next reviewer withdraws
   lets the ticket merge
-- [ ] A disputed finding the reviewer keeps open until `maxRounds`
+- [x] A disputed finding the reviewer keeps open until `maxRounds`
   makes the ticket `ready-for-human`, unmerged, with its branch kept
   and the run exiting 1
-- [ ] With `minRounds` set to 2, a clean first round is followed by
+- [x] With `minRounds` set to 2, a clean first round is followed by
   a second review before the ticket merges
-- [ ] A fixer whose changes keep failing the test gate fails the
+- [x] A fixer whose changes keep failing the test gate fails the
   attempt, and the ticket goes through the existing retry path
 - [x] A finding the fixer marks `[x]` stays open when the next
   reviewer keeps it open

@@ -16,7 +16,7 @@ both roles); `src/index.ts` (the `review` option to
 `runWavesIsolated`); `test/review-pass.test.ts`,
 `test/review-integration.test.ts`
 
-**Status:** ready-for-agent
+**Status:** done
 
 Notes:
 
