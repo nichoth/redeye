@@ -34,7 +34,12 @@ import { parseEntries, readEntries } from '../src/learnings.js'
 import {
     readProgress, generateProgress, checkTicket, writeProgress,
 } from '../src/progress.js'
-import { parseReviewEntries } from '../src/review.js'
+import {
+    parseReviewEntries,
+    parseTicketReviewLog,
+    ticketReviewPath,
+    type TicketRoundEntry,
+} from '../src/review.js'
 import { subagentRule } from '../src/rules.js'
 import { renderRunStats } from '../src/stats.js'
 
@@ -7535,6 +7540,104 @@ async t => {
     } finally {
         removeWorktreesAndRepo(projectDir)
         rmSync(logDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
+    }
+})
+
+test('CLI subprocess - a dispute the reviewer keeps open until ' +
+    'maxRounds leaves the ticket unresolved and unmerged; exit 1',
+async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const logDir = tmp()
+    const recordDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: FAKE_CLAUDE,
+                    review: FAKE_PI,
+                    maxRounds: 2,
+                    minRounds: 1,
+                },
+            })
+        )
+        commitAll(projectDir, 'add ticket and config')
+
+        const { code, stdout, stderr } = await spawnCli([
+            '--spec', FEAT,
+            '--timeout', '10',
+            '--test-cmd', 'true',
+            '--retries', '1',
+            '--retry-delay', '0',
+            '--no-review',
+        ], {
+            cwd: projectDir,
+            env: rolesEnv({
+                FAKE_CLAUDE_DELEGATE: MOCK_REVIEW_AGENT,
+                MOCK_RECORD_DIR: recordDir,
+                MOCK_TICKET: 'pass',
+                MOCK_FIX_RESPONSES: 'dispute',
+                MOCK_FIX_COUNTER: join(logDir, 'fix-counter'),
+                FAKE_PI_RESPONSES: 'finding,verdict-open',
+                FAKE_PI_COUNTER: join(logDir, 'counter'),
+            }),
+            closeStdin: true,
+        })
+        const all = stdout + stderr
+        t.equal(code, 1, 'exits 1: ' + all)
+
+        const roles = readdirSync(recordDir).map(name => {
+            return (JSON.parse(
+                readFileSync(join(recordDir, name), 'utf8')
+            ) as { role:string }).role
+        })
+        t.equal(roles.filter(r => r === 'ticket').length, 1,
+            'implemented once, not retried')
+        t.equal(roles.filter(r => r === 'fixer').length, 1,
+            'the fixer runs after round 1 only')
+
+        const integration = integrationBranches(projectDir)
+        const body = gitOut(projectDir, [
+            'show', `${integration}:.scratch/${FEAT}/issues/01-task.md`,
+        ])
+        t.equal(/\*\*Status:\*\*\s*(\S+)/.exec(body)?.[1],
+            'ready-for-human', 'the ticket is ready-for-human')
+
+        const changed = gitOut(projectDir, [
+            'log', integration, '--name-only', '--format=',
+        ])
+        t.ok(!changed.includes('mock-change-'),
+            'the ticket change is not merged')
+        const branches = gitOut(projectDir, [
+            'branch', '--list', '--format=%(refname:short)',
+        ]).split('\n')
+        t.ok(branches.some(b => b.includes('01-task') &&
+            b !== integration), 'the ticket branch is kept')
+
+        const entries = parseTicketReviewLog(gitOut(projectDir, [
+            'show',
+            `${integration}:${ticketReviewPath(FEAT, '01-task.md')}`,
+        ]))
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        ) as TicketRoundEntry[]
+        t.equal(rounds.length, 2, 'the log has both rounds')
+        t.equal(rounds[0]?.findings[0]?.fixerResponse, 'disputed',
+            'round 1 records the dispute')
+        t.equal(rounds[1]?.findings[0]?.verdict, 'still-open',
+            'round 2 keeps the finding open')
+        const last = entries[entries.length - 1]
+        t.ok(last?.type === 'terminal' &&
+            last.outcome === 'unresolved', 'the loop ends unresolved')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(logDir, { recursive: true, force: true })
+        rmSync(recordDir, { recursive: true, force: true })
         rmSync(templateDir, { recursive: true, force: true })
     }
 })
