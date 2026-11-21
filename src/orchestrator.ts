@@ -2035,6 +2035,9 @@ function detectResume (
     if (rounds.length === 0) return null
 
     const lastRound = rounds[rounds.length - 1]
+    // A recorded red test gate means the branch cannot pass;
+    // resuming would skip that gate.
+    if (lastRound.testResult === 'fail') return null
     const recordedHead =
         lastRound.fixHead ?? lastRound.head
 
@@ -2375,6 +2378,35 @@ async function runAdversarialLoop (ctx:{
     }
 }
 
+// Runs the install command in a new worktree. Returns the failed
+// outcome (after removing the worktree) when it fails, else null.
+async function installDeps (
+    opts:TicketAttemptOpts&{ attempt:number },
+    worktree:{ worktreePath:string; branchName:string }
+):Promise<TicketOutcome|null> {
+    if (!opts.installCmd) return null
+    const { ticket, d } = opts
+    const installed = await runInstall({
+        installCmd: opts.installCmd,
+        ticket,
+        worktreePath: worktree.worktreePath,
+        timeout: opts.timeout,
+        logsDir: opts.logsDir,
+        attempt: opts.attempt,
+        log: (msg) => d.log(msg),
+        registry: runningAgents,
+    })
+    if (installed) return null
+    await removeWorktreeQuietly(worktree.worktreePath, d)
+    return {
+        kind: 'failed',
+        reason: 'install',
+        branchName: worktree.branchName,
+        exitCode: 1,
+        completedItems: [],
+    }
+}
+
 // One attempt at a ticket: a fresh worktree, one agent run,
 // and the checks that decide whether the branch can merge.
 // A failed attempt removes its worktree before returning.
@@ -2423,6 +2455,11 @@ async function runTicketAttempt (
         d.setTicketStatus(
             ticket.num, 'in-progress', ticket.feature
         )
+        // A recreated worktree has no untracked dependencies
+        const resumeInstallFailed = await installDeps(
+            opts, worktree
+        )
+        if (resumeInstallFailed) return resumeInstallFailed
         d.log(
             `  ${ticket.filename}: resuming ` +
             'adversarial loop at round ' +
@@ -2458,30 +2495,8 @@ async function runTicketAttempt (
     d.setTicketStatus(
         ticket.num, 'in-progress', ticket.feature
     )
-    if (opts.installCmd) {
-        const installed = await runInstall({
-            installCmd: opts.installCmd,
-            ticket,
-            worktreePath: worktree.worktreePath,
-            timeout: opts.timeout,
-            logsDir: opts.logsDir,
-            attempt: opts.attempt,
-            log: (msg) => d.log(msg),
-            registry: runningAgents,
-        })
-        if (!installed) {
-            await removeWorktreeQuietly(
-                worktree.worktreePath, d
-            )
-            return {
-                kind: 'failed',
-                reason: 'install',
-                branchName: worktree.branchName,
-                exitCode: 1,
-                completedItems: [],
-            }
-        }
-    }
+    const installFailed = await installDeps(opts, worktree)
+    if (installFailed) return installFailed
 
     // Keeps the agent's notes out of any `git add -A`.
     try {

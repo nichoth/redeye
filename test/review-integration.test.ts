@@ -2199,6 +2199,106 @@ async t => {
     })
 })
 
+// Leaves the state of a run interrupted after round 1 was
+// recorded: the ticket branch with agent and fixer commits, and
+// a committed review log whose round 1 entry names the fix head.
+function seedInterruptedRound (
+    projectDir:string,
+    testResult:'pass'|'fail'
+):void {
+    const branchName =
+        `${basename(projectDir)}--feat-01-only`
+    git(projectDir, ['checkout', '-b', branchName])
+    writeFileSync(join(projectDir, 'agent-work.ts'),
+        'export const x = 1')
+    git(projectDir, ['add', '-A'])
+    git(projectDir, ['commit', '-m', 'agent work'])
+    const agentHead = git(projectDir, ['rev-parse', 'HEAD'])
+    writeFileSync(join(projectDir, 'fix-work.ts'),
+        'export const y = 2')
+    git(projectDir, ['add', '-A'])
+    git(projectDir, ['commit', '-m', 'fixer work'])
+    const fixHead = git(projectDir, ['rev-parse', 'HEAD'])
+    git(projectDir, ['checkout', 'main'])
+
+    const reviewDir = join(projectDir, '.scratch', FEAT, 'reviews')
+    mkdirSync(reviewDir, { recursive: true })
+    const reviewLogPath = join(reviewDir, '01-only.md')
+    writeFileSync(reviewLogPath, renderTicketRound({
+        attempt: 1,
+        round: 1,
+        implement: 'mock-agent-review',
+        review: 'pi',
+        head: agentHead,
+        findings: [{
+            summary: 'mock finding from pi',
+            detail: '',
+            verdict: 'open',
+            fixerResponse: 'fixed',
+        }],
+        fixHead,
+        testResult,
+    }))
+    git(projectDir, ['add', '--force', reviewLogPath])
+    git(projectDir, ['commit', '-m', 'save review log'])
+}
+
+const RESUME_ADVERSARIAL = {
+    implementStr: 'mock-agent-review',
+    reviewStr: 'pi',
+    review: { provider: FAKE_PI },
+    maxRounds: 3,
+    minRounds: 1,
+}
+
+test('resume - a resumed loop runs the install command in ' +
+    'the recreated worktree', async t => {
+    const piRecDir = mkdtempSync(join(tmpdir(), 'redeye-pirec-'))
+    const installLog = join(piRecDir, 'install-cwd')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'verdict-fixed',
+        FAKE_PI_COUNTER: join(piRecDir, 'counter'),
+    }, async h => {
+        seedInterruptedRound(h.projectDir, 'pass')
+        const result = await h.run(false, quietDisplay(), undefined, {
+            retries: 0,
+            installCmd: `pwd >> ${installLog}`,
+            adversarial: RESUME_ADVERSARIAL,
+        })
+        t.ok(result.allDone, 'ticket passes after resumed review')
+        t.equal(countRoles(h.recordDir).ticket, 0,
+            'implementation was skipped (resumed)')
+        t.ok(existsSync(installLog),
+            'the install command ran before the resumed loop')
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
+})
+
+test('resume - a last round with a failing test gate starts ' +
+    'fresh', async t => {
+    const piRecDir = mkdtempSync(join(tmpdir(), 'redeye-pirec-'))
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'clean',
+        FAKE_PI_COUNTER: join(piRecDir, 'counter'),
+    }, async h => {
+        seedInterruptedRound(h.projectDir, 'fail')
+        const result = await h.run(false, quietDisplay(), undefined, {
+            retries: 0,
+            adversarial: RESUME_ADVERSARIAL,
+        })
+        t.ok(result.allDone, 'ticket passes after a fresh start')
+        t.equal(countRoles(h.recordDir).ticket, 1,
+            'implementation ran again instead of resuming')
+        t.ok(!existsSync(join(h.projectDir, 'fix-work.ts')),
+            'the branch with failing tests is not merged')
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
+})
+
 // ---- End-of-run pass uses both configured roles (US-020) ----
 
 test('US-020 end-of-run pass uses review role as reviewer ' +
