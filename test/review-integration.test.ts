@@ -13,11 +13,13 @@ import {
 } from '../src/orchestrator.js'
 import { readProgress } from '../src/progress.js'
 import {
+    FIX_FAILURE_TEXT,
     parseReviewEntries,
     parseTicketReviewLog,
     ticketReviewPath,
     renderTicketRound,
     renderTicketTerminal,
+    type TicketRoundEntry,
     type TicketTerminalEntry,
 } from '../src/review.js'
 import { subagentRule } from '../src/rules.js'
@@ -1034,8 +1036,28 @@ test('per-ticket fix - fixer test failures fail ' +
         const roles = countRoles(h.recordDir)
         t.equal(roles.ticket, 2,
             'two ticket agent invocations (retried)')
-        t.ok(roles.fixer >= 2,
-            'fixer ran at least twice')
+        t.equal(roles.fixer, 4,
+            'two fix attempts in each ticket attempt')
+        const fixPrompts = promptsByRole(h.recordDir).fixer
+        t.equal(fixPrompts.filter(p =>
+            p.includes(FIX_FAILURE_TEXT.tests)).length, 2,
+        'each retried fix sees the previous test failure')
+
+        const ticket = scanTickets(
+            join(h.projectDir, '.scratch', FEAT, 'issues'),
+            FEAT
+        )[0]
+        t.notEqual(ticket.status, 'ready-for-human',
+            'a failed loop is not unresolved')
+        const progress = readProgress(join(
+            h.projectDir, '.scratch', FEAT, 'progress.md'
+        ))
+        t.equal(progress?.tickets.find(
+            p => p.filename === '01-only.md'
+        )?.done, false, 'progress records done:false')
+        t.ok(!git(h.projectDir, [
+            'log', 'main', '--name-only', '--format=',
+        ]).includes('mock-change-'), 'nothing is merged')
 
         const logPath = join(
             h.projectDir,
@@ -1049,12 +1071,10 @@ test('per-ticket fix - fixer test failures fail ' +
         const terms = entries.filter(
             e => e.type === 'terminal'
         )
-        t.ok(
-            terms.some(
-                e => e.type === 'terminal' &&
-                    e.outcome === 'failed'
-            ),
-            'at least one failed terminal entry'
+        t.deepEqual(
+            terms.map(e => (e as TicketTerminalEntry).outcome),
+            ['failed', 'failed'],
+            'both attempts end failed'
         )
     })
     rmSync(piRecDir, { recursive: true, force: true })
@@ -1225,7 +1245,7 @@ test('per-ticket verdict - fixer marks [x] but ' +
         FAKE_PI_RESPONSES:
             'finding,verdict-open,verdict-fixed',
         FAKE_PI_COUNTER: counterFile,
-        MOCK_FIX_RESPONSES: 'pass,pass',
+        MOCK_FIX_RESPONSES: 'fix-all,fix-all',
         MOCK_FIX_COUNTER: fixCounterFile,
     }, async h => {
         const result = await h.run(
@@ -1256,6 +1276,11 @@ test('per-ticket verdict - fixer marks [x] but ' +
             e => e.type === 'round'
         )
 
+        t.equal(
+            (rounds[0] as TicketRoundEntry).findings[0]
+                ?.fixerResponse,
+            'fixed', 'the fixer marked the finding [x] in round 1')
+
         if (rounds[1].type === 'round') {
             const f = rounds[1].findings.find(
                 f => f.summary ===
@@ -1268,6 +1293,8 @@ test('per-ticket verdict - fixer marks [x] but ' +
 
         t.equal(rounds.length, 3,
             'three rounds total')
+        t.equal(countRoles(h.recordDir).fixer, 2,
+            'the kept finding goes back to the fixer')
     })
     rmSync(piRecDir, {
         recursive: true, force: true,
@@ -1290,7 +1317,7 @@ test('per-ticket verdict - fixer fixes and ' +
         FAKE_PI_RESPONSES:
             'finding,verdict-fixed',
         FAKE_PI_COUNTER: counterFile,
-        MOCK_FIX_RESPONSES: 'pass',
+        MOCK_FIX_RESPONSES: 'fix-all',
         MOCK_FIX_COUNTER: fixCounterFile,
     }, async h => {
         const result = await h.run(
@@ -1309,6 +1336,13 @@ test('per-ticket verdict - fixer fixes and ' +
         )
         t.ok(result.allDone,
             'ticket merges')
+        const merged = git(h.projectDir, [
+            'log', 'main', '--name-only', '--format=',
+        ])
+        t.ok(merged.includes('mock-change-'),
+            'the ticket change is on the base branch')
+        t.ok(merged.includes('fix-'),
+            'the fix is on the base branch')
 
         const logPath = join(
             h.projectDir,
@@ -1322,6 +1356,17 @@ test('per-ticket verdict - fixer fixes and ' +
         )
         t.equal(rounds.length, 2,
             'two rounds in log')
+
+        const r1 = rounds[0] as TicketRoundEntry
+        t.equal(r1.findings[0]?.fixerResponse, 'fixed',
+            'round 1 records the fixer marked it fixed')
+        t.equal(r1.testResult, 'pass',
+            'round 1 records the test gate result')
+        t.ok(r1.fixHead && r1.fixHead !== r1.head,
+            'round 1 records a new head after the fix')
+        const r2 = rounds[1] as TicketRoundEntry
+        t.equal(r2.head, r1.fixHead,
+            'round 2 reviews the post-fix head')
 
         if (rounds[1].type === 'round') {
             const f = rounds[1].findings.find(
@@ -1383,6 +1428,11 @@ async t => {
         )
         t.ok(result.allDone,
             'ticket merges after withdrawal')
+        const merged = git(h.projectDir, [
+            'log', 'main', '--name-only', '--format=',
+        ])
+        t.ok(merged.includes('mock-change-'),
+            'the ticket change is on the base branch')
 
         const logPath = join(
             h.projectDir,
@@ -1391,6 +1441,26 @@ async t => {
         const entries = parseTicketReviewLog(
             readFileSync(logPath, 'utf8')
         )
+        const r1 = entries.find(
+            e => e.type === 'round'
+        ) as TicketRoundEntry
+        const f1 = r1.findings[0]
+        t.equal(f1?.fixerResponse, 'disputed',
+            'round 1 records the dispute')
+        t.ok(f1?.fixerReason?.includes('false positive'),
+            'the dispute reason comes from the notes file')
+        t.equal(r1.testResult, 'pass',
+            'round 1 records the test gate result')
+
+        const reviews = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+            .sort()
+            .map(f => JSON.parse(readFileSync(
+                join(piRecDir, f), 'utf8'
+            )) as { prompt:string })
+        t.ok(reviews[1]?.prompt.includes('false positive'),
+            'the next reviewer sees the dispute reason')
+
         const terms = entries.filter(
             e => e.type === 'terminal'
         )
@@ -1437,6 +1507,13 @@ test('round limits - minRounds 2 forces a second ' +
         )
         t.ok(result.allDone,
             'ticket passes after two clean rounds')
+        const merged = git(h.projectDir, [
+            'log', 'main', '--name-only', '--format=',
+        ])
+        t.ok(merged.includes('mock-change-'),
+            'the ticket change is on the base branch')
+        t.equal(countRoles(h.recordDir).fixer, 0,
+            'no fixer runs between clean rounds')
 
         const logPath = join(
             h.projectDir,
