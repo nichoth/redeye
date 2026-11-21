@@ -34,17 +34,17 @@ Notes:
   start any reviewer here.
 - Update the README's usage section for the optional provider.
 
-- [ ] A bare `redeye` in a repo whose `.redeye.json` configures
+- [x] A bare `redeye` in a repo whose `.redeye.json` configures
   `adversarial` runs tickets with the `implement` provider and model
-- [ ] A provider on the command line overrides `implement` for that
+- [x] A provider on the command line overrides `implement` for that
   run and logs that it did
-- [ ] A CLI flag the role string leaves out applies to that role;
+- [x] A CLI flag the role string leaves out applies to that role;
   a flag set in the role string wins over the CLI flag
-- [ ] A missing `review` executable makes the run exit 2 before any
+- [x] A missing `review` executable makes the run exit 2 before any
   branch is created
-- [ ] `implement` and `review` with the same provider and model
+- [x] `implement` and `review` with the same provider and model
   produce the same-model warning in a run and in `--dry-run`
-- [ ] `--dry-run` says when a command-line provider overrides
+- [x] `--dry-run` says when a command-line provider overrides
   `implement`
-- [ ] A bare `redeye` with no `.redeye.json` still gives today's
+- [x] A bare `redeye` with no `.redeye.json` still gives today's
   usage error

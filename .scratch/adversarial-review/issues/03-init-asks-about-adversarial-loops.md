@@ -25,10 +25,10 @@ Notes:
   the existing tracker prompt.
 - Mention the new `init` question in the README.
 
-- [ ] `setup()` given an adversarial config writes `.redeye.json`
+- [x] `setup()` given an adversarial config writes `.redeye.json`
   with `implement`, `review`, `maxRounds` and `minRounds`
-- [ ] `setup()` given an adversarial config and an existing
+- [x] `setup()` given an adversarial config and an existing
   `.redeye.json` with other keys keeps those keys and adds
   `adversarial`
-- [ ] `setup()` with no adversarial config leaves an existing
+- [x] `setup()` with no adversarial config leaves an existing
   `.redeye.json` untouched and creates none when it is absent
