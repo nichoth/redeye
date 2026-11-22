@@ -32,6 +32,7 @@ TESTS=(
     config
     tiiny
     graph
+    hermes
     integration:20
     review-integration:12
 )

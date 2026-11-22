@@ -3,3 +3,41 @@
 Feature: hermes-noninteractive
 Spec: .scratch/hermes-noninteractive/spec.md
 Status: Converted to 20 stories; implementation not started.
+
+## US-001: Add an offline fake Hermes process for CLI tests
+
+Date: 2026-11-22
+Status: DONE
+
+### What changed
+- Created `test/fake-hermes/hermes` -- shell wrapper (like
+  fake-claude) whose basename makes spawnAgent take the hermes
+  branch
+- Created `test/mock-agent-hermes.js` -- Node script that:
+  - Validates required Hermes flags (--yolo chat --query-file
+    - --quiet) and exits 2 on mismatch
+  - Records argv, cwd, and stdin to files via FAKE_HERMES_*
+    env vars
+  - Success mode: creates and commits a file
+  - Nonzero exit mode: exits with FAKE_HERMES_EXIT code, no
+    commit
+  - No-work mode: exits 0 without committing
+    (FAKE_HERMES_NO_WORK=1)
+  - Coordinated-wait mode: signals readiness via
+    FAKE_HERMES_READY_FILE, blocks until FAKE_HERMES_WAIT_FILE
+    appears, then commits
+  - Emits stdout/stderr markers via FAKE_HERMES_OUTPUT and
+    FAKE_HERMES_STDERR
+- Created `test/hermes.test.ts` with 40 assertions covering
+  all modes, flag validation, recording, isolation, identity,
+  and sharding independence
+- Added `hermes` to TESTS in `scripts/test.sh`
+
+### Patterns and gotchas
+- macOS /var is a symlink to /private/var, so cwd comparisons
+  need realpathSync
+- tapzero has no t.pass() -- use t.ok(true, ...) instead
+- The FAKE_HERMES_KEYS list must be kept in sync with new env
+  vars (same pattern as FAKE_CLAUDE_KEYS in integration tests)
+- Pre-existing failures in integration shards 13/20 and 14/20
+  are unrelated to this change (confirmed by running clean main)
