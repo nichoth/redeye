@@ -26,6 +26,8 @@ TESTS=(
     testcmd
     preflight
     resolve
+    config
+    tiiny
     graph
     integration
     review-integration

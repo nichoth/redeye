@@ -25,9 +25,13 @@ so they can't drift as long as you install the skills with this package.
   * [Install Dependency Skills](#install-dependency-skills)
 - [Example Workflow](#example-workflow)
   * [Create Issues](#create-issues)
+- [Adversarial Review](#adversarial-review)
+  * [Turn It On](#turn-it-on)
 - [Examples](#examples)
   * [Keep Your Machine Awake](#keep-your-machine-awake)
     + [Mac OS](#mac-os)
+  * [Hermes](#hermes)
+  * [Hermes + Local Model](#hermes--local-model)
   * [Claude Opus 4.6](#claude-opus-46)
   * [Claude Opus 5.5](#claude-opus-55)
   * [Claude Sonnet 5.5](#claude-sonnet-55)
@@ -38,7 +42,19 @@ so they can't drift as long as you install the skills with this package.
   * [`codex` + Terra](#codex--terra)
   * [Local Model With `pi`](#local-model-with-pi)
     + [1. Load the right model](#1-load-the-right-model)
+      - [Qwen3 Coder Next -- 94% NPU](#qwen3-coder-next----94%25-npu)
+      - [Qwen3.6 35B A3B Turbo -- 45% NPU](#qwen36-35b-a3b-turbo----45%25-npu)
+      - [Qwen/Qwen3.6-27B](#qwenqwen36-27b)
+      - [GLM 4.7 flash -- 57% NPU](#glm-47-flash----57%25-npu)
     + [2. Run the Loop](#2-run-the-loop)
+      - [Qwen3.5-9B-Turbo](#qwen35-9b-turbo)
+      - [ornith-ai/Ornith-1.5-35B-A3B-Turbo](#ornith-aiornith-15-35b-a3b-turbo)
+      - [Qwen3.6-35B-A3B-turbo](#qwen36-35b-a3b-turbo)
+      - [Qwen3.6-27B-Turbo](#qwen36-27b-turbo)
+      - [Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo](#huihui-ornith-15-35b-a3b-abliterated-turbo)
+      - [Qwen3.8-27B-heretic-ara-Turbo](#qwen38-27b-heretic-ara-turbo)
+      - [Ornith-1.5-35B-A3B-Turbo](#ornith-15-35b-a3b-turbo)
+- [`.redeye.json`](#redeyejson)
 - [Command Line Arguments](#command-line-arguments)
   * [Notes](#notes)
   * [`--spec ` option](#--spec--option)
@@ -52,6 +68,7 @@ so they can't drift as long as you install the skills with this package.
   * [`.scratch/` in git](#scratch-in-git)
   * [Review](#review)
   * [Status display](#status-display)
+- [See Also](#see-also)
 
 <!-- tocstop -->
 
@@ -73,20 +90,23 @@ npm i -S redeye
 
 ### Install Dependency Skills
 
+Install the required
+[Pocock skills](https://github.com/mattpocock/skills),
+and create a `.redeye.json` file in your repo.
+
 ```sh
 npx redeye init
 ```
 
-Use the `init` subcommand in this package to add the required
-[Pocock skills](https://github.com/mattpocock/skills) to your repo.
 This command will copy some files in this package to a specific directory
 in your repo. The upstream
 [`grill-with-docs`](https://github.com/mattpocock/skills/blob/main/skills/engineering/grill-with-docs/SKILL.md)
 skill is exposed as `/grill`, along with its sub-skills `grilling`
 and `domain-modeling`.
 
-Pass `-g` (or `--global`) to install the skills in your home directory
-instead, at `~/.agents/skills/`, with symlinks in `~/.claude/skills/`.
+Pass `-g` (or `--global`) to install the skills in your home directory,
+at `~/.agents/skills/`, with symlinks in `~/.claude/skills/`.
+
 The issue tracker config (`docs/agents/*` and the `AGENTS.md` section) is
 specific to each repo, so it is still written to the current directory.
 Run `npx redeye init -g` from the root of each repo that uses the skills.
@@ -95,18 +115,14 @@ If a skill with the same name is already installed and differs from the
 bundled copy, `init` asks before overwriting it. The default is to keep
 yours. This applies with or without `-g`.
 
-```sh
-npx redeye init
-```
-or for global skills:
-
-```sh
-npx redeye init -g
-```
+After picking an issue tracker, `init` asks whether to enable adversarial
+review loops. On yes it prompts for an implement command and a review
+command (the same syntax as `.redeye.json`), validates each one,
+and writes the result to `.redeye.json`.
 
 >
 > [!IMPORTANT]  
-> If you use the `pi` harness, `.agents/` must not be git ignored.
+> If you use the `pi` harness, `.agents/` **must not be git ignored**.
 > Each agent runs in a fresh git worktree, so ignored files are not
 > there, and `pi` stops looking for `.agents/skills/` at the worktree
 > root. Commit `.agents/`, or install the skills globally with
@@ -124,6 +140,7 @@ That's how we prevent skill vs API drift.
 1. create spec
 2. [create tickets](#create-issues)
 3. TDD
+
 
 **The expected flow is**
 
@@ -158,20 +175,147 @@ a spec text description.
 > then follow with `to-tickets`.
 >
 
+---
+
+## Adversarial Review
+
+You have the option of running this in adversarial mode, which means it
+will do a classic
+[adversarial review loop](https://gist.github.com/dollspace-gay/45c95ebfb5a3a3bae84d8bebd662cc25)
+before marking work as complete.
+
+Adversarial mode is off by default. Without it, each ticket is done when
+its agent exits and the test command passes.
+
+With adversarial mode on, every ticket that passes the test gate is
+checked by a second agent before it can merge. You configure two roles:
+
+* **implement** -- the agent that writes the code, and fixes whatever
+  the reviewer finds
+* **review** -- a different model that reads the ticket's branch and
+  reports findings. It never edits code.
+
+Each round, the reviewer reviews the branch. If findings are open, the
+implement agent fixes them and the test command runs again, then the
+next round starts. Only the reviewer can close a finding. The ticket
+merges once a round ends with no open findings (and at least
+`minRounds` rounds have run). If findings are still open after
+`maxRounds`, the ticket is set to `ready-for-human`, its branch is
+kept, and it is not merged.
+
+The rounds are logged to `.scratch/<feature>/reviews/<ticket file>`,
+and the status display shows the current round and role
+(`review 2/3`, `fix 2/3`). The end-of-run review pass also uses the
+review role.
+
+### Turn It On
+
+`init` writes an `adversarial` key to `.redeye.json` at the repo root,
+keeping other keys already in the file. Fields `maxRounds` and `minRounds` get
+their defaults, `3` and `1`. Edit the file to change them.
+See [`.redeye.json`](#redeyejson).
+
+A provider on the command line (`npx redeye claude ...`) overrides the
+implement role, and the review role stays as configured in the JSON file.
+
+>
+> [!TIP]
+> Use a different model for each role. If both roles resolve to the
+> same model, redeye warns that the cross-model check is lost.
+>
+
 ## Examples
 
 After you have the tickets, use the `redeye` loop to execute.
-`redeye` will executre the tickets in the most efficient, parallel way
+`redeye` will execute the tickets in the most efficient, parallel way
 possible, with respect to the ticket dependencies.
 
 ### Keep Your Machine Awake
 
-This is expected to run for a long time, like overnight.
+This is expected to run for a long time, like overnight. I use command
+`caffeinate` to prevent the computer from sleeping.
 
 #### Mac OS
 
 Use `caffeinate` to prevent your machine from sleeping. These examples will
 keep the machine awake, but the display can still go dark.
+
+
+---
+
+### Hermes
+
+Use [Hermes Agent](https://hermes-agent.nousresearch.com/docs).
+The model ID uses the slug of the provider set in your Hermes config.
+
+```sh
+caffeinate -i npx redeye hermes -m anthropic/claude-sonnet-4.6
+```
+
+>
+> [!NOTE]  
+> `--effort`, `--max-turns` and `--prefer-subagent` do not apply to `hermes`.
+> Set reasoning effort in your Hermes config instead.
+>
+
+---
+
+### Hermes + Local Model
+
+Run Hermes with a Tiiny box. Give each model an alias in
+`~/.hermes/config.yaml`. The alias carries the endpoint and the key,
+and `-m` takes the alias name.
+
+`~/.hermes/config.yaml`:
+
+```yaml
+model_aliases:
+  qwen-turbo:
+    model: Qwen/Qwen3.6-35B-A3B-turbo
+    provider: custom
+    base_url: "http://openai.api.tiiny/v1"
+    key_env: TIINY_API_KEY
+  qwen-9b:
+    model: Qwen/Qwen3.5-9B-Turbo
+    provider: custom
+    base_url: "http://openai.api.tiiny/v1"
+    key_env: TIINY_API_KEY
+```
+
+>
+> [!TIP]
+> Export env variable `TIINY_API_KEY` in the shell that runs `redeye`.
+>
+
+>
+> [!NOTE]  
+> Add `model_aliases` next to the `model:` block that `hermes setup`
+> writes; don't use it in place of that block. With aliases alone,
+> Hermes says it "isn't configured yet" and exits before running the
+> query.
+>
+
+Load the matching model on the box, then run the loop:
+
+```sh
+tiiny load Qwen/Qwen3.6-35B-A3B-turbo
+```
+
+```sh
+caffeinate -i npx redeye hermes -m qwen-turbo --concurrency 1
+```
+
+>
+> [!NOTE]  
+> The `tiiny` notes under
+> [Local Model With `pi`](#local-model-with-pi) apply here too:
+> keep `--concurrency 1`, and the alias must name the model that is
+> loaded on the box.
+>
+
+
+---
+
 
 ### Claude Opus 4.6
 
@@ -267,8 +411,8 @@ the model ID in `~/.pi/agent/models.json`.
           "maxTokens": 16384
         },
         {
-          "id": "Qwen/Qwen3.5-9B-turbo",
-          "name": "Tiiny Qwen 3.5 9B turbo",
+          "id": "Qwen/Qwen3.5-9B-Turbo",
+          "name": "Tiiny Qwen 3.5 9B Turbo",
           "contextWindow": 131072,
           "maxTokens": 16384
         },
@@ -285,32 +429,46 @@ the model ID in `~/.pi/agent/models.json`.
 ```
 
 >
-> [!TIP]
+> [!NOTE]
 > Export env variable `TIINY_API_KEY` in the shell that runs `redeye`.
 > 
-
-```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B --concurrency 1
-```
-
-Or with `-turbo` model:
-
->
-> [!NOTE]  
-> Turbo mode is only about 10% faster.
->
 
 ```sh
 tiiny load Qwen/Qwen3.6-35B-A3B-turbo
 ```
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1 --timeout 900 --retries 1
 ```
 
-Note the `concurrency 1`. We do that because the box answers requests
-one by one. A wave of five tickets takes about as long as running them
-in sequence. Each agent's clock runs while it waits.
+```sh
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1 --timeout 900 --retries 1
+```
+
+>
+> [!TIP]  
+> `--concurrency 1`
+> The box answers one request at a time, and it keeps a prompt cache for only
+> one conversation. With one agent, each turn reuses the cache from the turn
+> before, so the box only reads the new tokens. With two or more agents,
+> their requests alternate, each one evicts the other's cache, and every turn
+> reads the agent's whole context again, which slows things down.
+>
+
+
+Measured on the box with `Qwen3.5-9B-Turbo` and a 23k token prompt:
+
+| Request                           | Time  |
+|-----------------------------------|-------|
+| Cold                              | 17.8s |
+| Same prefix, plus one more turn   | 1.4s  |
+| Same prefix, after another prompt | 17.9s |
+
+The box reads a prompt at about 1,300 tokens per second, so an agent with
+a 50k token context spends about 40 seconds per turn when its cache is
+gone. In a run with `--concurrency 2`, turns took about 100 seconds each,
+because each agent also waited for the other's request. Extra agents make
+the whole run slower, not just each agent.
 
 
 #### 1. Load the right model
@@ -319,9 +477,10 @@ in sequence. Each agent's clock runs while it waits.
 tiiny load Qwen/Qwen3.6-35B-A3B
 ```
 >
-> [!NOTE]  
-> In tests, `tiiny` answers one request at a time no matter which model
-> is loaded, so the `n%` NPU values don't really matter.
+> [!WARNING]
+> The model passed to `-m` must be the one loaded on the box. Otherwise
+> the box returns a 404, `pi` still exits 0, and each attempt is recorded
+> as "no commits", using up the ticket's retries.
 >
 
 ##### Qwen3 Coder Next -- 94% NPU
@@ -361,12 +520,115 @@ tiiny load zai-org/GLM-4.7-Flash
 
 #### 2. Run the Loop
 
+Keep `--concurrency 1` with every `tiiny` model. A higher value makes
+the agents evict each other's prompt cache (see
+[Local Model With `pi`](#local-model-with-pi)).
+
+##### Qwen3.5-9B-Turbo
+
+>
+> [!TIP]
+> The fastest model.
+>
+
 ```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.5-9B-Turbo --concurrency 1 --timeout 900 --retries 1
 ```
 
-Note `--concurrency 1`. The `tiiny` answers one request at a time, so extra
-agents only slow each other down.
+---
+
+##### ornith-ai/Ornith-1.5-35B-A3B-Turbo
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/ornith-ai/Ornith-1.5-35B-A3B-Turbo --concurrency 1 --timeout 3600 --retries 1
+```
+
+---
+
+##### Qwen3.6-35B-A3B-turbo
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1 --timeout 900 --retries 1
+```
+
+---
+
+##### Qwen3.6-27B-Turbo
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.8-27B-Turbo --concurrency 1 --timeout 900 --retries 1
+```
+
+
+##### Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/huihui-ai/Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo --concurrency 1 --timeout 900 --retries 1
+```
+
+
+##### Qwen3.8-27B-heretic-ara-Turbo
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/trohrbaugh/Qwen3.8-27B-heretic-ara-Turbo --concurrency 1 --timeout 900 --retries 1
+```
+
+##### Ornith-1.5-35B-A3B-Turbo
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/ornith-ai/Ornith-1.5-35B-A3B-Turbo --concurrency 1 --timeout 900 --retries 1
+```
+
+
+
+
+
+----------------------------
+
+
+
+
+## `.redeye.json`
+
+An optional config file at the repo root. When present with an
+`adversarial` key, each ticket goes through a cross-model review loop
+before it can merge.
+
+```json
+{
+  "adversarial": {
+    "implement": "claude -m opus --effort high",
+    "review": "pi --effort medium",
+    "maxRounds": 3,
+    "minRounds": 1
+  }
+}
+```
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `implement` | yes | -- | Role string for the implementing agent. Same syntax as the CLI: `<provider> [-m model] [--effort level] [--max-turns n] [--prefer-subagent model]` |
+| `review` | yes | -- | Role string for the reviewing agent |
+| `maxRounds` | no | `3` | Maximum review/fix rounds per ticket |
+| `minRounds` | no | `1` | Minimum rounds before a clean review can pass the ticket |
+
+A ticket passes when a round ends with no open findings and
+at least `minRounds` rounds have run. With `minRounds: 2`, a
+clean first round is followed by a second review before the
+ticket merges. When the review in round `maxRounds` leaves
+findings open, the ticket becomes `ready-for-human` (unresolved)
+with its branch kept, and the fixer does not run after that
+final review.
+
+A missing file or a file with no `adversarial` key leaves
+behavior unchanged. Invalid JSON, a missing role, or an
+invalid role string stops the run before any branch or
+worktree is created (exit 2).
+
+A role string with `--max-turns` or `--prefer-subagent` on a
+provider that does not support them is not an error -- redeye
+warns and drops the flag for that role, the same as the CLI
+path.
 
 
 ## Command Line Arguments
@@ -375,7 +637,7 @@ Flags:
 
 | Flag | Required | Default | Description |
 |------|----------|---------|-------------|
-| `<provider>` | yes | -- | Agent harness to spawn (e.g. `claude`, `codex`, `pi`) |
+| `[provider]` | no | -- | Agent harness to spawn (e.g. `claude`, `codex`, `pi`, `hermes`). Optional when `.redeye.json` sets `implement` -- the implement role's provider is used. A CLI provider overrides implement |
 | `[turns]` | no | -- | Max agentic turns per agent run (positional shorthand for `--max-turns`) |
 | `-m`, `--model` | no | -- | Model flag passed to the agent |
 | `--spec <name>` | no | auto | Feature name (resolves `.scratch/<name>/`) |
@@ -492,6 +754,9 @@ Flags:
   * `pi`: `-p --verbose --approve --no-session --mode json`
     (prompt delivered via temp file; `--approve` auto-accepts
     tool-use proposals so the agent runs non-interactively)
+  * `hermes`: `--yolo chat --query-file - --quiet` (prompt read
+    from stdin; `--quiet` makes the turn one-shot so hermes exits
+    when done; `--yolo` skips approval prompts)
 
 
 ### `--spec <name>` option
@@ -725,3 +990,10 @@ Known limit: with `-X`, the run stops at the first merge conflict. A
 ticket whose branch succeeded but came after the conflicting branch is
 never merged, and its row stays on the cyan "waiting to merge" dot when
 the run stops.
+
+## See Also
+
+* [Verification-Driven Development (VDD)](https://gist.github.com/dollspace-gay/45c95ebfb5a3a3bae84d8bebd662cc25)
+  (gist)
+* [`roast` CLI tool](https://github.com/bluesky-social/roast)
+* [addyosmani/adverse](https://github.com/addyosmani/adverse)

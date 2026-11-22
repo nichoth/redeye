@@ -35,6 +35,7 @@ import {
     commitRule,
     notesRule,
     agentsMdRule,
+    UNCHANGED_HEAD_RULE,
 } from './rules.js'
 
 export const FINDINGS_FILE = 'findings.md'
@@ -503,6 +504,14 @@ export type ReviewDeps = {
     registry?:Set<number>
 }
 
+export type ReviewRole = {
+    agentCmd:string
+    model:string|null
+    effort?:EffortLevel
+    maxTurns?:number
+    preferSubagent?:string
+}
+
 export type ReviewPassOpts = {
     repoRoot:string
     repoName:string
@@ -513,16 +522,12 @@ export type ReviewPassOpts = {
     forkedFrom?:string
     launchCommit:string
     specBody:string
-    agentCmd:string
-    model:string|null
+    reviewer:ReviewRole
+    fixer:ReviewRole
     timeout:number
     logsDir:string
     testCmd:string
     installCmd?:string
-    maxTurns?:number
-    effort?:EffortLevel
-    // claude only: model for subagents; unset = off
-    preferSubagent?:string
     retries:number
     retryDelay:number
     log:(msg:string) => void
@@ -596,11 +601,12 @@ export async function runReviewer (
     deps:ReviewDeps,
     range:{ from:string; to:string }
 ):Promise<Finding[]|null> {
+    const { reviewer } = opts
     return runWithRetries({
         maxAttempts: opts.retries + 1,
         retryDelay: opts.retryDelay,
-        agentCmd: opts.agentCmd,
-        effort: opts.effort,
+        agentCmd: reviewer.agentCmd,
+        effort: reviewer.effort,
         label: 'review',
         log: opts.log,
     }, async (attempt, effort) => {
@@ -627,17 +633,17 @@ export async function runReviewer (
                     exclude: reviewExcludeFor(
                         opts.repoRoot, opts.reviewPath
                     ),
-                    preferSubagent: opts.preferSubagent,
+                    preferSubagent: reviewer.preferSubagent,
                 }),
-                agentCmd: opts.agentCmd,
-                model: opts.model,
+                agentCmd: reviewer.agentCmd,
+                model: reviewer.model,
                 timeout: opts.timeout,
                 logPath: logPath(opts.logsDir, 'review', attempt, '.log'),
                 cwd: wt.worktreePath,
                 label: 'review',
-                maxTurns: opts.maxTurns,
+                maxTurns: reviewer.maxTurns,
                 effort,
-                preferSubagent: opts.preferSubagent,
+                preferSubagent: reviewer.preferSubagent,
                 onLine: opts.log,
                 progress: { label: 'review', onLine: opts.log },
             })
@@ -675,12 +681,13 @@ export async function runFixer (
 ):Promise<FixResult> {
     const unchecked = findings.map(f => ({ ...f, checked: false }))
     let previous:{ reason:FixFailure; notes:string|null }|undefined
+    const { fixer } = opts
 
     return runWithRetries<FixResult>({
         maxAttempts: opts.retries + 1,
         retryDelay: opts.retryDelay,
-        agentCmd: opts.agentCmd,
-        effort: opts.effort,
+        agentCmd: fixer.agentCmd,
+        effort: fixer.effort,
         label: 'review fix',
         log: opts.log,
     }, async (attempt, effort) => {
@@ -730,19 +737,19 @@ export async function runFixer (
                     testCmd: opts.testCmd,
                     installCmd: opts.installCmd,
                     previous,
-                    preferSubagent: opts.preferSubagent,
+                    preferSubagent: fixer.preferSubagent,
                 }),
-                agentCmd: opts.agentCmd,
-                model: opts.model,
+                agentCmd: fixer.agentCmd,
+                model: fixer.model,
                 timeout: opts.timeout,
                 logPath: logPath(
                     opts.logsDir, 'review-fix', attempt, '.log'
                 ),
                 cwd: wt.worktreePath,
                 label: 'review-fix',
-                maxTurns: opts.maxTurns,
+                maxTurns: fixer.maxTurns,
                 effort,
-                preferSubagent: opts.preferSubagent,
+                preferSubagent: fixer.preferSubagent,
                 onLine: opts.log,
                 progress: { label: 'review-fix', onLine: opts.log },
             })
@@ -812,6 +819,890 @@ export async function runFixer (
 export function readReviewEntries (path:string):ReviewEntry[] {
     if (!existsSync(path)) return []
     return parseReviewEntries(readFileSync(path, 'utf8'))
+}
+
+// ---- Per-ticket review log ----
+
+export const TICKET_VERDICTS = [
+    'open',
+    'confirmed-fixed',
+    'withdrawn',
+    'still-open',
+] as const
+
+export type TicketVerdict = typeof TICKET_VERDICTS[number]
+
+export const TICKET_OUTCOMES = [
+    'pass', 'unresolved', 'failed',
+] as const
+
+export type TicketOutcome = typeof TICKET_OUTCOMES[number]
+
+export type FindingWithVerdict = {
+    summary:string
+    detail:string
+    verdict:TicketVerdict
+    fixerResponse?:'fixed'|'disputed'
+    fixerReason?:string
+}
+
+export type TicketRoundInput = {
+    attempt:number
+    round:number
+    implement:string
+    review:string
+    head:string
+    findings:FindingWithVerdict[]
+    fixHead?:string
+    testResult?:'pass'|'fail'
+}
+
+export type TicketTerminalInput = {
+    attempt:number
+    outcome:TicketOutcome
+}
+
+export type TicketRoundEntry = {
+    type:'round'
+    attempt:number
+    round:number
+    implement:string
+    review:string
+    head:string
+    findings:FindingWithVerdict[]
+    fixHead?:string
+    testResult?:'pass'|'fail'
+}
+
+export type TicketTerminalEntry = {
+    type:'terminal'
+    attempt:number
+    outcome:TicketOutcome
+}
+
+export type TicketReviewEntry =
+    TicketRoundEntry|TicketTerminalEntry
+
+const TICKET_SENTINEL_PREFIX = '<!-- redeye:ticket-review'
+const TICKET_SENTINEL_RE =
+    /^<!-- redeye:ticket-review (.*) -->$/
+
+function sanitizeTicket (text:string):string {
+    return text.replace(
+        new RegExp(TICKET_SENTINEL_PREFIX, 'g'),
+        '<!-- redeye-ticket-review'
+    )
+}
+
+function encodeAttr (value:string):string {
+    return value
+        .replace(/%/g, '%25')
+        .replace(/\s/g, c => encodeURIComponent(c))
+}
+
+function decodeAttr (value:string):string {
+    try {
+        return decodeURIComponent(value)
+    } catch {
+        return value
+    }
+}
+
+function renderFindingWithVerdict (f:FindingWithVerdict):string {
+    const lines:string[] = []
+    const summary = sanitizeTicket(collapse(f.summary))
+    lines.push(`- [${f.verdict}] ${summary}`)
+    if (f.detail) {
+        for (const l of f.detail.split('\n')) {
+            lines.push(`    ${sanitizeTicket(l)}`)
+        }
+    }
+    if (f.fixerResponse) {
+        const resp = f.fixerResponse === 'disputed' &&
+            f.fixerReason ?
+            `disputed: ${sanitizeTicket(f.fixerReason)}` :
+            f.fixerResponse
+        lines.push(`    fixer: ${resp}`)
+    }
+    return lines.join('\n')
+}
+
+export function renderTicketRound (
+    input:TicketRoundInput
+):string {
+    const attrs = [
+        'type=round',
+        `attempt=${input.attempt}`,
+        `round=${input.round}`,
+        `implement=${encodeAttr(input.implement)}`,
+        `review=${encodeAttr(input.review)}`,
+        `head=${input.head}`,
+    ]
+    if (input.fixHead) attrs.push(`fixHead=${input.fixHead}`)
+    if (input.testResult) {
+        attrs.push(`testResult=${input.testResult}`)
+    }
+    const sentinel =
+        `${TICKET_SENTINEL_PREFIX} ${attrs.join(' ')} -->`
+    const findingsBlock = input.findings.length > 0 ?
+        input.findings
+            .map(renderFindingWithVerdict).join('\n') :
+        NO_FINDINGS
+    return `${sentinel}\n${findingsBlock}\n---\n`
+}
+
+export function renderTicketTerminal (
+    input:TicketTerminalInput
+):string {
+    const sentinel =
+        `${TICKET_SENTINEL_PREFIX} type=terminal ` +
+        `attempt=${input.attempt} ` +
+        `outcome=${input.outcome} -->`
+    return `${sentinel}\n---\n`
+}
+
+function isTicketVerdict (v:string):v is TicketVerdict {
+    return (TICKET_VERDICTS as readonly string[]).includes(v)
+}
+
+function isTicketOutcome (v:string):v is TicketOutcome {
+    return (TICKET_OUTCOMES as readonly string[]).includes(v)
+}
+
+const TICKET_FINDING_RE =
+    /^- \[([^\]]+)\]\s+(.+)$/
+
+function parseTicketFindings (
+    lines:string[]
+):FindingWithVerdict[] {
+    const findings:FindingWithVerdict[] = []
+    const details:string[][] = []
+    let fixerResponse:('fixed'|'disputed')|undefined
+    let fixerReason:string|undefined
+
+    const flush = () => {
+        if (findings.length === 0) return
+        const last = findings[findings.length - 1]
+        const d = details[details.length - 1]
+        const plainDetail:string[] = []
+        for (const line of d) {
+            if (line.startsWith('fixer: ')) {
+                const val = line.slice(7)
+                if (val.startsWith('disputed: ')) {
+                    fixerResponse = 'disputed'
+                    fixerReason = val.slice(10)
+                } else if (val === 'fixed' ||
+                    val === 'disputed') {
+                    fixerResponse = val
+                    fixerReason = undefined
+                }
+            } else {
+                plainDetail.push(line)
+            }
+        }
+        last.detail = plainDetail.join('\n')
+        if (fixerResponse) {
+            last.fixerResponse = fixerResponse
+            if (fixerReason) last.fixerReason = fixerReason
+        }
+    }
+
+    for (const line of lines) {
+        const m = line.match(TICKET_FINDING_RE)
+        if (m) {
+            flush()
+            fixerResponse = undefined
+            fixerReason = undefined
+            const verdict = m[1]
+            if (!isTicketVerdict(verdict)) continue
+            findings.push({
+                summary: collapse(m[2]),
+                detail: '',
+                verdict,
+            })
+            details.push([])
+        } else if (findings.length > 0 && line.trim()) {
+            details[details.length - 1].push(line.trim())
+        }
+    }
+    flush()
+    return findings
+}
+
+function parseTicketEntry (
+    sentinel:string,
+    bodyLines:string[]
+):TicketReviewEntry|null {
+    const attrs:Record<string, string> = {}
+    for (const part of sentinel.split(/\s+/).filter(Boolean)) {
+        const idx = part.indexOf('=')
+        if (idx > 0) {
+            attrs[part.slice(0, idx)] = part.slice(idx + 1)
+        }
+    }
+
+    const { type } = attrs
+    const attemptStr = attrs.attempt
+    if (!attemptStr || !/^\d+$/.test(attemptStr)) return null
+    const attempt = Number(attemptStr)
+
+    if (type === 'terminal') {
+        const outcome = attrs.outcome
+        if (!outcome || !isTicketOutcome(outcome)) return null
+        return { type: 'terminal', attempt, outcome }
+    }
+
+    if (type === 'round') {
+        const roundStr = attrs.round
+        if (!roundStr || !/^\d+$/.test(roundStr)) return null
+        const round = Number(roundStr)
+        const head = attrs.head
+        if (!head || !SHA_RE.test(head)) return null
+        const implement = decodeAttr(attrs.implement ?? '')
+        const review = decodeAttr(attrs.review ?? '')
+        if (!implement || !review) return null
+
+        const lines = [...bodyLines]
+        while (lines.length > 0 &&
+            !lines[lines.length - 1].trim()) {
+            lines.pop()
+        }
+        if (lines.length > 0 &&
+            lines[lines.length - 1] === '---') {
+            lines.pop()
+        }
+
+        const findings = parseTicketFindings(lines)
+
+        const entry:TicketRoundEntry = {
+            type: 'round',
+            attempt,
+            round,
+            implement,
+            review,
+            head,
+            findings,
+        }
+
+        const fixHead = attrs.fixHead
+        if (fixHead && SHA_RE.test(fixHead)) {
+            entry.fixHead = fixHead
+        }
+        const testResult = attrs.testResult
+        if (testResult === 'pass' || testResult === 'fail') {
+            entry.testResult = testResult
+        }
+
+        return entry
+    }
+
+    return null
+}
+
+export function parseTicketReviewLog (
+    text:string
+):TicketReviewEntry[] {
+    const entries:TicketReviewEntry[] = []
+    let sentinel:string|null = null
+    let body:string[] = []
+    const flush = ():void => {
+        if (sentinel === null) return
+        const entry = parseTicketEntry(sentinel, body)
+        if (entry) entries.push(entry)
+    }
+    for (const line of splitLines(text)) {
+        const m = line.match(TICKET_SENTINEL_RE)
+        if (m) {
+            flush()
+            sentinel = m[1]
+            body = []
+        } else if (sentinel !== null) {
+            body.push(line)
+        }
+    }
+    flush()
+    return entries
+}
+
+export function currentAttemptEntries (
+    entries:ReadonlyArray<TicketReviewEntry>
+):TicketReviewEntry[] {
+    let lastTerminal = -1
+    for (let i = entries.length - 1; i >= 0; i--) {
+        if (entries[i].type === 'terminal') {
+            lastTerminal = i
+            break
+        }
+    }
+    return lastTerminal === -1 ?
+        [...entries] :
+        entries.slice(lastTerminal + 1)
+}
+
+export function ticketReviewPath (
+    feature:string,
+    ticketFileName:string
+):string {
+    return `.scratch/${feature}/reviews/${ticketFileName}`
+}
+
+// ---- Per-ticket review round runner ----
+
+export type TicketReviewRoundOpts = {
+    ticket:{ filename:string; body:string; feature:string }
+    specBody:string
+    agentCmd:string
+    model:string|null
+    effort?:EffortLevel
+    maxTurns?:number
+    preferSubagent?:string
+    baseBranch:string
+    worktreePath:string
+    repoRoot:string
+    timeout:number
+    logsDir:string
+    retries:number
+    retryDelay:number
+    log:(msg:string) => void
+    priorFindings?:ReadonlyArray<FindingWithVerdict>
+    unchangedHead?:boolean
+}
+
+export function renderTicketReviewerPrompt (opts:{
+    ticketFilename:string
+    ticketBody:string
+    specBody:string
+    from:string
+    to:string
+    exclude?:string
+    preferSubagent?:string
+}):string {
+    return [
+        '---- SPEC CONTEXT ----',
+        opts.specBody,
+        '',
+        '---- TICKET ----',
+        opts.ticketFilename,
+        opts.ticketBody,
+        '',
+        REVIEW_MARKER,
+        'You are reviewing the implementation of this ' +
+            'ticket before it merges.',
+        '',
+        'The change to review:',
+        '',
+        `    ${reviewDiffCommand(opts.from, opts.to, opts.exclude)}`,
+        '',
+        'Follow these rules:',
+        readDocsRule('ticket'),
+        '- Look for correctness bugs, missing or weak ' +
+            'tests, and code that breaks a documented ' +
+            'contract. Ignore style preferences.',
+        '- You may run the tests or the type checker to ' +
+            'confirm a suspicion.',
+        ...subagentRule(opts.preferSubagent, true),
+        '- Do NOT edit, stage, or commit code. Anything ' +
+            'you change here is discarded.',
+        ...CONFINEMENT_RULES,
+        '',
+        `Write your findings to \`${FINDINGS_PATH}\` ` +
+            '(create the directory), most severe first, ' +
+            'in exactly this form:',
+        '',
+        '- [ ] <one-line summary of the finding>',
+        '    <file:line, and a concrete input or state ' +
+            'that goes wrong>',
+        '',
+        'If you find nothing worth fixing, write the ' +
+            `single line: ${NO_FINDINGS}`,
+        'Never git add or commit that file; the ' +
+            'orchestrator collects it.',
+        '',
+    ].join('\n')
+}
+
+export function renderTicketReviewerVerdictPrompt (
+    opts:{
+        ticketFilename:string
+        ticketBody:string
+        specBody:string
+        from:string
+        to:string
+        exclude?:string
+        preferSubagent?:string
+        priorFindings:ReadonlyArray<FindingWithVerdict>
+        unchangedHead:boolean
+    }
+):string {
+    const prior = opts.priorFindings.map((f, i) => {
+        const lines:string[] = []
+        lines.push(`${i + 1}. ${f.summary}`)
+        if (f.detail) {
+            for (const l of f.detail.split('\n')) {
+                lines.push(`   ${l}`)
+            }
+        }
+        if (f.fixerResponse === 'fixed') {
+            lines.push('   Fixer response: fixed')
+        } else if (f.fixerResponse === 'disputed') {
+            const reason = f.fixerReason ?
+                `disputed: ${f.fixerReason}` :
+                'disputed'
+            lines.push(
+                `   Fixer response: ${reason}`
+            )
+        }
+        return lines.join('\n')
+    }).join('\n\n')
+
+    return [
+        '---- SPEC CONTEXT ----',
+        opts.specBody,
+        '',
+        '---- TICKET ----',
+        opts.ticketFilename,
+        opts.ticketBody,
+        '',
+        REVIEW_MARKER,
+        'You are reviewing the implementation of ' +
+            'this ticket before it merges. The fixer ' +
+            'has responded to your previous findings.',
+        '',
+        'The change to review:',
+        '',
+        `    ${reviewDiffCommand(
+            opts.from, opts.to, opts.exclude
+        )}`,
+        '',
+        ...(opts.unchangedHead ?
+            [UNCHANGED_HEAD_RULE, ''] : []),
+        '---- PRIOR FINDINGS ----',
+        prior,
+        '',
+        'For each finding above, write exactly one ' +
+            'verdict:',
+        '- [confirmed-fixed] <finding summary>',
+        '- [withdrawn] <finding summary>',
+        '- [still-open] <finding summary>',
+        '',
+        'You may also report new findings:',
+        '- [ ] <new finding summary>',
+        '    <file:line, and a concrete input or ' +
+            'state that goes wrong>',
+        '',
+        'You MUST give a verdict for every prior ' +
+            'finding listed above. Missing verdicts ' +
+            'make your output unparseable.',
+        '',
+        'Write all verdicts and new findings to ' +
+            `\`${FINDINGS_PATH}\` ` +
+            '(create the directory).',
+        'Never git add or commit that file; the ' +
+            'orchestrator collects it.',
+        '',
+        'Follow these rules:',
+        readDocsRule('ticket'),
+        '- Look for correctness bugs, missing or ' +
+            'weak tests, and code that breaks a ' +
+            'documented contract. Ignore style ' +
+            'preferences.',
+        '- You may run the tests or the type ' +
+            'checker to confirm a suspicion.',
+        ...subagentRule(opts.preferSubagent, true),
+        '- Do NOT edit, stage, or commit code. ' +
+            'Anything you change here is discarded.',
+        ...CONFINEMENT_RULES,
+        '',
+    ].join('\n')
+}
+
+// Parses verdict output from the reviewer when prior
+// findings exist. Each prior finding must have exactly
+// one verdict (confirmed-fixed, withdrawn, still-open).
+// New findings use [ ]. Returns null when unparseable.
+export function parseVerdictFindings (
+    text:string,
+    priorSummaries:ReadonlyArray<string>
+):FindingWithVerdict[]|null {
+    if (priorSummaries.length === 0) {
+        const findings = parseFindings(text)
+        if (findings === null) return null
+        return findings.map(f => ({
+            summary: f.summary,
+            detail: f.detail,
+            verdict: 'open' as const,
+        }))
+    }
+
+    const lines = splitLines(text)
+    const isClean = lines.some(l => {
+        return normalize(l) ===
+            NO_FINDINGS.toLowerCase()
+    })
+    if (isClean) return null
+
+    const results:FindingWithVerdict[] = []
+    const details:string[][] = []
+    for (const line of lines) {
+        const m = line.match(TICKET_FINDING_RE)
+        if (m) {
+            const bracket = m[1].trim()
+            let verdict:TicketVerdict
+            if (bracket === '') {
+                verdict = 'open'
+            } else if (isTicketVerdict(bracket)) {
+                verdict = bracket
+            } else {
+                continue
+            }
+            results.push({
+                summary: collapse(m[2]),
+                detail: '',
+                verdict,
+            })
+            details.push([])
+        } else if (results.length > 0 &&
+            line.trim()) {
+            details[details.length - 1]
+                .push(line.trim())
+        }
+    }
+    for (let i = 0; i < results.length; i++) {
+        results[i] = {
+            ...results[i],
+            detail: details[i].join('\n'),
+        }
+    }
+
+    const priorNorm = new Set(
+        priorSummaries.map(normalize)
+    )
+    const covered = new Set<string>()
+    for (const f of results) {
+        const norm = normalize(f.summary)
+        if (priorNorm.has(norm)) {
+            covered.add(norm)
+            if (f.verdict === 'open') return null
+        }
+    }
+    for (const p of priorNorm) {
+        if (!covered.has(p)) return null
+    }
+
+    return results.length > 0 ? results : null
+}
+
+function parseFindingsAsVerdicts (
+    text:string
+):FindingWithVerdict[]|null {
+    const findings = parseFindings(text)
+    if (findings === null) return null
+    return findings.map(f => ({
+        summary: f.summary,
+        detail: f.detail,
+        verdict: 'open' as const,
+    }))
+}
+
+export async function runTicketReviewRound (
+    opts:TicketReviewRoundOpts,
+    deps:ReviewDeps
+):Promise<{ findings:FindingWithVerdict[]|null; head:string }> {
+    const head = headCommit(opts.worktreePath)
+    const base = mergeBase(
+        opts.repoRoot, opts.baseBranch, head
+    ) ?? head
+    const exclude = reviewExcludeFor(
+        opts.repoRoot,
+        ticketReviewPath(
+            opts.ticket.feature,
+            opts.ticket.filename
+        )
+    )
+    const stem = opts.ticket.filename.replace(/\.md$/, '')
+    const hasVerdicts = opts.priorFindings &&
+        opts.priorFindings.length > 0
+    const priorSummaries = hasVerdicts ?
+        opts.priorFindings!.map(f => f.summary) :
+        []
+    const prompt = hasVerdicts ?
+        renderTicketReviewerVerdictPrompt({
+            ticketFilename: opts.ticket.filename,
+            ticketBody: opts.ticket.body,
+            specBody: opts.specBody,
+            from: base,
+            to: head,
+            exclude,
+            preferSubagent: opts.preferSubagent,
+            priorFindings: opts.priorFindings!,
+            unchangedHead: opts.unchangedHead ?? false,
+        }) :
+        renderTicketReviewerPrompt({
+            ticketFilename: opts.ticket.filename,
+            ticketBody: opts.ticket.body,
+            specBody: opts.specBody,
+            from: base,
+            to: head,
+            exclude,
+            preferSubagent: opts.preferSubagent,
+        })
+
+    const findings =
+        await runWithRetries<FindingWithVerdict[]|null>({
+            maxAttempts: opts.retries + 1,
+            retryDelay: opts.retryDelay,
+            agentCmd: opts.agentCmd,
+            effort: opts.effort,
+            label: `${opts.ticket.filename} review`,
+            log: opts.log,
+        }, async (attempt, effort) => {
+            const agent = await deps.spawnAgent({
+                prompt,
+                agentCmd: opts.agentCmd,
+                model: opts.model,
+                timeout: opts.timeout,
+                logPath: logPath(
+                    opts.logsDir, `${stem}.review`,
+                    attempt, '.log'
+                ),
+                cwd: opts.worktreePath,
+                label: `${stem} review`,
+                maxTurns: opts.maxTurns,
+                effort,
+                preferSubagent: opts.preferSubagent,
+                onLine: opts.log,
+                progress: {
+                    label: `${stem} review`,
+                    onLine: opts.log,
+                },
+            })
+            if (!agent.timedOut &&
+                agent.exitCode !== 0) {
+                opts.log(
+                    `  ${opts.ticket.filename}: ` +
+                    `reviewer exited ${agent.exitCode}`
+                )
+                return { result: null, stop: false }
+            }
+            if (agent.timedOut) {
+                opts.log(
+                    `  ${opts.ticket.filename}: ` +
+                    'reviewer timed out'
+                )
+                return { result: null, stop: false }
+            }
+            const text = collectNotes(
+                opts.worktreePath, FINDINGS_FILE
+            )
+            if (text === null) {
+                opts.log(
+                    `  ${opts.ticket.filename}: ` +
+                    'reviewer left no usable findings'
+                )
+                return { result: null, stop: false }
+            }
+            const parsed = hasVerdicts ?
+                parseVerdictFindings(
+                    text, priorSummaries
+                ) :
+                parseFindingsAsVerdicts(text)
+            if (parsed === null) {
+                opts.log(
+                    `  ${opts.ticket.filename}: ` +
+                    'reviewer left no usable findings'
+                )
+            }
+            return {
+                result: parsed,
+                stop: parsed !== null,
+            }
+        })
+    return { findings, head }
+}
+
+export type TicketFixOpts = {
+    ticket:{ filename:string; body:string; feature:string }
+    specBody:string
+    findings:ReadonlyArray<Finding>
+    agentCmd:string
+    model:string|null
+    effort?:EffortLevel
+    maxTurns?:number
+    preferSubagent?:string
+    worktreePath:string
+    timeout:number
+    logsDir:string
+    testCmd:string
+    installCmd?:string
+    retries:number
+    retryDelay:number
+    log:(msg:string) => void
+}
+
+export type TicketFixResult = {
+    fixHead:string
+    testResult:'pass'|'fail'
+    completedItems:string[]
+    notes:string|null
+    timedOut:boolean
+}
+
+export async function runTicketFixStep (
+    opts:TicketFixOpts,
+    deps:ReviewDeps
+):Promise<TicketFixResult> {
+    const stem =
+        opts.ticket.filename.replace(/\.md$/, '')
+    let previous:{
+        reason:FixFailure; notes:string|null
+    }|undefined
+    let lastNotes:string|null = null
+    let lastCompleted:string[] = []
+    let lastTimedOut = false
+
+    const result = await runWithRetries<{
+        fixHead:string; testResult:'pass'|'fail'
+    }>({
+        maxAttempts: opts.retries + 1,
+        retryDelay: opts.retryDelay,
+        agentCmd: opts.agentCmd,
+        effort: opts.effort,
+        label: `${opts.ticket.filename} fix`,
+        log: opts.log,
+    }, async (attempt, effort) => {
+        const agent = await deps.spawnAgent({
+            prompt: renderFixPrompt({
+                specBody: opts.specBody,
+                findings: opts.findings,
+                testCmd: opts.testCmd,
+                installCmd: opts.installCmd,
+                preferSubagent: opts.preferSubagent,
+                previous,
+            }),
+            agentCmd: opts.agentCmd,
+            model: opts.model,
+            timeout: opts.timeout,
+            logPath: logPath(
+                opts.logsDir, `${stem}.fix`,
+                attempt, '.log'
+            ),
+            cwd: opts.worktreePath,
+            label: `${stem} fix`,
+            maxTurns: opts.maxTurns,
+            effort,
+            preferSubagent: opts.preferSubagent,
+            onLine: opts.log,
+            progress: {
+                label: `${stem} fix`,
+                onLine: opts.log,
+            },
+        })
+
+        lastNotes = collectNotes(opts.worktreePath)
+        lastCompleted = agent.completedItems
+        lastTimedOut = agent.timedOut
+
+        if (agent.timedOut) {
+            opts.log(
+                `  ${opts.ticket.filename}: fixer ` +
+                'timed out; keeping work'
+            )
+        } else if (agent.exitCode !== 0) {
+            opts.log(
+                `  ${opts.ticket.filename}: fixer ` +
+                `exited ${agent.exitCode}`
+            )
+            previous = {
+                reason: 'exit', notes: lastNotes,
+            }
+            return {
+                result: {
+                    fixHead: headCommit(
+                        opts.worktreePath
+                    ),
+                    testResult: 'fail' as const,
+                },
+                stop: false,
+            }
+        }
+
+        if (isDirty(opts.worktreePath)) {
+            await commitDirty(
+                opts.worktreePath,
+                'redeye: auto-commit ' +
+                `${opts.ticket.filename} fix`
+            )
+        }
+
+        const fixHead = headCommit(opts.worktreePath)
+
+        if (opts.testCmd === '') {
+            opts.log(
+                `  ${opts.ticket.filename}: ` +
+                'no test gate'
+            )
+            return {
+                result: {
+                    fixHead,
+                    testResult: 'pass' as const,
+                },
+                stop: true,
+            }
+        }
+
+        const testLogPath = logPath(
+            opts.logsDir, `${stem}.fix`,
+            attempt, '.test.log'
+        )
+        const testRes = await runTestCmd({
+            cmd: opts.testCmd,
+            cwd: opts.worktreePath,
+            timeout: opts.timeout,
+            registry: deps.registry,
+            progress: {
+                label: `${stem} fix test`,
+                onLine: opts.log,
+            },
+        })
+        writeFileSync(testLogPath, testRes.output)
+
+        if (testRes.exitCode === 0) {
+            opts.log(
+                `  ${opts.ticket.filename}: ` +
+                'fix tests passed'
+            )
+            return {
+                result: {
+                    fixHead,
+                    testResult: 'pass' as const,
+                },
+                stop: true,
+            }
+        }
+
+        opts.log(
+            `  ${opts.ticket.filename}: fix ` +
+            `tests failed (exit ${testRes.exitCode})`
+        )
+        previous = {
+            reason: 'tests', notes: lastNotes,
+        }
+        return {
+            result: {
+                fixHead,
+                testResult: 'fail' as const,
+            },
+            stop: false,
+        }
+    })
+
+    return {
+        fixHead: result.fixHead,
+        testResult: result.testResult,
+        completedItems: lastCompleted,
+        notes: lastNotes,
+        timedOut: lastTimedOut,
+    }
 }
 
 // Reviews everything since the last reviewed commit, runs one fix

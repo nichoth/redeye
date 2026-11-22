@@ -3899,6 +3899,15 @@ test('getProviderArgs - full path with codex basename',
         )
     })
 
+test('getProviderArgs - hermes runs one chat turn from stdin',
+    t => {
+        t.deepEqual(
+            getProviderArgs('/usr/local/bin/hermes'),
+            ['--yolo', 'chat', '--query-file', '-', '--quiet'],
+            'hermes gets yolo, chat, stdin query and quiet'
+        )
+    })
+
 // -- formatStreamLine --
 
 test('formatStreamLine - parses assistant text', t => {
@@ -4497,6 +4506,94 @@ test('runWaves waits retryDelay seconds before a retry', async t => {
 })
 
 // -- provider flag mapping (AC3) --
+
+test(
+    'spawnAgent: hermes gets --model after the chat subcommand',
+    async t => {
+        const binDir = mkdtempSync(join(tmpdir(), 'test-hermes-'))
+        const logsDir = mkdtempSync(
+            join(tmpdir(), 'test-logs-')
+        )
+        const ECHO_AGENT = join(
+            process.cwd(), 'test', 'mock-agent-echo-args.js'
+        )
+
+        symlinkSync(ECHO_AGENT, join(binDir, 'hermes'))
+        chmodSync(join(binDir, 'hermes'), 0o755)
+
+        try {
+            const logPath = join(logsDir, 'test.log')
+
+            await spawnAgent({
+                prompt: 'test prompt',
+                agentCmd: join(binDir, 'hermes'),
+                model: 'some/model',
+                timeout: 10,
+                logPath,
+            })
+
+            const argvLine = readFileSync(logPath, 'utf8')
+                .split('\n')
+                .find(line => line.startsWith('['))
+            const argv:string[] = argvLine ?
+                JSON.parse(argvLine) :
+                []
+            t.deepEqual(
+                argv.slice(2),
+                [
+                    '--yolo', 'chat', '--query-file', '-',
+                    '--quiet', '--model', 'some/model',
+                ],
+                'hermes argv is the chat flags then --model'
+            )
+        } finally {
+            rmSync(binDir, { recursive: true, force: true })
+            rmSync(logsDir, { recursive: true, force: true })
+        }
+    }
+)
+
+test('spawnAgent: hermes ignores --effort', async t => {
+    const binDir = mkdtempSync(join(tmpdir(), 'test-hermes-'))
+    const logsDir = mkdtempSync(join(tmpdir(), 'test-logs-'))
+    const ECHO_AGENT = join(
+        process.cwd(), 'test', 'mock-agent-echo-args.js'
+    )
+
+    symlinkSync(ECHO_AGENT, join(binDir, 'hermes'))
+    chmodSync(join(binDir, 'hermes'), 0o755)
+
+    try {
+        const logPath = join(logsDir, 'test.log')
+
+        await spawnAgent({
+            prompt: 'test prompt',
+            agentCmd: join(binDir, 'hermes'),
+            model: 'some/model',
+            effort: 'high',
+            timeout: 10,
+            logPath,
+        })
+
+        const argvLine = readFileSync(logPath, 'utf8')
+            .split('\n')
+            .find(line => line.startsWith('['))
+        const argv:string[] = argvLine ?
+            JSON.parse(argvLine) :
+            []
+        t.deepEqual(
+            argv.slice(2),
+            [
+                '--yolo', 'chat', '--query-file', '-',
+                '--quiet', '--model', 'some/model',
+            ],
+            'no effort flag is added for hermes'
+        )
+    } finally {
+        rmSync(binDir, { recursive: true, force: true })
+        rmSync(logsDir, { recursive: true, force: true })
+    }
+})
 
 test(
     'spawnAgent: claude receives --effort flag (AC3.1)',

@@ -6,12 +6,13 @@ import { basename, dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
-import { confirm, select } from '@inquirer/prompts'
+import { confirm, input, select } from '@inquirer/prompts'
 import {
     setup,
     checkGhAuth,
     findSkillCollisions,
     type TrackerKind,
+    type AdversarialSetup,
 } from './setup.js'
 import {
     dryRun,
@@ -19,7 +20,6 @@ import {
     runWaves,
     runWavesIsolated,
     stripSpecSection,
-    ALL_EFFORT_LEVELS,
     DEFAULT_RETRIES,
     DEFAULT_RETRY_DELAY,
     DEFAULT_CONCURRENCY,
@@ -30,6 +30,11 @@ import {
     type EffortLevel,
     type Ticket,
 } from './orchestrator.js'
+import {
+    ROLE_OPTIONS,
+    loadConfig,
+    parseRoleString,
+} from './config.js'
 import { detectTestCmd, detectInstallCmd } from './testcmd.js'
 import { resolveExecutable } from './preflight.js'
 import { createDisplay } from './display.js'
@@ -125,6 +130,48 @@ yargs(hideBin(process.argv))
                 if (!overwrite) skip.add(skill)
             }
 
+            let adversarial:AdversarialSetup|undefined
+            const wantAdversarial = await confirm({
+                message: 'Enable adversarial review loops?',
+                default: false,
+            })
+            if (wantAdversarial) {
+                const impl = await input({
+                    message: 'Implement command ' +
+                        '(e.g. claude -m opus)',
+                    validate: (v:string) => {
+                        try {
+                            parseRoleString(v)
+                            return true
+                        } catch (err) {
+                            return err instanceof Error ?
+                                err.message :
+                                String(err)
+                        }
+                    },
+                })
+                const rev = await input({
+                    message: 'Review command ' +
+                        '(e.g. pi -m sonnet)',
+                    validate: (v:string) => {
+                        try {
+                            parseRoleString(v)
+                            return true
+                        } catch (err) {
+                            return err instanceof Error ?
+                                err.message :
+                                String(err)
+                        }
+                    },
+                })
+                adversarial = {
+                    implement: impl,
+                    review: rev,
+                    maxRounds: 3,
+                    minRounds: 1,
+                }
+            }
+
             setup({
                 bundledSkillsDir,
                 docsTemplatesDir: join(
@@ -134,6 +181,7 @@ yargs(hideBin(process.argv))
                 tracker,
                 skillsRoot,
                 skip,
+                adversarial,
             })
         }
     )
@@ -148,14 +196,15 @@ yargs(hideBin(process.argv))
         argv => runGraph(argv.spec)
     )
     .command(
-        '$0 <provider> [turns]',
+        '$0 [provider] [turns]',
         'Execute tickets with the given provider',
         y => y
             .positional('provider', {
                 type: 'string',
                 describe: 'Agent CLI to spawn ' +
-                    '(e.g. claude, codex, pi)',
-                demandOption: true,
+                    '(e.g. claude, codex, pi). ' +
+                    'Optional when .redeye.json ' +
+                    'sets implement',
             })
             .positional('turns', {
                 type: 'number',
@@ -163,11 +212,7 @@ yargs(hideBin(process.argv))
                     'ticket (shorthand for ' +
                     '--max-turns)',
             })
-            .option('m', {
-                alias: 'model',
-                type: 'string',
-                describe: 'Model passed to the agent',
-            })
+            .option('m', ROLE_OPTIONS.m)
             .option('spec', {
                 type: 'string',
                 describe: 'Feature name ' +
@@ -206,25 +251,15 @@ yargs(hideBin(process.argv))
                     're-spawning',
                 default: false,
             })
-            .option('max-turns', {
-                type: 'number',
-                describe: 'Max agentic turns per ticket ' +
-                    '(forwarded to the agent CLI)',
-            })
-            .option('effort', {
-                type: 'string',
-                choices: ALL_EFFORT_LEVELS,
-                describe: 'Starting effort level. ' +
-                    'Omitted = provider default. ' +
-                    'Retries step up from here.',
-            })
-            .option('prefer-subagent', {
-                type: 'string',
-                describe: 'claude only: model that subagents ' +
-                    'default to (CLAUDE_CODE_SUBAGENT_MODEL), ' +
-                    'plus a prompt rule to hand read-only work ' +
-                    'to them. "" disables it.',
-            })
+            .option(
+                'max-turns',
+                ROLE_OPTIONS['max-turns']
+            )
+            .option('effort', ROLE_OPTIONS.effort)
+            .option(
+                'prefer-subagent',
+                ROLE_OPTIONS['prefer-subagent']
+            )
             .option('retries', {
                 type: 'number',
                 default: DEFAULT_RETRIES,
@@ -251,10 +286,33 @@ yargs(hideBin(process.argv))
                 default: true,
                 describe: 'Review the merged work and run one ' +
                     'fix pass at the end. --no-review skips it.',
+            })
+            .check(argv => {
+                if (!argv.provider) {
+                    let hasConfig = false
+                    try {
+                        hasConfig = loadConfig(
+                            process.cwd()
+                        ) !== null
+                    } catch {
+                        // Config errors are reported by
+                        // the handler, not the check.
+                    }
+                    if (!hasConfig) {
+                        throw new Error(
+                            'Specify a provider ' +
+                            '(e.g. redeye claude) ' +
+                            'or set implement ' +
+                            'in .redeye.json'
+                        )
+                    }
+                }
+                return true
             }),
         async argv => {
             await runExecute({
-                provider: argv.provider as string,
+                provider: argv.provider as
+                    string|undefined,
                 model: argv.model as string|undefined,
                 spec: argv.spec as string|undefined,
                 dryRun: argv.dryRun as boolean|undefined,
@@ -542,7 +600,7 @@ function reviewPathFor (issuesDirs:string[]):string {
 }
 
 async function runExecute (argv:{
-    provider:string
+    provider?:string
     model?:string
     spec?:string
     dryRun?:boolean
@@ -565,6 +623,21 @@ async function runExecute (argv:{
     let loaded = loadTicketsOrExit(selections)
     if (loaded.allTickets.length === 0) return
 
+    // Load .redeye.json before any provider or git work.
+    // Validation errors stop the run before anything is created.
+    const adversarial = loadConfig(process.cwd())
+
+    // Resolve the effective provider: CLI arg wins, then
+    // the implement role from .redeye.json. The .check()
+    // in the yargs builder already rejects no-config +
+    // no-provider before the handler runs.
+    const cliOverride = !!argv.provider && !!adversarial
+    const provider = argv.provider ??
+        adversarial?.implement.provider ?? ''
+    const model = argv.model ??
+        (!argv.provider && adversarial ?
+            adversarial.implement.model :
+            undefined)
     // Stop before the dry run, provider lookup and any branch work
     // when every ready-for-agent ticket is blocked. A resumed
     // integration branch is checked after its re-scan instead.
@@ -577,29 +650,75 @@ async function runExecute (argv:{
         return
     }
 
-    const providerPath = resolveExecutable(argv.provider)
-    const providerIsPath = argv.provider.includes('/')
+    if (cliOverride) {
+        console.log(
+            `${provider} overrides implement ` +
+            `(${adversarial!.implementStr})`
+        )
+    }
+
+    const providerPath = resolveExecutable(provider)
+    const providerIsPath = provider.includes('/')
     // A path is never searched on PATH, so say what was checked
     const providerMissing = providerIsPath ?
         'not found or not executable' :
         'not found on PATH'
     if (providerPath === null && !argv.dryRun) {
         console.error(
-            `Provider '${argv.provider}' ${providerMissing}`
+            `Provider '${provider}' ${providerMissing}`
         )
         process.exit(2)
     }
+
+    // Preflight the review executable when adversarial is set
+    if (adversarial) {
+        const reviewProvider = adversarial.review.provider
+        const reviewIsPath = reviewProvider.includes('/')
+        const reviewPath = resolveExecutable(reviewProvider)
+        const reviewMissing = reviewIsPath ?
+            'not found or not executable' :
+            'not found on PATH'
+        if (reviewPath === null && !argv.dryRun) {
+            console.error(
+                `Review provider '${reviewProvider}' ` +
+                reviewMissing
+            )
+            process.exit(2)
+        }
+    }
+
+    // Warn when both roles resolve to the same model
+    if (adversarial) {
+        const implBase = basename(
+            cliOverride ? provider : adversarial.implement.provider
+        )
+        const revBase = basename(
+            adversarial.review.provider
+        )
+        const implModel = cliOverride ?
+            (model ?? '') :
+            (adversarial.implement.model ?? '')
+        const revModel = adversarial.review.model ?? ''
+        if (implBase === revBase && implModel === revModel) {
+            console.warn(
+                'Implement and review use the same model ' +
+                `(${implBase}${implModel ? ' ' + implModel : ''})` +
+                ' -- the cross-model check is lost'
+            )
+        }
+    }
+
     // Worktrees spawn with their own cwd, so a relative path must
     // be resolved here, against the launch directory. A bare name
     // stays a PATH lookup at spawn time.
     const agentCmd = providerIsPath ?
-        providerPath ?? argv.provider :
-        argv.provider
+        providerPath ?? provider :
+        provider
 
     // claude is the only provider with subagents. Warn once here
     // and drop the value, so no agent gets the env var or the rule.
     let preferSubagent = argv.preferSubagent || undefined
-    const providerName = basename(argv.provider)
+    const providerName = basename(provider)
     if (preferSubagent && providerName !== 'claude') {
         console.warn(
             '--prefer-subagent not supported by ' +
@@ -683,6 +802,27 @@ async function runExecute (argv:{
         console.log(
             `Provider:     ${providerPath ?? providerMissing}`
         )
+        if (adversarial) {
+            if (cliOverride) {
+                console.log(
+                    `              ${provider} ` +
+                    'overrides implement ' +
+                    `(${adversarial.implementStr})`
+                )
+            }
+            console.log(
+                `Implement:    ${adversarial.implementStr}`
+            )
+            console.log(
+                `Review:       ${adversarial.reviewStr}`
+            )
+            console.log(
+                `maxRounds:    ${adversarial.maxRounds}`
+            )
+            console.log(
+                `minRounds:    ${adversarial.minRounds}`
+            )
+        }
         if (isolated) {
             const repoName = getRepoName()
             dryRunIsolated({
@@ -733,7 +873,7 @@ async function runExecute (argv:{
             specBody: fallbackSpec,
             specBodies,
             agentCmd,
-            model: argv.model ?? null,
+            model: model ?? null,
             timeout,
             logsDir,
             featureName: firstFeatureName,
@@ -755,11 +895,26 @@ async function runExecute (argv:{
                     reviewPath: reviewPathFor(loaded.issuesDirs),
                     forkedFrom: plan?.forkedFrom ?? undefined,
                 },
+            adversarial: adversarial ?
+                {
+                    implementStr: adversarial.implementStr,
+                    reviewStr: adversarial.reviewStr,
+                    review: adversarial.review,
+                    maxRounds: adversarial.maxRounds,
+                    minRounds: adversarial.minRounds,
+                } :
+                undefined,
         })
     } else {
+        if (adversarial) {
+            display.log(
+                'Adversarial loop skipped ' +
+                '(not in a git repo)'
+            )
+        }
         result = await runWaves(
             allTickets, fallbackSpec,
-            agentCmd, argv.model ?? null,
+            agentCmd, model ?? null,
             timeout,
             logsDir,
             testCmd,

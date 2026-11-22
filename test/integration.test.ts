@@ -6777,3 +6777,466 @@ test('graph - read-only, git-free, no provider or branch output',
         }
     }
 )
+
+// --- .redeye.json config loading tests ---
+
+test('CLI subprocess - invalid .redeye.json exits 2 with ' +
+    'no branch', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            '{ not valid json'
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code, stderr } = await spawnCli([
+            MOCK_AGENT, '--spec', FEAT,
+        ], { cwd: projectDir })
+
+        t.equal(code, 2, 'exits 2')
+        t.ok(
+            !hasStackLine(stderr),
+            'no stack trace'
+        )
+        t.equal(
+            integrationBranches(projectDir), '',
+            'no integration branch created'
+        )
+        t.equal(
+            headBranch(projectDir), 'main',
+            'still on main'
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - .redeye.json role with unsupported ' +
+    'flag exits 2 with no branch', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude --timeout 60',
+                    review: 'pi',
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code, stderr } = await spawnCli([
+            MOCK_AGENT, '--spec', FEAT,
+        ], { cwd: projectDir })
+
+        t.equal(code, 2, 'exits 2')
+        t.ok(
+            !hasStackLine(stderr),
+            'no stack trace'
+        )
+        t.equal(
+            integrationBranches(projectDir), '',
+            'no integration branch created'
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - .redeye.json with pi --max-turns ' +
+    '40 passes --dry-run', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude',
+                    review: 'pi --max-turns 40',
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code } = await spawnCli([
+            MOCK_AGENT, '--spec', FEAT, '--dry-run',
+        ], { cwd: projectDir })
+
+        t.equal(code, 0, 'exits 0')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - --dry-run shows adversarial config ' +
+    'when present', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude -m opus --effort high',
+                    review: 'pi -m gpt4',
+                    maxRounds: 5,
+                    minRounds: 2,
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code, stdout } = await spawnCli([
+            MOCK_AGENT, '--spec', FEAT, '--dry-run',
+        ], { cwd: projectDir })
+
+        t.equal(code, 0, 'exits 0')
+        t.ok(
+            stdout.includes('claude -m opus --effort high'),
+            'stdout contains implement role string',
+        )
+        t.ok(
+            stdout.includes('pi -m gpt4'),
+            'stdout contains review role string',
+        )
+        t.ok(
+            stdout.includes('5'),
+            'stdout contains maxRounds value',
+        )
+        t.ok(
+            stdout.includes('2'),
+            'stdout contains minRounds value',
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - --dry-run without adversarial key ' +
+    'does not show review config', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const { code, stdout } = await spawnCli([
+            MOCK_AGENT, '--spec', FEAT, '--dry-run',
+        ], { cwd: projectDir })
+
+        t.equal(code, 0, 'exits 0')
+        t.ok(
+            !stdout.includes('Implement:'),
+            'no implement line without adversarial config',
+        )
+        t.ok(
+            !stdout.includes('maxRounds'),
+            'no maxRounds without adversarial config',
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+// --- US-004: bare redeye uses implement role ---
+
+test('CLI subprocess - bare redeye with adversarial config ' +
+    'uses implement provider in --dry-run', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude -m opus',
+                    review: 'pi -m gpt4',
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code, stdout } = await spawnCli([
+            '--spec', FEAT, '--dry-run',
+        ], { cwd: projectDir })
+
+        t.equal(code, 0, 'exits 0')
+        t.ok(
+            stdout.includes('claude'),
+            'provider line shows implement provider',
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - CLI provider overrides implement ' +
+    'in --dry-run', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude -m opus',
+                    review: 'pi -m gpt4',
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code, stdout } = await spawnCli([
+            MOCK_AGENT, '--spec', FEAT, '--dry-run',
+        ], { cwd: projectDir })
+
+        t.equal(code, 0, 'exits 0')
+        t.ok(
+            stdout.includes('overrides implement'),
+            'stdout says the CLI provider overrides implement',
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - no config and no provider exits 1 ' +
+    'with help text', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const { code, stderr } = await spawnCli([
+            '--spec', FEAT,
+        ], { cwd: projectDir })
+
+        t.equal(code, 1, 'exits 1')
+        t.ok(
+            stderr.includes('provider') ||
+            stderr.includes('command'),
+            'stderr mentions provider or command',
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+// --- US-006: Preflight both roles and warn on same model ---
+
+test('CLI subprocess - missing review executable exits 2 ' +
+    'before any branch', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: MOCK_AGENT,
+                    review: 'redeye-no-such-reviewer',
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code, stderr } = await spawnCli([
+            '--spec', FEAT,
+        ], { cwd: projectDir })
+
+        t.equal(code, 2, 'exits 2')
+        t.ok(
+            stderr.includes('redeye-no-such-reviewer'),
+            'stderr names the missing review provider'
+        )
+        t.equal(
+            integrationBranches(projectDir), '',
+            'no integration branch created'
+        )
+        t.equal(
+            headBranch(projectDir), 'main',
+            'still on main'
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - same provider and model warns ' +
+    'and continues', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude -m opus',
+                    review: 'claude -m opus',
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code, stdout, stderr } = await spawnCli([
+            '--spec', FEAT, '--dry-run',
+        ], { cwd: projectDir })
+
+        t.equal(code, 0, 'exits 0 (run continues)')
+        const all = stdout + stderr
+        t.ok(
+            all.includes('same model'),
+            'warns about same model'
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - different providers no same-model ' +
+    'warning', async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude -m opus',
+                    review: 'claude -m sonnet',
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { code, stdout, stderr } = await spawnCli([
+            '--spec', FEAT, '--dry-run',
+        ], { cwd: projectDir })
+
+        t.equal(code, 0, 'exits 0')
+        const all = stdout + stderr
+        t.ok(
+            !all.includes('same model'),
+            'no same-model warning'
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - in-place path with adversarial ' +
+    'logs loop skipped', async t => {
+    const projectDir = tmp()
+    try {
+        const { issuesDir } = scratchDirs(projectDir)
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'claude -m opus',
+                    review: 'pi -m gpt4',
+                },
+            })
+        )
+
+        const { code, stdout, stderr } = await spawnCli([
+            MOCK_AGENT,
+            '--spec', FEAT,
+            '--timeout', '10',
+        ], { cwd: projectDir })
+
+        t.equal(code, 0, 'exits 0')
+        const all = stdout + stderr
+        t.ok(
+            all.includes('skipped'),
+            'mentions the loop is skipped'
+        )
+    } finally {
+        rmSync(projectDir, { recursive: true, force: true })
+    }
+})

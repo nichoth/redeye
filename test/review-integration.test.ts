@@ -3,17 +3,33 @@ import {
     mkdtempSync, mkdirSync, writeFileSync, readFileSync,
     readdirSync, existsSync, rmSync,
 } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { execFileSync, execSync } from 'node:child_process'
 import type { Display } from '../src/display.js'
-import { runWavesIsolated, scanTickets } from '../src/orchestrator.js'
-import { parseReviewEntries } from '../src/review.js'
+import {
+    runWavesIsolated,
+    scanTickets,
+} from '../src/orchestrator.js'
+import { readProgress } from '../src/progress.js'
+import {
+    parseReviewEntries,
+    parseTicketReviewLog,
+    ticketReviewPath,
+    renderTicketRound,
+    renderTicketTerminal,
+    type TicketTerminalEntry,
+} from '../src/review.js'
 import { subagentRule } from '../src/rules.js'
 import { renderRunStats } from '../src/stats.js'
 
 const MOCK = join(process.cwd(), 'test', 'mock-agent-review.js')
-const FAKE_CLAUDE = join(process.cwd(), 'test', 'fake-claude', 'claude')
+const FAKE_CLAUDE = join(
+    process.cwd(), 'test', 'fake-claude', 'claude'
+)
+const FAKE_PI = join(
+    process.cwd(), 'test', 'fake-pi', 'pi'
+)
 const FEAT = 'feat'
 
 const GIT_ENV = {
@@ -38,6 +54,7 @@ function quietDisplay ():Display {
         setTicketStatus: noop,
         setBlocked: noop,
         setTicketStats: noop,
+        setRoundLabel: noop,
         setPhase: noop,
         log: noop,
         cleanup: noop,
@@ -95,9 +112,12 @@ type Harness = {
 
 const ENV_KEYS = [
     'MOCK_RECORD_DIR', 'MOCK_REVIEW', 'MOCK_FIX', 'MOCK_TICKET',
+    'MOCK_FIX_RESPONSES', 'MOCK_FIX_COUNTER',
     'FAKE_CLAUDE_DELEGATE', 'FAKE_CLAUDE_ENV_LOG', 'FAKE_CLAUDE_STREAM',
     'FAKE_CLAUDE_PROMPT_DIR', 'FAKE_CLAUDE_HANG', 'FAKE_CLAUDE_FAIL_ONCE',
     'CLAUDE_CODE_SUBAGENT_MODEL', 'FAKE_CLAUDE_ARGV_LOG',
+    'FAKE_PI_RECORD_DIR', 'FAKE_PI_RESPONSES',
+    'FAKE_PI_COUNTER', 'FAKE_PI_DELEGATE',
 ] as const
 
 async function withHarness (
@@ -418,4 +438,1673 @@ test('review pass - prefer-subagent AC6.4 the stats tally counts ' +
     } finally {
         rmSync(dataDir, { recursive: true, force: true })
     }
+})
+
+test('fake-pi records provider and model', async t => {
+    const recDir = mkdtempSync(join(tmpdir(), 'redeye-pirec-'))
+    const promptDir = mkdtempSync(join(tmpdir(), 'redeye-pip-'))
+    const promptFile = join(promptDir, 'prompt.md')
+    writeFileSync(promptFile, 'hello from test')
+    try {
+        const r = execFileSync(
+            FAKE_PI,
+            ['--model', 'opus', `@${promptFile}`],
+            {
+                env: {
+                    ...process.env,
+                    FAKE_PI_RECORD_DIR: recDir,
+                },
+                encoding: 'utf8',
+                timeout: 5000,
+            }
+        )
+        t.ok(r !== undefined || true, 'completed')
+        const files = readdirSync(recDir)
+        t.equal(files.length, 1, 'one record')
+        const rec = JSON.parse(
+            readFileSync(join(recDir, files[0]), 'utf8')
+        ) as { provider:string; model:string; prompt:string }
+        t.equal(rec.provider, 'pi', 'provider is pi')
+        t.equal(rec.model, 'opus', 'model recorded')
+        t.ok(
+            rec.prompt.includes('hello from test'),
+            'prompt recorded'
+        )
+    } finally {
+        rmSync(recDir, { recursive: true, force: true })
+        rmSync(promptDir, { recursive: true, force: true })
+    }
+})
+
+test('fake-pi scripts responses in order', async t => {
+    const recDir = mkdtempSync(join(tmpdir(), 'redeye-pirec-'))
+    const counterFile = join(recDir, 'counter')
+    const promptDir = mkdtempSync(join(tmpdir(), 'redeye-pip-'))
+    const promptFile = join(promptDir, 'prompt.md')
+    writeFileSync(promptFile, 'test prompt')
+    const cwds:string[] = []
+    try {
+        for (let i = 0; i < 3; i++) {
+            const cwd = mkdtempSync(
+                join(tmpdir(), 'redeye-picwd-')
+            )
+            cwds.push(cwd)
+            try {
+                execFileSync(
+                    FAKE_PI,
+                    [`@${promptFile}`],
+                    {
+                        cwd,
+                        env: {
+                            ...process.env,
+                            FAKE_PI_RECORD_DIR: recDir,
+                            FAKE_PI_RESPONSES:
+                                'finding,clean,exit1',
+                            FAKE_PI_COUNTER: counterFile,
+                        },
+                        encoding: 'utf8',
+                        timeout: 5000,
+                    }
+                )
+            } catch (err) {
+                if (i === 2) {
+                    t.ok(true, 'third invocation exits non-zero')
+                    continue
+                }
+                throw err
+            }
+        }
+        const findings0 = readFileSync(
+            join(cwds[0], '.redeye', 'findings.md'), 'utf8'
+        )
+        t.ok(
+            findings0.includes('mock finding from pi'),
+            'first invocation writes a finding'
+        )
+        const findings1 = readFileSync(
+            join(cwds[1], '.redeye', 'findings.md'), 'utf8'
+        )
+        t.ok(
+            findings1.includes('No findings.'),
+            'second invocation writes clean'
+        )
+        t.ok(
+            !existsSync(
+                join(cwds[2], '.redeye', 'findings.md')
+            ),
+            'third invocation wrote no findings (exit1)'
+        )
+    } finally {
+        rmSync(recDir, { recursive: true, force: true })
+        rmSync(promptDir, { recursive: true, force: true })
+        for (const d of cwds) {
+            rmSync(d, { recursive: true, force: true })
+        }
+    }
+})
+
+test('fake-pi unparseable response writes garbage', async t => {
+    const recDir = mkdtempSync(join(tmpdir(), 'redeye-pirec-'))
+    const counterFile = join(recDir, 'counter')
+    const promptDir = mkdtempSync(join(tmpdir(), 'redeye-pip-'))
+    const promptFile = join(promptDir, 'prompt.md')
+    writeFileSync(promptFile, 'test')
+    const cwd = mkdtempSync(join(tmpdir(), 'redeye-picwd-'))
+    try {
+        execFileSync(
+            FAKE_PI,
+            [`@${promptFile}`],
+            {
+                cwd,
+                env: {
+                    ...process.env,
+                    FAKE_PI_RECORD_DIR: recDir,
+                    FAKE_PI_RESPONSES: 'unparseable',
+                    FAKE_PI_COUNTER: counterFile,
+                },
+                encoding: 'utf8',
+                timeout: 5000,
+            }
+        )
+        const content = readFileSync(
+            join(cwd, '.redeye', 'findings.md'), 'utf8'
+        )
+        t.ok(
+            !content.includes('- ['),
+            'unparseable output has no finding format'
+        )
+        t.ok(
+            !content.includes('No findings.'),
+            'unparseable output is not clean'
+        )
+    } finally {
+        rmSync(recDir, { recursive: true, force: true })
+        rmSync(promptDir, { recursive: true, force: true })
+        rmSync(cwd, { recursive: true, force: true })
+    }
+})
+
+test('fake-pi delegates to another mock', async t => {
+    const recDir = mkdtempSync(join(tmpdir(), 'redeye-pirec-'))
+    const promptDir = mkdtempSync(join(tmpdir(), 'redeye-pip-'))
+    const promptFile = join(promptDir, 'prompt.md')
+    writeFileSync(promptFile, 'delegate test')
+    const cwd = mkdtempSync(join(tmpdir(), 'redeye-picwd-'))
+    try {
+        execFileSync(
+            FAKE_PI,
+            [`@${promptFile}`],
+            {
+                cwd,
+                env: {
+                    ...process.env,
+                    FAKE_PI_RECORD_DIR: recDir,
+                    FAKE_PI_DELEGATE: MOCK,
+                    MOCK_RECORD_DIR: recDir,
+                    MOCK_TICKET: 'fail',
+                },
+                encoding: 'utf8',
+                timeout: 5000,
+            }
+        )
+        t.fail('should have exited non-zero')
+    } catch {
+        t.ok(true, 'delegate exited non-zero')
+    }
+    const files = readdirSync(recDir)
+        .filter(f => f.endsWith('.json'))
+    t.ok(
+        files.length >= 1,
+        'at least one record from the pi mock'
+    )
+    const piRec = files
+        .map(f => JSON.parse(
+            readFileSync(join(recDir, f), 'utf8')
+        ) as { provider?:string })
+        .find(r => r.provider === 'pi')
+    t.ok(piRec, 'pi invocation was recorded')
+    rmSync(recDir, { recursive: true, force: true })
+    rmSync(promptDir, { recursive: true, force: true })
+    rmSync(cwd, { recursive: true, force: true })
+})
+
+// ---- Per-ticket adversarial review (US-011) ----
+
+test('per-ticket review - clean reviewer lets ticket ' +
+    'merge with pass entry', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'clean',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone, 'ticket is done')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        t.ok(existsSync(logPath), 'review log exists')
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(rounds.length, 1, 'one round')
+        t.equal(terms.length, 1, 'one terminal')
+        if (terms[0].type === 'terminal') {
+            t.equal(
+                terms[0].outcome, 'pass',
+                'pass outcome'
+            )
+        }
+
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 1,
+            'one reviewer invocation')
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
+})
+
+test('per-ticket review - reviewer failure retries ' +
+    'and round numbers restart', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'exit1,clean',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 1,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone, 'ticket merges on retry')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 2,
+            'two terminal entries (failed + pass)')
+
+        const failedTerm = terms.find(
+            e => e.type === 'terminal' &&
+                e.outcome === 'failed'
+        )
+        t.ok(failedTerm, 'first attempt has failed entry')
+        if (failedTerm && failedTerm.type === 'terminal') {
+            t.equal(failedTerm.attempt, 1,
+                'failed entry is attempt 1')
+        }
+
+        const passTerm = terms.find(
+            e => e.type === 'terminal' &&
+                e.outcome === 'pass'
+        )
+        t.ok(passTerm, 'second attempt has pass entry')
+        if (passTerm && passTerm.type === 'terminal') {
+            t.equal(passTerm.attempt, 2,
+                'pass entry is attempt 2')
+        }
+
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+        t.equal(rounds.length, 2, 'two round entries')
+        for (const r of rounds) {
+            if (r.type === 'round') {
+                t.equal(r.round, 1,
+                    'round number is 1 (restarts)')
+            }
+        }
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
+})
+
+test('per-ticket review - no adversarial key means ' +
+    'no reviewer', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'clean',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        await h.run(false)
+
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 0,
+            'no reviewer invocations')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        t.ok(!existsSync(logPath),
+            'no review log')
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
+})
+
+// ---- US-012: Unresolved outcome ----
+// With US-014's fix step, open findings trigger the fixer
+// instead of immediately going to unresolved. These tests
+// verify the fix path: a successful fix leads to a clean
+// second review and pass; a broken fix fails the attempt.
+
+test('per-ticket review - open findings trigger fix ' +
+    'step and ticket passes when fixer succeeds',
+async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        MOCK_FIX: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'finding,verdict-fixed',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket passes after fix + clean review')
+
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.ticket, 1,
+            'one ticket agent')
+        t.equal(roles.fixer, 1,
+            'one fixer invocation')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        t.ok(existsSync(logPath),
+            'review log exists')
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+        t.equal(rounds.length, 2,
+            'two rounds (finding + clean)')
+        if (rounds[0].type === 'round') {
+            t.ok(rounds[0].fixHead,
+                'first round has fixHead')
+            t.equal(
+                rounds[0].testResult, 'pass',
+                'first round test passed')
+        }
+
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 1,
+            'one terminal entry')
+        t.equal(
+            (terms[0] as TicketTerminalEntry)
+                .outcome,
+            'pass',
+            'terminal outcome is pass'
+        )
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('per-ticket review - broken fix fails attempt ' +
+    'and is not retried with retries 0', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    const fixCounterFile = join(piRecDir, 'fix-counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'finding',
+        FAKE_PI_COUNTER: counterFile,
+        MOCK_FIX_RESPONSES: 'break',
+        MOCK_FIX_COUNTER: fixCounterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(!result.allDone,
+            'run reports not all done')
+
+        // progress.md records done:false
+        const progress = readProgress(
+            join(
+                h.projectDir, '.scratch',
+                FEAT, 'progress.md'
+            )
+        )
+        t.ok(progress, 'progress exists')
+        if (progress) {
+            const tp = progress.tickets.find(
+                tp => tp.filename === '01-only.md'
+            )
+            t.ok(tp, 'ticket in progress')
+            t.equal(tp?.done, false,
+                'progress records done:false')
+        }
+
+        // Review log ends with failed entry
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        t.ok(existsSync(logPath),
+            'review log exists')
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 1,
+            'one terminal entry')
+        t.equal(
+            (terms[0] as TicketTerminalEntry).outcome,
+            'failed',
+            'terminal outcome is failed'
+        )
+
+        t.deepEqual(
+            countRoles(h.recordDir),
+            { reviewer: 0, fixer: 1, ticket: 1 },
+            'one fixer ran, no retry'
+        )
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
+})
+
+// ---- US-014: Fix step with the implement role ----
+
+test('per-ticket fix - fixer test failures fail ' +
+    'the attempt and ticket retries', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    const fixCounterFile = join(piRecDir, 'fix-counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'finding,finding',
+        FAKE_PI_COUNTER: counterFile,
+        MOCK_FIX_RESPONSES: 'break,break,break,break',
+        MOCK_FIX_COUNTER: fixCounterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 1,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(!result.allDone,
+            'run reports not all done')
+
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.ticket, 2,
+            'two ticket agent invocations (retried)')
+        t.ok(roles.fixer >= 2,
+            'fixer ran at least twice')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        t.ok(existsSync(logPath),
+            'review log exists')
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.ok(
+            terms.some(
+                e => e.type === 'terminal' &&
+                    e.outcome === 'failed'
+            ),
+            'at least one failed terminal entry'
+        )
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
+})
+
+test('per-ticket fix - fixer timeout with ' +
+    'uncommitted changes auto-commits and next ' +
+    'review round runs', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    const fixCounterFile = join(piRecDir, 'fix-counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'finding,verdict-fixed',
+        FAKE_PI_COUNTER: counterFile,
+        MOCK_FIX_RESPONSES: 'hang',
+        MOCK_FIX_COUNTER: fixCounterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                timeout: 2,
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket passes after timeout + clean review')
+
+        // The auto-committed file is on the branch
+        const files = git(
+            h.projectDir,
+            ['log', '--oneline', '--name-only', '--all']
+        )
+        t.ok(
+            files.includes('pending-fix.ts'),
+            'the uncommitted file was auto-committed'
+        )
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+        t.equal(rounds.length, 2,
+            'two review rounds recorded')
+        if (rounds[0].type === 'round') {
+            t.equal(rounds[0].round, 1,
+                'first round is 1')
+            t.ok(rounds[0].fixHead,
+                'first round has fixHead')
+        }
+        if (rounds[1].type === 'round') {
+            t.equal(rounds[1].round, 2,
+                'second round is 2')
+        }
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 1,
+            'one terminal entry')
+        if (terms[0].type === 'terminal') {
+            t.equal(terms[0].outcome, 'pass',
+                'terminal outcome is pass')
+        }
+    })
+    rmSync(piRecDir, { recursive: true, force: true })
+})
+
+// ---- US-015: Verdicts on open findings ----
+
+test('per-ticket verdict - fixer disputes without ' +
+    'commit, reviewer runs and withdraws',
+async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    const fixCounterFile = join(
+        piRecDir, 'fix-counter'
+    )
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES:
+            'finding,verdict-withdraw',
+        FAKE_PI_COUNTER: counterFile,
+        MOCK_FIX_RESPONSES: 'dispute',
+        MOCK_FIX_COUNTER: fixCounterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket passes after withdrawal')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+        t.equal(rounds.length, 2,
+            'two rounds recorded')
+
+        if (rounds[1].type === 'round') {
+            const f = rounds[1].findings.find(
+                f => f.summary ===
+                    'mock finding from pi'
+            )
+            t.ok(f, 'finding in verdict round')
+            t.equal(f?.verdict, 'withdrawn',
+                'verdict is withdrawn')
+        }
+
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 2,
+            'reviewer ran twice (finding + verdict)')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('per-ticket verdict - fixer marks [x] but ' +
+    'reviewer keeps it open', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    const fixCounterFile = join(
+        piRecDir, 'fix-counter'
+    )
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES:
+            'finding,verdict-open,verdict-fixed',
+        FAKE_PI_COUNTER: counterFile,
+        MOCK_FIX_RESPONSES: 'pass,pass',
+        MOCK_FIX_COUNTER: fixCounterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 5,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket eventually passes')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+
+        if (rounds[1].type === 'round') {
+            const f = rounds[1].findings.find(
+                f => f.summary ===
+                    'mock finding from pi'
+            )
+            t.ok(f, 'finding in round 2')
+            t.equal(f?.verdict, 'still-open',
+                'finding stays open despite fixer [x]')
+        }
+
+        t.equal(rounds.length, 3,
+            'three rounds total')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('per-ticket verdict - fixer fixes and ' +
+    'reviewer confirms, ticket merges after ' +
+    'two rounds', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    const fixCounterFile = join(
+        piRecDir, 'fix-counter'
+    )
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES:
+            'finding,verdict-fixed',
+        FAKE_PI_COUNTER: counterFile,
+        MOCK_FIX_RESPONSES: 'pass',
+        MOCK_FIX_COUNTER: fixCounterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket merges')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+        t.equal(rounds.length, 2,
+            'two rounds in log')
+
+        if (rounds[1].type === 'round') {
+            const f = rounds[1].findings.find(
+                f => f.summary ===
+                    'mock finding from pi'
+            )
+            t.equal(f?.verdict, 'confirmed-fixed',
+                'confirmed-fixed in round 2')
+        }
+
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 1,
+            'one terminal entry')
+        t.equal(
+            (terms[0] as TicketTerminalEntry)
+                .outcome,
+            'pass', 'pass outcome'
+        )
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('per-ticket verdict - fixer disputes and ' +
+    'reviewer withdraws, ticket merges',
+async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    const fixCounterFile = join(
+        piRecDir, 'fix-counter'
+    )
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES:
+            'finding,verdict-withdraw',
+        FAKE_PI_COUNTER: counterFile,
+        MOCK_FIX_RESPONSES: 'dispute',
+        MOCK_FIX_COUNTER: fixCounterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket merges after withdrawal')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 1,
+            'one terminal entry')
+        t.equal(
+            (terms[0] as TicketTerminalEntry)
+                .outcome,
+            'pass', 'pass outcome'
+        )
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+// ---- US-016: Round limits ----
+
+test('round limits - minRounds 2 forces a second ' +
+    'review even when round 1 is clean', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'clean,clean',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 5,
+                    minRounds: 2,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket passes after two clean rounds')
+
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+        t.equal(rounds.length, 2,
+            'two rounds recorded')
+        if (rounds[0].type === 'round') {
+            t.equal(rounds[0].round, 1,
+                'first round is 1')
+        }
+        if (rounds[1].type === 'round') {
+            t.equal(rounds[1].round, 2,
+                'second round is 2')
+        }
+
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 1,
+            'one terminal entry')
+        t.equal(
+            (terms[0] as TicketTerminalEntry)
+                .outcome,
+            'pass', 'pass outcome'
+        )
+
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 2,
+            'reviewer ran twice')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('round limits - maxRounds reached with open ' +
+    'findings makes ticket unresolved', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    const fixCounterFile = join(
+        piRecDir, 'fix-counter'
+    )
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        // round 1: finding -> fixer disputes ->
+        // round 2: still-open (maxRounds hit)
+        FAKE_PI_RESPONSES:
+            'finding,verdict-open',
+        FAKE_PI_COUNTER: counterFile,
+        MOCK_FIX_RESPONSES: 'dispute',
+        MOCK_FIX_COUNTER: fixCounterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 2,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(!result.allDone,
+            'run reports not all done')
+
+        // Status is ready-for-human
+        const ticket = scanTickets(
+            join(
+                h.projectDir, '.scratch',
+                FEAT, 'issues'
+            ),
+            FEAT
+        )[0]
+        t.equal(ticket.status, 'ready-for-human',
+            'ticket is ready-for-human')
+
+        // Branch kept
+        const branches = execFileSync(
+            'git', ['branch', '--list'],
+            {
+                cwd: h.projectDir,
+                encoding: 'utf8',
+            }
+        ).trim()
+        t.ok(
+            branches.includes('01-only'),
+            'branch is kept'
+        )
+
+        // progress.md records done:false
+        const progress = readProgress(
+            join(
+                h.projectDir, '.scratch',
+                FEAT, 'progress.md'
+            )
+        )
+        t.ok(progress, 'progress exists')
+        if (progress) {
+            const tp = progress.tickets.find(
+                tp => tp.filename === '01-only.md'
+            )
+            t.equal(tp?.done, false,
+                'progress records done:false')
+        }
+
+        // Review log: 2 rounds + unresolved terminal
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        const entries = parseTicketReviewLog(
+            readFileSync(logPath, 'utf8')
+        )
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        )
+        t.equal(rounds.length, 2,
+            'two rounds recorded')
+
+        const terms = entries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 1,
+            'one terminal entry')
+        t.equal(
+            (terms[0] as TicketTerminalEntry)
+                .outcome,
+            'unresolved',
+            'terminal outcome is unresolved'
+        )
+
+        // Fixer ran once (round 1), not after
+        // round 2 (the final review)
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.fixer, 1,
+            'fixer ran once, not after final review')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+// ---- US-018: Resume an interrupted loop ----
+
+test('resume - interrupted after recorded round ' +
+    'resumes without running implementation',
+async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'verdict-fixed',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const repoName = basename(h.projectDir)
+        const branchName =
+            `${repoName}--feat-01-only`
+
+        // Simulate a previous run: create the
+        // ticket branch with agent + fixer work
+        git(h.projectDir,
+            ['checkout', '-b', branchName])
+        writeFileSync(
+            join(h.projectDir, 'agent-work.ts'),
+            'export const x = 1'
+        )
+        git(h.projectDir, ['add', '-A'])
+        git(h.projectDir,
+            ['commit', '-m', 'agent work'])
+        const agentHead = git(h.projectDir,
+            ['rev-parse', 'HEAD'])
+
+        writeFileSync(
+            join(h.projectDir, 'fix-work.ts'),
+            'export const y = 2'
+        )
+        git(h.projectDir, ['add', '-A'])
+        git(h.projectDir,
+            ['commit', '-m', 'fixer work'])
+        const fixHead = git(h.projectDir,
+            ['rev-parse', 'HEAD'])
+
+        // Switch back to main
+        git(h.projectDir, ['checkout', 'main'])
+
+        // Write review log with round 1 entry
+        // (interrupted before round 2 reviewer)
+        const reviewDir = join(
+            h.projectDir, '.scratch',
+            FEAT, 'reviews'
+        )
+        mkdirSync(reviewDir, { recursive: true })
+        const reviewLogPath = join(
+            reviewDir, '01-only.md'
+        )
+        writeFileSync(reviewLogPath,
+            renderTicketRound({
+                attempt: 1,
+                round: 1,
+                implement: 'mock-agent-review',
+                review: 'pi',
+                head: agentHead,
+                findings: [{
+                    summary:
+                        'mock finding from pi',
+                    detail: '',
+                    verdict: 'open',
+                    fixerResponse: 'fixed',
+                }],
+                fixHead,
+                testResult: 'pass',
+            })
+        )
+        git(h.projectDir,
+            ['add', '--force', reviewLogPath])
+        git(h.projectDir,
+            ['commit', '-m', 'save review log'])
+
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket passes after resumed review')
+
+        // Implementation was skipped
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.ticket, 0,
+            'no ticket agent (implementation skipped)')
+        t.equal(roles.fixer, 0,
+            'no fixer (reviewer confirmed-fixed)')
+
+        // Reviewer ran once (round 2)
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 1,
+            'reviewer ran once for round 2')
+
+        // Review log has 2 rounds + pass terminal
+        const logEntries = parseTicketReviewLog(
+            readFileSync(reviewLogPath, 'utf8')
+        )
+        const rounds = logEntries.filter(
+            e => e.type === 'round'
+        )
+        t.equal(rounds.length, 2,
+            'two rounds in log')
+        if (rounds[0].type === 'round') {
+            t.equal(rounds[0].round, 1,
+                'first round is 1 (from prev run)')
+        }
+        if (rounds[1].type === 'round') {
+            t.equal(rounds[1].round, 2,
+                'second round is 2 (from resume)')
+        }
+        const terms = logEntries.filter(
+            e => e.type === 'terminal'
+        )
+        t.equal(terms.length, 1,
+            'one terminal entry')
+        t.equal(
+            (terms[0] as TicketTerminalEntry)
+                .outcome,
+            'pass', 'pass outcome'
+        )
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('resume - branch head mismatch ' +
+    'starts fresh', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'clean',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const repoName = basename(h.projectDir)
+        const branchName =
+            `${repoName}--feat-01-only`
+
+        // Create branch with agent work
+        git(h.projectDir,
+            ['checkout', '-b', branchName])
+        writeFileSync(
+            join(h.projectDir, 'agent-work.ts'),
+            'export const x = 1'
+        )
+        git(h.projectDir, ['add', '-A'])
+        git(h.projectDir,
+            ['commit', '-m', 'agent work'])
+        const agentHead = git(h.projectDir,
+            ['rev-parse', 'HEAD'])
+
+        // Add another commit that the log
+        // does not know about
+        writeFileSync(
+            join(h.projectDir, 'extra.ts'),
+            'export const z = 3'
+        )
+        git(h.projectDir, ['add', '-A'])
+        git(h.projectDir,
+            ['commit', '-m', 'extra work'])
+
+        git(h.projectDir, ['checkout', 'main'])
+
+        // Write review log with head = agentHead
+        // (not matching the branch's current HEAD)
+        const reviewDir = join(
+            h.projectDir, '.scratch',
+            FEAT, 'reviews'
+        )
+        mkdirSync(reviewDir, { recursive: true })
+        const reviewLogPath = join(
+            reviewDir, '01-only.md'
+        )
+        writeFileSync(reviewLogPath,
+            renderTicketRound({
+                attempt: 1,
+                round: 1,
+                implement: 'mock-agent-review',
+                review: 'pi',
+                head: agentHead,
+                findings: [],
+            })
+        )
+        git(h.projectDir,
+            ['add', '--force', reviewLogPath])
+        git(h.projectDir,
+            ['commit', '-m', 'save review log'])
+
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket passes (fresh start)')
+
+        // Implementation ran again
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.ticket, 1,
+            'ticket agent ran (fresh start)')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('resume - log ends in terminal ' +
+    'starts fresh', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'clean',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const repoName = basename(h.projectDir)
+        const branchName =
+            `${repoName}--feat-01-only`
+
+        // Create branch with agent work
+        git(h.projectDir,
+            ['checkout', '-b', branchName])
+        writeFileSync(
+            join(h.projectDir, 'agent-work.ts'),
+            'export const x = 1'
+        )
+        git(h.projectDir, ['add', '-A'])
+        git(h.projectDir,
+            ['commit', '-m', 'agent work'])
+        const agentHead = git(h.projectDir,
+            ['rev-parse', 'HEAD'])
+
+        git(h.projectDir, ['checkout', 'main'])
+
+        // Write review log: round + terminal
+        const reviewDir = join(
+            h.projectDir, '.scratch',
+            FEAT, 'reviews'
+        )
+        mkdirSync(reviewDir, { recursive: true })
+        const reviewLogPath = join(
+            reviewDir, '01-only.md'
+        )
+        writeFileSync(reviewLogPath,
+            renderTicketRound({
+                attempt: 1,
+                round: 1,
+                implement: 'mock-agent-review',
+                review: 'pi',
+                head: agentHead,
+                findings: [],
+            }) +
+            renderTicketTerminal({
+                attempt: 1,
+                outcome: 'failed',
+            })
+        )
+        git(h.projectDir,
+            ['add', '--force', reviewLogPath])
+        git(h.projectDir,
+            ['commit', '-m', 'save review log'])
+
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket passes (fresh start)')
+
+        // Implementation ran again
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.ticket, 1,
+            'ticket agent ran (fresh start)')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('resume - earlier attempt failed, current ' +
+    'attempt round matches, resumes',
+async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'verdict-fixed',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const repoName = basename(h.projectDir)
+        const branchName =
+            `${repoName}--feat-01-only`
+
+        // Create branch with work
+        git(h.projectDir,
+            ['checkout', '-b', branchName])
+        writeFileSync(
+            join(h.projectDir, 'agent-work.ts'),
+            'export const x = 1'
+        )
+        git(h.projectDir, ['add', '-A'])
+        git(h.projectDir,
+            ['commit', '-m', 'agent work'])
+        const agentHead = git(h.projectDir,
+            ['rev-parse', 'HEAD'])
+
+        writeFileSync(
+            join(h.projectDir, 'fix-work.ts'),
+            'export const y = 2'
+        )
+        git(h.projectDir, ['add', '-A'])
+        git(h.projectDir,
+            ['commit', '-m', 'fixer work'])
+        const fixHead = git(h.projectDir,
+            ['rev-parse', 'HEAD'])
+
+        git(h.projectDir, ['checkout', 'main'])
+
+        // Write review log: attempt 1 failed,
+        // then attempt 2 round 1 (interrupted)
+        const reviewDir = join(
+            h.projectDir, '.scratch',
+            FEAT, 'reviews'
+        )
+        mkdirSync(reviewDir, { recursive: true })
+        const reviewLogPath = join(
+            reviewDir, '01-only.md'
+        )
+        writeFileSync(reviewLogPath,
+            renderTicketRound({
+                attempt: 1,
+                round: 1,
+                implement: 'mock-agent-review',
+                review: 'pi',
+                head: agentHead,
+                findings: [],
+            }) +
+            renderTicketTerminal({
+                attempt: 1,
+                outcome: 'failed',
+            }) +
+            renderTicketRound({
+                attempt: 2,
+                round: 1,
+                implement: 'mock-agent-review',
+                review: 'pi',
+                head: agentHead,
+                findings: [{
+                    summary:
+                        'mock finding from pi',
+                    detail: '',
+                    verdict: 'open',
+                    fixerResponse: 'fixed',
+                }],
+                fixHead,
+                testResult: 'pass',
+            })
+        )
+        git(h.projectDir,
+            ['add', '--force', reviewLogPath])
+        git(h.projectDir,
+            ['commit', '-m', 'save review log'])
+
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                retries: 0,
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone,
+            'ticket passes after resumed review')
+
+        // Implementation was skipped
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.ticket, 0,
+            'no ticket agent (resumed)')
+
+        // Reviewer ran once (round 2 of attempt 2)
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 1,
+            'reviewer ran once')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+// ---- End-of-run pass uses both configured roles (US-020) ----
+
+test('US-020 end-of-run pass uses review role as reviewer ' +
+    'and implement role as fixer', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        MOCK_FIX: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        // 1st pi call = per-ticket reviewer (clean)
+        // 2nd pi call = end-of-run reviewer (finding)
+        FAKE_PI_RESPONSES: 'clean,finding',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const result = await h.run(
+            true, quietDisplay(), undefined,
+            {
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone, 'tickets done')
+
+        // Pi was invoked twice: per-ticket + end-of-run
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 2,
+            'pi ran twice (per-ticket + end-of-run)')
+
+        // MOCK handled ticket + end-of-run fixer
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.ticket, 1, 'one ticket agent')
+        t.equal(roles.fixer, 1, 'one end-of-run fixer')
+        t.equal(roles.reviewer, 0,
+            'no MOCK reviewer (pi was used)')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
+})
+
+test('US-020 without adversarial, end-of-run reviewer ' +
+    'and fixer use the run provider', async t => {
+    await withHarness({
+        MOCK_REVIEW: 'findings',
+        MOCK_FIX: 'pass',
+        MOCK_TICKET: 'pass',
+    }, async h => {
+        const result = await h.run()
+        t.ok(result.allDone, 'tickets done')
+        const roles = countRoles(h.recordDir)
+        t.equal(roles.reviewer, 1,
+            'MOCK reviewer (run provider)')
+        t.equal(roles.fixer, 1,
+            'MOCK fixer (run provider)')
+        t.equal(roles.ticket, 1, 'one ticket agent')
+    })
+})
+
+test('US-020 --no-review with adversarial skips ' +
+    'end-of-run pass but per-ticket loop runs', async t => {
+    const piRecDir = mkdtempSync(
+        join(tmpdir(), 'redeye-pirec-')
+    )
+    const counterFile = join(piRecDir, 'counter')
+    await withHarness({
+        MOCK_TICKET: 'pass',
+        FAKE_PI_RECORD_DIR: piRecDir,
+        FAKE_PI_RESPONSES: 'clean',
+        FAKE_PI_COUNTER: counterFile,
+    }, async h => {
+        const result = await h.run(
+            false, quietDisplay(), undefined,
+            {
+                adversarial: {
+                    implementStr:
+                        'mock-agent-review',
+                    reviewStr: 'pi',
+                    review: { provider: FAKE_PI },
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            }
+        )
+        t.ok(result.allDone, 'ticket done')
+
+        // Pi ran once: per-ticket reviewer only
+        const piFiles = readdirSync(piRecDir)
+            .filter(f => f.endsWith('.json'))
+        t.equal(piFiles.length, 1,
+            'pi ran once (per-ticket only)')
+
+        // No end-of-run review log
+        t.ok(!existsSync(h.reviewPath),
+            'no end-of-run review log')
+
+        // Per-ticket review log exists
+        const logPath = join(
+            h.projectDir,
+            ticketReviewPath(FEAT, '01-only.md')
+        )
+        t.ok(existsSync(logPath),
+            'per-ticket review log exists')
+    })
+    rmSync(piRecDir, {
+        recursive: true, force: true,
+    })
 })

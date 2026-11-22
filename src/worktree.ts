@@ -357,6 +357,56 @@ export function createNamedWorktree (
     }))
 }
 
+// Adds a worktree for a branch that already exists, without
+// resetting it. The worktree checks out at the branch's current head.
+async function addWorktreeForBranchNow (opts:{
+    repoRoot:string
+    branchName:string
+    worktreePath:string
+}):Promise<{ worktreePath:string; branchName:string }> {
+    const { repoRoot, branchName, worktreePath } = opts
+
+    if (existsSync(worktreePath)) {
+        try {
+            await execFileAsync(
+                'git',
+                ['worktree', 'remove', '--force', worktreePath],
+                { cwd: repoRoot }
+            )
+        } catch {
+            // stale entry; prune below
+        }
+    }
+
+    try {
+        await execFileAsync(
+            'git',
+            ['worktree', 'prune'],
+            { cwd: repoRoot }
+        )
+    } catch {
+        // best-effort
+    }
+
+    await execFileAsync(
+        'git',
+        ['worktree', 'add', worktreePath, branchName],
+        { cwd: repoRoot }
+    )
+
+    return { worktreePath, branchName }
+}
+
+export function addWorktreeForBranch (
+    opts:{
+        repoRoot:string
+        branchName:string
+        worktreePath:string
+    }
+):Promise<{ worktreePath:string; branchName:string }> {
+    return enqueue(() => addWorktreeForBranchNow(opts))
+}
+
 export function removeWorktree (
     worktreePath:string,
     opts?:{ force?:boolean }

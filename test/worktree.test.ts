@@ -26,6 +26,7 @@ import {
     prepareIntegrationBranch,
     describeIntegrationBranch,
     createNamedWorktree,
+    addWorktreeForBranch,
     deleteBranch,
     headCommit,
     mergeBase,
@@ -1155,3 +1156,49 @@ test('git queries - ancestry, merge-base, changes outside a dir',
         commitFile(dir, 'side.txt', 'side')
         t.equal(mergeBase(dir, 'main', 'side'), base, 'merge-base')
     })
+
+// -- addWorktreeForBranch --
+
+test(
+    'addWorktreeForBranch checks out a worktree at the ' +
+    'existing branch head',
+    async t => {
+        const dir = realpathSync(initTempRepo())
+        const repoName = basename(dir)
+        git(dir, 'branch -M main')
+
+        // Create a branch with a commit ahead of main
+        git(dir, 'checkout -b feature-branch')
+        commitFile(dir, 'feature.txt', 'work')
+        const branchHead = headCommit(dir)
+        git(dir, 'checkout main')
+
+        const wtPath = join(dir, '..', `${repoName}.feature`)
+        const result = await addWorktreeForBranch({
+            repoRoot: dir,
+            branchName: 'feature-branch',
+            worktreePath: wtPath,
+        })
+
+        t.equal(
+            result.worktreePath, wtPath,
+            'worktree path matches'
+        )
+        t.equal(
+            result.branchName, 'feature-branch',
+            'branch name matches'
+        )
+        t.ok(
+            existsSync(wtPath),
+            'worktree directory exists'
+        )
+        t.equal(
+            headCommit(wtPath), branchHead,
+            'worktree is at the existing branch head'
+        )
+        t.equal(
+            getCurrentBranch(wtPath), 'feature-branch',
+            'worktree is on the correct branch'
+        )
+    }
+)
