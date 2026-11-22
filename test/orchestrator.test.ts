@@ -1,4 +1,4 @@
-import { test } from '@substrate-system/tapzero'
+import { test } from './shard.js'
 import {
     mkdtempSync, mkdirSync, writeFileSync,
     readFileSync, existsSync, readdirSync,
@@ -37,6 +37,7 @@ import {
     ALL_EFFORT_LEVELS,
     renderFinishSummary,
     lookupSpec,
+    piTurnError,
     ticketKey,
     blockerSatisfied,
     blockerLabel,
@@ -54,7 +55,7 @@ import {
 } from '../src/learnings.js'
 import type { BlockerRef } from '../src/blockers.js'
 import { ticketLabel } from '../src/display.js'
-import { subagentRule } from '../src/rules.js'
+import { subagentRule, CONTINUE_RULE } from '../src/rules.js'
 import { renderRunStats } from '../src/stats.js'
 
 // -- helpers --
@@ -2423,6 +2424,43 @@ test('renderPrompt includes NOTES_PATH', t => {
     )
 })
 
+test('renderPrompt adds the continue rule only when continuing',
+    t => {
+        const ticket = makeTicket({
+            num: 1,
+            filename: '01-thing.md',
+        })
+        const withContinued = renderPrompt(
+            'spec body', ticket,
+            { testCmd: 'npm test', continued: true }
+        )
+        const withoutContinued = renderPrompt(
+            'spec body', ticket,
+            { testCmd: 'npm test' }
+        )
+        const explicitFalse = renderPrompt(
+            'spec body', ticket,
+            { testCmd: 'npm test', continued: false }
+        )
+        t.ok(
+            withContinued.includes(CONTINUE_RULE),
+            'continued:true includes CONTINUE_RULE'
+        )
+        t.ok(
+            !withoutContinued.includes(CONTINUE_RULE),
+            'absent continued does not include CONTINUE_RULE'
+        )
+        t.ok(
+            !explicitFalse.includes(CONTINUE_RULE),
+            'continued:false does not include CONTINUE_RULE'
+        )
+        t.equal(
+            withoutContinued,
+            explicitFalse,
+            'false and absent produce the same prompt'
+        )
+    })
+
 test('renderMergePrompt keeps both sides of doc conflicts',
     t => {
         const ticket = makeTicket({
@@ -2580,6 +2618,9 @@ const FAKE_CLAUDE_JS = join(
     'test',
     'mock-agent-claude.js'
 )
+const FAKE_PI = join(
+    process.cwd(), 'test', 'fake-pi', 'pi'
+)
 const FAKE_ENV_KEYS = [
     'CLAUDE_CODE_SUBAGENT_MODEL',
     'FAKE_CLAUDE_ARGV_LOG',
@@ -2589,6 +2630,7 @@ const FAKE_ENV_KEYS = [
     'FAKE_CLAUDE_HANG',
     'FAKE_CLAUDE_PROMPT_DIR',
     'FAKE_CLAUDE_STREAM',
+    'FAKE_PI_DELEGATE',
 ]
 
 async function withFakeEnv (
@@ -2764,7 +2806,8 @@ test('spawnAgent reports a heartbeat while the agent runs',
                 prompt: 'test',
                 agentCmd: FAKE_CLAUDE,
                 model: null,
-                timeout: 1,
+                // Room for the fake to print before the kill
+                timeout: 5,
                 logPath: join(base, 'test.log'),
                 onLine: line => { shown.push(line) },
                 progress: {
@@ -2863,7 +2906,8 @@ test('spawnAgent keeps the subagent count but no cost on timeout',
                 prompt: 'test',
                 agentCmd: FAKE_CLAUDE,
                 model: null,
-                timeout: 1,
+                // Room for the fake to print before the kill
+                timeout: 5,
                 logPath: join(base, 'test.log'),
             })
 
@@ -4491,12 +4535,12 @@ test('runWaves waits retryDelay seconds before a retry', async t => {
             tickets, 'test spec',
             join(binDir, 'pi'), null, 10, logsDir,
             'npm test',
-            undefined, undefined, undefined, 1, 1,
+            undefined, undefined, undefined, 1, 0.1,
         )
         const elapsed = Date.now() - start
         t.equal(result.allDone, true, 'all done after retry')
         t.ok(
-            elapsed >= 1000,
+            elapsed >= 100,
             `waited for the retry delay (elapsed ${elapsed}ms)`
         )
     } finally {
@@ -5314,6 +5358,7 @@ test('runWaves never runs more agents than concurrency ' +
     const originalEnv = process.env.MOCK_CONCURRENCY_DIR
     process.chdir(base)
     process.env.MOCK_CONCURRENCY_DIR = markerDir
+    process.env.MOCK_CONCURRENCY_TOTAL = '5'
     try {
         await runWaves(
             tickets, 'test spec',
@@ -5330,6 +5375,7 @@ test('runWaves never runs more agents than concurrency ' +
         } else {
             process.env.MOCK_CONCURRENCY_DIR = originalEnv
         }
+        delete process.env.MOCK_CONCURRENCY_TOTAL
     }
 
     for (const ticket of tickets) {
@@ -6082,6 +6128,163 @@ test('runWaves logs no stats line for a non-claude agent',
             run.logs[run.logs.length - 1],
             '\n' + renderFinishSummary(run.tickets, 1, new Set()),
             'the finish summary is the last log'
+        )
+    }
+)
+
+// -- piTurnError --
+
+test('piTurnError reads an error message_end', t => {
+    const errorMsg = 'model not found: llama-70b'
+    const obj = {
+        type: 'message_end',
+        message: {
+            role: 'assistant',
+            stopReason: 'error',
+            errorMessage: errorMsg,
+        },
+    }
+    t.equal(
+        piTurnError(obj),
+        errorMsg,
+        'returns the errorMessage string'
+    )
+
+    const noMsg = {
+        type: 'message_end',
+        message: {
+            role: 'assistant',
+            stopReason: 'error',
+        },
+    }
+    t.equal(
+        piTurnError(noMsg),
+        'unknown provider error',
+        'missing errorMessage returns default'
+    )
+})
+
+test('piTurnError returns null for a successful message_end',
+    t => {
+        t.equal(
+            piTurnError({
+                type: 'message_end',
+                message: {
+                    role: 'assistant',
+                    stopReason: 'toolUse',
+                },
+            }),
+            null,
+            'toolUse stopReason'
+        )
+        t.equal(
+            piTurnError({
+                type: 'message_end',
+                message: {
+                    role: 'assistant',
+                    stopReason: 'stop',
+                },
+            }),
+            null,
+            'stop stopReason'
+        )
+    }
+)
+
+test('piTurnError ignores other lines', t => {
+    t.equal(
+        piTurnError({
+            type: 'message_update',
+            message: { role: 'assistant' },
+        }),
+        undefined,
+        'message_update'
+    )
+    t.equal(
+        piTurnError({
+            type: 'message_end',
+            message: { role: 'user', stopReason: 'error' },
+        }),
+        undefined,
+        'user message_end'
+    )
+    t.equal(piTurnError(null), undefined, 'null')
+    t.equal(piTurnError('a string'), undefined, 'string')
+    t.equal(piTurnError(42), undefined, 'number')
+    t.equal(
+        piTurnError({ type: 'other' }),
+        undefined,
+        'unknown type'
+    )
+})
+
+// -- spawnAgent providerError (pi) --
+
+test('spawnAgent reports only a final pi error',
+    async t => {
+        const base = tmp()
+
+        const MOCK_ERROR = join(
+            process.cwd(),
+            'test',
+            'mock-agent-pi-error.js'
+        )
+        const MOCK_RECOVERED = join(
+            process.cwd(),
+            'test',
+            'mock-agent-pi-error-recovered.js'
+        )
+
+        // Error-only mock: providerError is the errorMessage
+        const errorResult = await new Promise<
+            Awaited<ReturnType<typeof spawnAgent>>
+        >(resolve => {
+            withFakeEnv({
+                FAKE_PI_DELEGATE: MOCK_ERROR,
+            }, async () => {
+                resolve(await spawnAgent({
+                    prompt: 'test',
+                    agentCmd: FAKE_PI,
+                    model: null,
+                    timeout: 10,
+                    logPath: join(base, 'error.log'),
+                }))
+            })
+        })
+        t.equal(
+            errorResult.exitCode, 0,
+            'error mock exits 0'
+        )
+        t.equal(
+            errorResult.providerError,
+            'model not found: test-model',
+            'providerError is the errorMessage'
+        )
+
+        // Error-then-toolUse mock: providerError undefined
+        const recoveredResult = await new Promise<
+            Awaited<ReturnType<typeof spawnAgent>>
+        >(resolve => {
+            withFakeEnv({
+                FAKE_PI_DELEGATE: MOCK_RECOVERED,
+            }, async () => {
+                resolve(await spawnAgent({
+                    prompt: 'test',
+                    agentCmd: FAKE_PI,
+                    model: null,
+                    timeout: 10,
+                    logPath: join(base, 'recovered.log'),
+                }))
+            })
+        })
+        t.equal(
+            recoveredResult.exitCode, 0,
+            'recovered mock exits 0'
+        )
+        t.equal(
+            recoveredResult.providerError,
+            undefined,
+            'providerError is undefined after recovery'
         )
     }
 )

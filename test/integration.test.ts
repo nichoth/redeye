@@ -1,4 +1,5 @@
-import { test, type Test } from '@substrate-system/tapzero'
+import { type Test } from '@substrate-system/tapzero'
+import { test } from './shard.js'
 import {
     mkdtempSync, mkdirSync, writeFileSync,
     appendFileSync, copyFileSync,
@@ -35,7 +36,7 @@ import {
     readProgress, generateProgress, checkTicket, writeProgress,
 } from '../src/progress.js'
 import { parseReviewEntries } from '../src/review.js'
-import { subagentRule } from '../src/rules.js'
+import { subagentRule, CONTINUE_RULE } from '../src/rules.js'
 import { renderRunStats } from '../src/stats.js'
 
 function tmp ():string {
@@ -1454,7 +1455,9 @@ test('runWavesIsolated - agent killed at the timeout keeps ' +
                 specBody: 'test spec',
                 agentCmd: MOCK_COMMIT_THEN_HANG,
                 model: null,
-                timeout: 2,
+                // Room for the agent to commit before it is killed,
+                // even on a loaded machine
+                timeout: 6,
                 logsDir,
                 featureName: 'test-feature-timeout',
                 conflictStrategy: 'respawn',
@@ -3914,8 +3917,9 @@ test('runWavesIsolated - omitting retryDelay does not ' +
             const elapsed = Date.now() - started
 
             t.equal(result.allDone, true, 'run reports all done')
+            // The CLI default is 30s; well under it means no delay
             t.ok(
-                elapsed < 10_000,
+                elapsed < 25_000,
                 'retried without the CLI default delay ' +
                 `(elapsed ${elapsed}ms)`
             )
@@ -4371,6 +4375,7 @@ test('runWavesIsolated never runs more agents than ' +
 
         process.chdir(projectDir)
         process.env.MOCK_CONCURRENCY_DIR = markerDir
+        process.env.MOCK_CONCURRENCY_TOTAL = '5'
         try {
             await runWavesIsolated({
                 tickets,
@@ -4403,6 +4408,7 @@ test('runWavesIsolated never runs more agents than ' +
         } else {
             process.env.MOCK_CONCURRENCY_DIR = originalEnv
         }
+        delete process.env.MOCK_CONCURRENCY_TOTAL
         cleanupWorktrees(projectDir)
         rmSync(projectDir, { recursive: true, force: true })
     }
@@ -7240,3 +7246,597 @@ test('CLI subprocess - in-place path with adversarial ' +
         rmSync(projectDir, { recursive: true, force: true })
     }
 })
+
+// -- continue-branch tests (US-003) --
+
+const FAKE_PI = join(
+    process.cwd(), 'test', 'fake-pi', 'pi'
+)
+const MOCK_CONTINUE = join(
+    process.cwd(), 'test', 'mock-agent-continue.js'
+)
+const FAKE_PI_KEYS = [
+    'FAKE_PI_RECORD_DIR', 'FAKE_PI_RESPONSES',
+    'FAKE_PI_COUNTER', 'FAKE_PI_DELEGATE',
+] as const
+
+function readPiRecords (
+    dir:string
+):Array<{ prompt:string }> {
+    return readdirSync(dir)
+        .filter(f => f.endsWith('.json'))
+        .sort()
+        .map(f => JSON.parse(
+            readFileSync(join(dir, f), 'utf8')
+        ))
+}
+
+test('a retry continues the previous attempt\'s branch',
+    async t => {
+        const templateDir = mkdtempSync(
+            join(tmpdir(), 'redeye-tpl-')
+        )
+        const projectDir = initTempGitRepo({ templateDir })
+        const piRecDir = mkdtempSync(
+            join(tmpdir(), 'redeye-pirec-')
+        )
+        try {
+            const issuesDir = join(projectDir, 'issues')
+            const logsDir = join(projectDir, '.logs')
+            mkdirSync(issuesDir)
+
+            writeFileSync(
+                join(issuesDir, '01-cont.md'),
+                makeTicketBody({ status: 'ready-for-agent' })
+            )
+            const tickets = scanTickets(issuesDir)
+            commitAll(projectDir, 'add tickets')
+
+            const originalCwd = process.cwd()
+            process.chdir(projectDir)
+            const saved = FAKE_PI_KEYS.map(
+                k => [k, process.env[k]] as const
+            )
+            for (const key of FAKE_PI_KEYS) {
+                delete process.env[key]
+            }
+            process.env.FAKE_PI_DELEGATE = MOCK_CONTINUE
+            process.env.FAKE_PI_RECORD_DIR = piRecDir
+
+            try {
+            // pass.txt does not exist on the first
+            // attempt, so the test command fails;
+            // the retry continues the branch where
+            // mock-agent-continue sees progress.txt
+            // and creates pass.txt, so the test passes
+                const result = await runWavesIsolated({
+                    tickets,
+                    specBody: 'test spec',
+                    agentCmd: FAKE_PI,
+                    model: null,
+                    timeout: 15,
+                    logsDir,
+                    featureName: 'cont',
+                    conflictStrategy: 'respawn',
+                    testCmd: 'test -f pass.txt',
+                    retries: 1,
+                    retryDelay: 0,
+                    display: recordingDisplay().display,
+                })
+
+                t.equal(
+                    result.allDone, true,
+                    'run done after retry'
+                )
+                t.equal(
+                    tickets[0].status, 'done',
+                    'ticket is done'
+                )
+
+                const progressContent = readFileSync(
+                    join(projectDir, 'progress.txt'),
+                    'utf8'
+                )
+                t.ok(
+                    progressContent.includes('seen'),
+                    'progress.txt has seen from the ' +
+                'second attempt'
+                )
+
+                const records = readPiRecords(piRecDir)
+                t.equal(records.length, 2,
+                    'two pi invocations')
+                const attempt2Prompt = records[1].prompt
+                t.ok(
+                    attempt2Prompt.includes(
+                        CONTINUE_RULE
+                    ),
+                    'attempt 2 prompt includes ' +
+                'CONTINUE_RULE'
+                )
+                t.ok(
+                    !records[0].prompt.includes(
+                        CONTINUE_RULE
+                    ),
+                    'attempt 1 prompt does not include ' +
+                'CONTINUE_RULE'
+                )
+            } finally {
+                process.chdir(originalCwd)
+                for (const [k, v] of saved) {
+                    if (v === undefined) {
+                        delete process.env[k]
+                    } else {
+                        process.env[k] = v
+                    }
+                }
+            }
+        } finally {
+            removeWorktreesAndRepo(projectDir)
+            rmSync(templateDir, {
+                recursive: true, force: true,
+            })
+            rmSync(piRecDir, {
+                recursive: true, force: true,
+            })
+        }
+    })
+
+test('a new run continues a leftover branch',
+    async t => {
+        const templateDir = mkdtempSync(
+            join(tmpdir(), 'redeye-tpl-')
+        )
+        const projectDir = initTempGitRepo({ templateDir })
+        const piRecDir = mkdtempSync(
+            join(tmpdir(), 'redeye-pirec-')
+        )
+        try {
+            const issuesDir = join(projectDir, 'issues')
+            const logsDir = join(projectDir, '.logs')
+            mkdirSync(issuesDir)
+
+            writeFileSync(
+                join(issuesDir, '01-cont.md'),
+                makeTicketBody({ status: 'ready-for-agent' })
+            )
+            let tickets = scanTickets(issuesDir)
+            commitAll(projectDir, 'add tickets')
+
+            const originalCwd = process.cwd()
+            process.chdir(projectDir)
+            const saved = FAKE_PI_KEYS.map(
+                k => [k, process.env[k]] as const
+            )
+            for (const key of FAKE_PI_KEYS) {
+                delete process.env[key]
+            }
+            process.env.FAKE_PI_DELEGATE = MOCK_CONTINUE
+            process.env.FAKE_PI_RECORD_DIR = piRecDir
+
+            try {
+            // First run: retries 0, test fails
+            // (no pass.txt), ticket stays unfinished
+                await runWavesIsolated({
+                    tickets,
+                    specBody: 'test spec',
+                    agentCmd: FAKE_PI,
+                    model: null,
+                    timeout: 15,
+                    logsDir,
+                    featureName: 'cont2',
+                    conflictStrategy: 'respawn',
+                    testCmd: 'test -f pass.txt',
+                    retries: 0,
+                    retryDelay: 0,
+                    display: recordingDisplay().display,
+                })
+
+                t.equal(
+                    tickets[0].status, 'ready-for-agent',
+                    'ticket unfinished after first run'
+                )
+
+                // Reset ticket status for second run
+                writeFileSync(
+                    join(issuesDir, '01-cont.md'),
+                    makeTicketBody({
+                        status: 'ready-for-agent',
+                    })
+                )
+                tickets = scanTickets(issuesDir)
+                commitAll(projectDir, 'ticket status reset')
+
+                // Second run: mock sees progress.txt,
+                // creates pass.txt, test passes
+                const result = await runWavesIsolated({
+                    tickets,
+                    specBody: 'test spec',
+                    agentCmd: FAKE_PI,
+                    model: null,
+                    timeout: 15,
+                    logsDir,
+                    featureName: 'cont2',
+                    conflictStrategy: 'respawn',
+                    testCmd: 'test -f pass.txt',
+                    retries: 0,
+                    retryDelay: 0,
+                    display: recordingDisplay().display,
+                })
+
+                t.equal(
+                    result.allDone, true,
+                    'second run completes'
+                )
+
+                const progressContent = readFileSync(
+                    join(projectDir, 'progress.txt'),
+                    'utf8'
+                )
+                t.ok(
+                    progressContent.includes('seen'),
+                    'progress.txt has seen from second run'
+                )
+            } finally {
+                process.chdir(originalCwd)
+                for (const [k, v] of saved) {
+                    if (v === undefined) {
+                        delete process.env[k]
+                    } else {
+                        process.env[k] = v
+                    }
+                }
+            }
+        } finally {
+            removeWorktreesAndRepo(projectDir)
+            rmSync(templateDir, {
+                recursive: true, force: true,
+            })
+            rmSync(piRecDir, {
+                recursive: true, force: true,
+            })
+        }
+    })
+
+const MOCK_PI_ERROR = join(
+    process.cwd(), 'test', 'mock-agent-pi-error.js'
+)
+
+test('a provider error keeps the ticket branch',
+    async t => {
+        const templateDir = mkdtempSync(
+            join(tmpdir(), 'redeye-tpl-')
+        )
+        const projectDir = initTempGitRepo({ templateDir })
+        execSync(
+            'git branch -M main',
+            { cwd: projectDir }
+        )
+        const piRecDir = mkdtempSync(
+            join(tmpdir(), 'redeye-pirec-')
+        )
+        try {
+            const issuesDir = join(projectDir, 'issues')
+            const logsDir = join(projectDir, '.logs')
+            mkdirSync(issuesDir)
+
+            writeFileSync(
+                join(issuesDir, '01-perr.md'),
+                makeTicketBody({
+                    status: 'ready-for-agent',
+                })
+            )
+            const tickets = scanTickets(issuesDir)
+            commitAll(projectDir, 'add tickets')
+
+            const branchName = basename(projectDir) +
+                '--01-perr'
+            execSync(
+                `git checkout -b ${branchName}`,
+                { cwd: projectDir, env: GIT_ENV }
+            )
+            writeFileSync(
+                join(projectDir, 'earlier-work.txt'),
+                'from prior run'
+            )
+            commitAll(projectDir, 'earlier work')
+            const priorHead = execSync(
+                'git rev-parse HEAD',
+                { cwd: projectDir }
+            ).toString().trim()
+            const priorShow = execSync(
+                `git show ${branchName}:earlier-work.txt`,
+                { cwd: projectDir }
+            ).toString()
+            execSync(
+                'git checkout main',
+                { cwd: projectDir, env: GIT_ENV }
+            )
+
+            const originalCwd = process.cwd()
+            process.chdir(projectDir)
+            const saved = FAKE_PI_KEYS.map(
+                k => [k, process.env[k]] as const
+            )
+            for (const key of FAKE_PI_KEYS) {
+                delete process.env[key]
+            }
+            process.env.FAKE_PI_DELEGATE = MOCK_PI_ERROR
+            process.env.FAKE_PI_RECORD_DIR = piRecDir
+
+            try {
+                const result = await runWavesIsolated({
+                    tickets,
+                    specBody: 'test spec',
+                    agentCmd: FAKE_PI,
+                    model: null,
+                    timeout: 15,
+                    logsDir,
+                    featureName: 'perr',
+                    conflictStrategy: 'respawn',
+                    testCmd: 'true',
+                    retries: 2,
+                    retryDelay: 0,
+                    display: recordingDisplay().display,
+                })
+
+                t.equal(
+                    result.allDone, false,
+                    'run is not done (exit 1)'
+                )
+
+                const records = readPiRecords(piRecDir)
+                t.equal(
+                    records.length, 1,
+                    'exactly one invocation (no retry)'
+                )
+
+                const isAncestor = (() => {
+                    try {
+                        execSync(
+                            'git merge-base ' +
+                            '--is-ancestor ' +
+                            `${priorHead} ${branchName}`,
+                            { cwd: projectDir }
+                        )
+                        return true
+                    } catch {
+                        return false
+                    }
+                })()
+                t.ok(
+                    isAncestor,
+                    'prior head is ancestor of branch'
+                )
+
+                const fileContent = execSync(
+                    'git show ' +
+                    `${branchName}:earlier-work.txt`,
+                    { cwd: projectDir }
+                ).toString()
+                t.equal(
+                    fileContent, priorShow,
+                    'earlier work preserved on branch'
+                )
+
+                t.equal(
+                    tickets[0].status,
+                    'ready-for-agent',
+                    'ticket status unchanged'
+                )
+            } finally {
+                process.chdir(originalCwd)
+                for (const [k, v] of saved) {
+                    if (v === undefined) {
+                        delete process.env[k]
+                    } else {
+                        process.env[k] = v
+                    }
+                }
+            }
+        } finally {
+            removeWorktreesAndRepo(projectDir)
+            rmSync(templateDir, {
+                recursive: true, force: true,
+            })
+            rmSync(piRecDir, {
+                recursive: true, force: true,
+            })
+        }
+    })
+
+test('a provider error stops the run',
+    async t => {
+        const templateDir = mkdtempSync(
+            join(tmpdir(), 'redeye-tpl-')
+        )
+        const projectDir = initTempGitRepo({ templateDir })
+        execSync(
+            'git branch -M main',
+            { cwd: projectDir }
+        )
+        const piRecDir = mkdtempSync(
+            join(tmpdir(), 'redeye-pirec-')
+        )
+        try {
+            const issuesDir = join(projectDir, 'issues')
+            const logsDir = join(projectDir, '.logs')
+            mkdirSync(issuesDir)
+
+            writeFileSync(
+                join(issuesDir, '01-first.md'),
+                makeTicketBody({
+                    status: 'ready-for-agent',
+                })
+            )
+            writeFileSync(
+                join(issuesDir, '02-second.md'),
+                makeTicketBody({
+                    status: 'ready-for-agent',
+                })
+            )
+            const tickets = scanTickets(issuesDir)
+            commitAll(projectDir, 'add tickets')
+
+            const originalCwd = process.cwd()
+            process.chdir(projectDir)
+            const saved = FAKE_PI_KEYS.map(
+                k => [k, process.env[k]] as const
+            )
+            for (const key of FAKE_PI_KEYS) {
+                delete process.env[key]
+            }
+            process.env.FAKE_PI_DELEGATE = MOCK_PI_ERROR
+            process.env.FAKE_PI_RECORD_DIR = piRecDir
+
+            try {
+                const result = await runWavesIsolated({
+                    tickets,
+                    specBody: 'test spec',
+                    agentCmd: FAKE_PI,
+                    model: 'bad-model',
+                    timeout: 15,
+                    logsDir,
+                    featureName: 'stop-run',
+                    conflictStrategy: 'respawn',
+                    testCmd: 'true',
+                    retries: 2,
+                    retryDelay: 0,
+                    concurrency: 1,
+                    display: recordingDisplay().display,
+                })
+
+                t.equal(
+                    result.allDone, false,
+                    'run is not done'
+                )
+
+                const records = readPiRecords(piRecDir)
+                t.equal(
+                    records.length, 1,
+                    'exactly one invocation ' +
+                    '(second ticket skipped)'
+                )
+
+                t.equal(
+                    tickets[0].status,
+                    'ready-for-agent',
+                    'ticket 1 status unchanged'
+                )
+                t.equal(
+                    tickets[1].status,
+                    'ready-for-agent',
+                    'ticket 2 status unchanged'
+                )
+            } finally {
+                process.chdir(originalCwd)
+                for (const [k, v] of saved) {
+                    if (v === undefined) {
+                        delete process.env[k]
+                    } else {
+                        process.env[k] = v
+                    }
+                }
+            }
+        } finally {
+            removeWorktreesAndRepo(projectDir)
+            rmSync(templateDir, {
+                recursive: true, force: true,
+            })
+            rmSync(piRecDir, {
+                recursive: true, force: true,
+            })
+        }
+    })
+
+test('a branch already merged into base starts fresh',
+    async t => {
+        const templateDir = mkdtempSync(
+            join(tmpdir(), 'redeye-tpl-')
+        )
+        const projectDir = initTempGitRepo({ templateDir })
+        const piRecDir = mkdtempSync(
+            join(tmpdir(), 'redeye-pirec-')
+        )
+        try {
+            const issuesDir = join(projectDir, 'issues')
+            const logsDir = join(projectDir, '.logs')
+            mkdirSync(issuesDir)
+
+            writeFileSync(
+                join(issuesDir, '01-cont.md'),
+                makeTicketBody({ status: 'ready-for-agent' })
+            )
+            const tickets = scanTickets(issuesDir)
+            commitAll(projectDir, 'add tickets')
+
+            // Create a ticket branch that points at the
+            // current base head (no commits ahead), as if
+            // a prior run was fully merged
+            const repoName = basename(projectDir)
+            const branchName =
+            `${repoName}--01-cont`
+            execSync(
+            `git branch ${branchName}`,
+            { cwd: projectDir }
+            )
+
+            const originalCwd = process.cwd()
+            process.chdir(projectDir)
+            const saved = FAKE_PI_KEYS.map(
+                k => [k, process.env[k]] as const
+            )
+            for (const key of FAKE_PI_KEYS) {
+                delete process.env[key]
+            }
+            process.env.FAKE_PI_DELEGATE = MOCK_CONTINUE
+            process.env.FAKE_PI_RECORD_DIR = piRecDir
+
+            try {
+                const result = await runWavesIsolated({
+                    tickets,
+                    specBody: 'test spec',
+                    agentCmd: FAKE_PI,
+                    model: null,
+                    timeout: 15,
+                    logsDir,
+                    featureName: 'cont3',
+                    conflictStrategy: 'respawn',
+                    testCmd: 'true',
+                    retries: 0,
+                    retryDelay: 0,
+                    display: recordingDisplay().display,
+                })
+
+                t.equal(result.allDone, true, 'run done')
+
+                const records = readPiRecords(piRecDir)
+                t.equal(records.length, 1,
+                    'one pi invocation')
+                t.ok(
+                    !records[0].prompt.includes(
+                        CONTINUE_RULE
+                    ),
+                    'prompt does not include ' +
+                'CONTINUE_RULE for a branch at base'
+                )
+            } finally {
+                process.chdir(originalCwd)
+                for (const [k, v] of saved) {
+                    if (v === undefined) {
+                        delete process.env[k]
+                    } else {
+                        process.env[k] = v
+                    }
+                }
+            }
+        } finally {
+            removeWorktreesAndRepo(projectDir)
+            rmSync(templateDir, {
+                recursive: true, force: true,
+            })
+            rmSync(piRecDir, {
+                recursive: true, force: true,
+            })
+        }
+    })

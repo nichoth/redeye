@@ -1,4 +1,4 @@
-import { test } from '@substrate-system/tapzero'
+import { test } from './shard.js'
 import {
     mkdtempSync, writeFileSync, rmSync,
 } from 'node:fs'
@@ -295,6 +295,7 @@ test('runTestCmd reports a live gate and stops reporting on exit',
                 registry,
                 progress: {
                     label: 'feature/01 attempt 1',
+                    intervalMs: 50,
                     onLine: line => {
                         lines.push(line)
                         if (line.includes('still running')) {
@@ -323,7 +324,7 @@ test('runTestCmd reports a live gate and stops reporting on exit',
                 'progress stays out of the test log')
             t.equal(registry.size, 0, 'registry cleared')
             const count = lines.length
-            await new Promise(resolve => setTimeout(resolve, 16000))
+            await new Promise(resolve => setTimeout(resolve, 200))
             t.equal(lines.length, count, 'no progress after completion')
         } finally {
             rmSync(dir, { recursive: true, force: true })
@@ -351,6 +352,7 @@ test('runTestCmd clears progress on failure and timeout', async t => {
                 registry,
                 progress: {
                     label: c.cmd,
+                    intervalMs: 50,
                     onLine: line => { lines.push(line) },
                 },
             })
@@ -362,7 +364,7 @@ test('runTestCmd clears progress on failure and timeout', async t => {
             }
             return { lines, count: lines.length }
         }))
-        await new Promise(resolve => setTimeout(resolve, 16000))
+        await new Promise(resolve => setTimeout(resolve, 200))
         for (const item of observations) {
             t.equal(item.lines.length, item.count,
                 'terminal command has no remaining heartbeat')

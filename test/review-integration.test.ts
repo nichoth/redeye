@@ -1,4 +1,4 @@
-import { test } from '@substrate-system/tapzero'
+import { test } from './shard.js'
 import {
     mkdtempSync, mkdirSync, writeFileSync, readFileSync,
     readdirSync, existsSync, rmSync,
@@ -1035,7 +1035,9 @@ test('per-ticket fix - fixer timeout with ' +
         const result = await h.run(
             false, quietDisplay(), undefined,
             {
-                timeout: 2,
+                // Room for the fixer to write before it is killed,
+                // even on a loaded machine
+                timeout: 6,
                 retries: 0,
                 adversarial: {
                     implementStr:

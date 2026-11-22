@@ -1,12 +1,14 @@
 # redeye
 
-Last verified: 2026-10-10
+Last verified: 2026-11-20
 
 Small orchestrator that runs a single-agent session per issue. It
 loads tickets from `.scratch/<feature>/issues/`, runs the ready ones
 in waves (one git worktree and branch per ticket), gates each branch
 on the test command, merges the wave, and ends with a review and fix
-pass. A run launched from the default branch works on an integration
+pass. When a ticket branch already has commits ahead of the base, a
+retry or a new run continues that branch instead of starting fresh.
+A run launched from the default branch works on an integration
 branch, `redeye--<feature>`; launched from any other branch it
 merges into that branch.
 
@@ -30,6 +32,13 @@ merges into that branch.
   repo must set `user.name` and `user.email` in its own config
   (env vars on the test's git calls do not reach the git that
   `src/` runs)
+- Suites run in parallel, and a `name:n` entry in `TESTS` splits
+  a suite into n slices (`TEST_SHARD=i/n`, see `test/shard.ts`),
+  so test files import `test` from `./shard.js`, not tapzero.
+  Each test must stand alone: a slice skips the tests between
+  its own. The machine is loaded while they run, so never rely
+  on a child process doing its work within a 1-2s agent timeout
+  or a fixed sleep; wait on a condition, or leave a wide margin
 - `npm run lint` -- eslint
 - Both file lists are explicit: a new `src/` module must be
   added to the second esbuild call in `build-esm`
@@ -65,8 +74,11 @@ merges into that branch.
   --prefer-subagent
 - `src/setup.ts` -- `redeye init` scaffolding
 - `src/orchestrator.ts` -- ticket scanning, prompts, agent
-  spawning and wave execution
-- `src/worktree.ts` -- git worktrees, integration branch planning
+  spawning and wave execution; provider-error and skipped
+  ticket outcomes
+- `src/worktree.ts` -- git worktrees, integration branch planning,
+  `continueWorktree` (checks out an existing ticket branch and
+  merges base when it has moved)
 - `src/merge.ts` -- merging a wave's branches
 - `src/progress.ts` -- per-feature `progress.md`
 - `src/learnings.ts` -- per-attempt `learnings.md` log and the
@@ -146,6 +158,15 @@ its tests.
   its result decides the ticket outcome. Open findings make the
   ticket `unresolved` (status `ready-for-human`, branch kept,
   worktree removed, not merged, not retried).
+- An attempt continues a ticket branch that has commits ahead of
+  base (`detectResume` takes priority; the continue path runs
+  only when resume does not apply). The continued branch is
+  checked out as-is via `continueWorktree`, which merges base
+  when it has moved.
+- A provider error (e.g. a model 404 from pi) stops the run
+  without retrying, keeps the ticket branch and leaves the
+  ticket's status unchanged. Remaining tickets in the wave are
+  skipped; already-finished tickets still merge.
 - Exit codes: 0 when every ticket finished or nothing was ready, 1
   when tickets were left unfinished or on a usage error (with help
   text), 2 on a runtime error (`formatErrorMessage`, no stack).

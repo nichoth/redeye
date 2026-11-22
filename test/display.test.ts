@@ -1,4 +1,4 @@
-import { test } from '@substrate-system/tapzero'
+import { test } from './shard.js'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -2943,18 +2943,18 @@ test('an active phase holds the header below 100% until it ends',
 test('an active phase repaints the header while nothing else happens',
     async t => {
         const stream = createMockStream()
-        const display = new StatusDisplay({ stream })
+        const display = new StatusDisplay({ stream, phaseTickMs: 20 })
         display.startWave(1, 1, createTestTickets())
         display.setPhase('reviewing')
         stream.clear()
 
-        await new Promise(resolve => setTimeout(resolve, 1200))
+        await new Promise(resolve => setTimeout(resolve, 100))
         t.ok(headerNumbers(lastFrame(stream.getOutput())),
             'the header was repainted with no other calls')
 
         display.setPhase(null)
         stream.clear()
-        await new Promise(resolve => setTimeout(resolve, 1200))
+        await new Promise(resolve => setTimeout(resolve, 100))
         t.equal(stream.getOutput(), '',
             'ending the phase stops the repaint')
         display.cleanup()

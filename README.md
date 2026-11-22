@@ -240,7 +240,6 @@ This is expected to run for a long time, like overnight. I use command
 Use `caffeinate` to prevent your machine from sleeping. These examples will
 keep the machine awake, but the display can still go dark.
 
-
 ---
 
 ### Hermes
@@ -434,15 +433,24 @@ the model ID in `~/.pi/agent/models.json`.
 > 
 
 ```sh
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B \
+  --concurrency 1 --timeout 7200 --retries 3
+```
+
+Or with `-turbo` model:
+
+>
+> [!NOTE]  
+> Turbo mode is only about 10% faster.
+>
+
+```sh
 tiiny load Qwen/Qwen3.6-35B-A3B-turbo
 ```
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1 --timeout 900 --retries 1
-```
-
-```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1 --timeout 900 --retries 1
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo \
+  --concurrency 1 --timeout 7200 --retries 3
 ```
 
 >
@@ -477,10 +485,17 @@ the whole run slower, not just each agent.
 tiiny load Qwen/Qwen3.6-35B-A3B
 ```
 >
-> [!WARNING]
-> The model passed to `-m` must be the one loaded on the box. Otherwise
-> the box returns a 404, `pi` still exits 0, and each attempt is recorded
-> as "no commits", using up the ticket's retries.
+> [!NOTE]  
+> In tests, `tiiny` answers one request at a time no matter which model
+> is loaded, so the `n%` NPU values don't really matter.
+>
+
+>
+> [!NOTE]
+> The model passed to `-m` must be the one loaded on the box. A
+> mismatch makes the box return a 404, which `redeye` treats as a
+> provider error and stops the run with a message naming the model.
+> No retries are spent.
 >
 
 ##### Qwen3 Coder Next -- 94% NPU
@@ -524,6 +539,11 @@ Keep `--concurrency 1` with every `tiiny` model. A higher value makes
 the agents evict each other's prompt cache (see
 [Local Model With `pi`](#local-model-with-pi)).
 
+Retries continue the ticket branch instead of starting from scratch,
+so a timed-out attempt's commits are not lost. `--timeout 7200`
+gives the model two hours per attempt and `--retries 3` gives each
+ticket up to four tries.
+
 ##### Qwen3.5-9B-Turbo
 
 >
@@ -532,15 +552,8 @@ the agents evict each other's prompt cache (see
 >
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.5-9B-Turbo --concurrency 1 --timeout 900 --retries 1
-```
-
----
-
-##### ornith-ai/Ornith-1.5-35B-A3B-Turbo
-
-```sh
-caffeinate -i npx redeye pi -m tiiny/ornith-ai/Ornith-1.5-35B-A3B-Turbo --concurrency 1 --timeout 3600 --retries 1
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.5-9B-Turbo \
+  --concurrency 1 --timeout 7200 --retries 3
 ```
 
 ---
@@ -548,7 +561,8 @@ caffeinate -i npx redeye pi -m tiiny/ornith-ai/Ornith-1.5-35B-A3B-Turbo --concur
 ##### Qwen3.6-35B-A3B-turbo
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1 --timeout 900 --retries 1
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo \
+  --concurrency 1 --timeout 7200 --retries 3
 ```
 
 ---
@@ -556,27 +570,31 @@ caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo --concurrency 1 
 ##### Qwen3.6-27B-Turbo
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.8-27B-Turbo --concurrency 1 --timeout 900 --retries 1
+caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.8-27B-Turbo \
+  --concurrency 1 --timeout 7200 --retries 3
 ```
 
 
 ##### Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/huihui-ai/Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo --concurrency 1 --timeout 900 --retries 1
+caffeinate -i npx redeye pi -m tiiny/huihui-ai/Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo \
+  --concurrency 1 --timeout 7200 --retries 3
 ```
 
 
 ##### Qwen3.8-27B-heretic-ara-Turbo
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/trohrbaugh/Qwen3.8-27B-heretic-ara-Turbo --concurrency 1 --timeout 900 --retries 1
+caffeinate -i npx redeye pi -m tiiny/trohrbaugh/Qwen3.8-27B-heretic-ara-Turbo \
+  --concurrency 1 --timeout 7200 --retries 3
 ```
 
 ##### Ornith-1.5-35B-A3B-Turbo
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/ornith-ai/Ornith-1.5-35B-A3B-Turbo --concurrency 1 --timeout 900 --retries 1
+caffeinate -i npx redeye pi -m tiiny/ornith-ai/Ornith-1.5-35B-A3B-Turbo \
+  --concurrency 1 --timeout 7200 --retries 3
 ```
 
 

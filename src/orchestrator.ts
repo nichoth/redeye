@@ -21,6 +21,7 @@ import {
     getRepoName,
     getCurrentBranch,
     createWorktree,
+    continueWorktree,
     removeWorktree,
     addWorktreeForBranch,
     buildBranchName,
@@ -68,6 +69,7 @@ import {
     commitRule,
     notesRule,
     agentsMdRule,
+    CONTINUE_RULE,
 } from './rules.js'
 import {
     runReviewPass,
@@ -609,6 +611,7 @@ export function renderPrompt (
         installCmd?:string
         history?:string
         preferSubagent?:string
+        continued?:boolean
     }
 ):string {
     return [
@@ -626,6 +629,7 @@ export function renderPrompt (
         '',
         'Follow these rules:',
         readDocsRule('ticket'),
+        ...(opts.continued ? [CONTINUE_RULE] : []),
         '- Work ONLY on this ticket. Do not fix ' +
             'unrelated problems you notice.',
         '- Do NOT research external APIs or services ' +
@@ -919,6 +923,23 @@ function formatStreamObject (value:unknown):string|null {
     return null
 }
 
+export function piTurnError (
+    obj:unknown
+):string|null|undefined {
+    if (!isRecord(obj)) return undefined
+    if (obj.type !== 'message_end') return undefined
+    const msg = isRecord(obj.message) ?
+        obj.message :
+        undefined
+    if (!msg || msg.role !== 'assistant') return undefined
+    if (msg.stopReason === 'error') {
+        return typeof msg.errorMessage === 'string' ?
+            msg.errorMessage :
+            'unknown provider error'
+    }
+    return null
+}
+
 export type PiStreamFormatter = {
     process:(line:string) => string[]
     flush:() => string[]
@@ -1041,6 +1062,7 @@ export type AgentResult = {
     // run cost reported by its result message when there is one
     subagents?:number
     costUsd?:number
+    providerError?:string
 }
 
 // How long to wait after the process exits before giving up on a
@@ -1205,6 +1227,10 @@ export function spawnAgent (opts:{
         createPiStreamFormatter() :
         null
 
+    // pi only: the latest non-undefined piTurnError result,
+    // so only the last assistant message_end counts
+    let lastPiTurn:string|null|undefined
+
     const completedItems:string[] = []
     const seenItems = new Set<string>()
 
@@ -1260,6 +1286,18 @@ export function spawnAgent (opts:{
                 }
             }
         } else if (piFormatter) {
+            let parsed:unknown
+            try {
+                parsed = JSON.parse(line)
+            } catch {
+                // not JSON
+            }
+            if (parsed !== undefined) {
+                const turn = piTurnError(parsed)
+                if (turn !== undefined) {
+                    lastPiTurn = turn
+                }
+            }
             const lines = piFormatter.process(line)
             for (const formatted of lines) {
                 collectCompleted(formatted)
@@ -1368,13 +1406,24 @@ export function spawnAgent (opts:{
             }
             rl.close()
             rlErr.close()
-            logStream.end()
             if (promptFile) cleanupPromptFile(promptFile)
-            resolve({
-                exitCode,
-                completedItems,
-                timedOut,
-                ...(isClaude ? streamStats.stats : {}),
+            const providerError =
+                isPi &&
+                typeof lastPiTurn === 'string' &&
+                !timedOut ?
+                    lastPiTurn :
+                    undefined
+            // Resolve only once the log is flushed, so a caller
+            // that reads the log right away sees all of it.
+            logStream.end(() => {
+                resolve({
+                    exitCode,
+                    completedItems,
+                    timedOut,
+                    ...(isClaude ? streamStats.stats : {}),
+                    ...(providerError !== undefined ?
+                        { providerError } : {}),
+                })
             })
         }
 
@@ -1880,6 +1929,13 @@ type TicketOutcome =
         completedItems:string[]
         agentRun:AgentRunRecord
     }
+    | {
+        kind:'provider-error'
+        message:string
+        branchName:string
+        agentRun:AgentRunRecord
+    }
+    | { kind:'skipped' }
     | {
         kind:'unresolved'
         branchName:string
@@ -2435,15 +2491,48 @@ async function runTicketAttempt (
         })
     }
 
-    try {
-        worktree = await createWorktree({
-            repoRoot: opts.repoRoot,
-            repoName: opts.repoName,
-            baseBranch: opts.baseBranch,
-            ticket,
-        })
-    } catch (error) {
-        return { kind: 'worktree-error', error }
+    // ---- Continue an existing branch ----
+    // When a previous attempt left a branch with commits
+    // ahead of base, continue it instead of starting fresh.
+    // detectResume (adversarial) has priority and was
+    // checked above.
+    const branchName = buildBranchName(
+        opts.repoName, ticket
+    )
+    const continued =
+        localBranchExists(opts.repoRoot, branchName) &&
+        hasNewCommits(
+            opts.repoRoot, opts.baseBranch, branchName
+        )
+
+    if (continued) {
+        try {
+            const cw = await continueWorktree({
+                repoRoot: opts.repoRoot,
+                repoName: opts.repoName,
+                baseBranch: opts.baseBranch,
+                ticket,
+            })
+            worktree = cw
+            d.log(
+                `  ${ticket.filename}: continuing ` +
+                `branch ${cw.branchName} ` +
+                `(base ${cw.base})`
+            )
+        } catch (error) {
+            return { kind: 'worktree-error', error }
+        }
+    } else {
+        try {
+            worktree = await createWorktree({
+                repoRoot: opts.repoRoot,
+                repoName: opts.repoName,
+                baseBranch: opts.baseBranch,
+                ticket,
+            })
+        } catch (error) {
+            return { kind: 'worktree-error', error }
+        }
     }
 
     d.setTicketStatus(
@@ -2499,6 +2588,7 @@ async function runTicketAttempt (
                     opts.learningsPath, ticket, d
                 ),
                 preferSubagent: opts.preferSubagent,
+                continued,
             }
         ),
         agentCmd: opts.agentCmd,
@@ -2516,6 +2606,23 @@ async function runTicketAttempt (
         onLine: (line) => d.log(line),
     })
     opts.onAgentRun?.(agentResult)
+
+    if (agentResult.providerError) {
+        await removeWorktreeQuietly(
+            worktree.worktreePath, d
+        )
+        return {
+            kind: 'provider-error',
+            message: agentResult.providerError,
+            branchName: worktree.branchName,
+            agentRun: {
+                exitCode: agentResult.exitCode,
+                completedItems: agentResult.completedItems,
+                timedOut: agentResult.timedOut,
+                notes: null,
+            },
+        }
+    }
 
     // Collect before anything commits or removes the worktree,
     // so the notes never reach the timeout auto-commit.
@@ -3015,6 +3122,14 @@ function attemptEntry (opts:{
                 run: outcome.agentRun,
                 effort,
             }
+        case 'provider-error':
+            return {
+                ...base,
+                outcome: 'error',
+                error: outcome.message,
+            }
+        case 'skipped':
+            return null
         case 'error':
         case 'worktree-error':
             return {
@@ -3113,6 +3228,9 @@ async function runTicketAttempts (
             return { result: outcome, stop: true }
         }
         if (outcome.kind === 'unresolved') {
+            return { result: outcome, stop: true }
+        }
+        if (outcome.kind === 'provider-error') {
             return { result: outcome, stop: true }
         }
         return {
@@ -3821,6 +3939,7 @@ export async function runWavesIsolated (opts:{
     const onAgentRun = (result:AgentResult):void => {
         runStats = addRun(runStats, result)
     }
+    const stop:{ reason:string|null } = { reason: null }
 
     while (true) {
         if (waveNum > 0) reportBlocked(d, opts.tickets, failedKeys)
@@ -3853,31 +3972,45 @@ export async function runWavesIsolated (opts:{
         // afterwards, sequentially, so commits on the base
         // branch never race each other.
         const settled = await runPool(
-            ready, poolSize, t => runTicketAttempts({
-                ticket: t,
-                repoRoot,
-                repoName,
-                baseBranch,
-                specBody: opts.specBody,
-                specBodies: opts.specBodies,
-                agentCmd: opts.agentCmd,
-                model: opts.model,
-                timeout: opts.timeout,
-                logsDir: opts.logsDir,
-                testCmd: opts.testCmd,
-                installCmd: opts.installCmd,
-                maxTurns: opts.maxTurns,
-                effort: opts.effort,
-                preferSubagent: opts.preferSubagent,
-                learningsPath: learningsPathFor(
-                    tracker.pathFor(t.feature)
-                ),
-                retries,
-                retryDelay,
-                d,
-                onAgentRun,
-                adversarial: opts.adversarial,
-            })
+            ready, poolSize, async t => {
+                if (stop.reason) {
+                    return { kind: 'skipped' } as TicketOutcome
+                }
+                const outcome = await runTicketAttempts({
+                    ticket: t,
+                    repoRoot,
+                    repoName,
+                    baseBranch,
+                    specBody: opts.specBody,
+                    specBodies: opts.specBodies,
+                    agentCmd: opts.agentCmd,
+                    model: opts.model,
+                    timeout: opts.timeout,
+                    logsDir: opts.logsDir,
+                    testCmd: opts.testCmd,
+                    installCmd: opts.installCmd,
+                    maxTurns: opts.maxTurns,
+                    effort: opts.effort,
+                    preferSubagent: opts.preferSubagent,
+                    learningsPath: learningsPathFor(
+                        tracker.pathFor(t.feature)
+                    ),
+                    retries,
+                    retryDelay,
+                    d,
+                    onAgentRun,
+                    adversarial: opts.adversarial,
+                })
+                if (outcome.kind === 'provider-error') {
+                    const modelStr = opts.model ?
+                        ` (model ${opts.model})` : ''
+                    stop.reason =
+                        'Provider error' +
+                        `${modelStr}: ` +
+                        outcome.message
+                }
+                return outcome
+            }
         )
 
         // Entries were appended while the pool ran, but not every
@@ -4060,6 +4193,21 @@ export async function runWavesIsolated (opts:{
                 await commitTicketFiles(
                     repoRoot, [ticket], d
                 )
+                continue
+            }
+
+            if (
+                outcome.kind === 'provider-error' ||
+                outcome.kind === 'skipped'
+            ) {
+                failedKeys.add(key)
+                if (outcome.kind === 'provider-error') {
+                    d.log(
+                        `  ${ticket.filename}: ` +
+                        'provider error: ' +
+                        outcome.message
+                    )
+                }
                 continue
             }
 
@@ -4304,6 +4452,11 @@ export async function runWavesIsolated (opts:{
             }
         }
 
+        if (stop.reason) {
+            d.log(`\n${stop.reason}`)
+            break
+        }
+
         if (waveCompleted === 0) {
             const remaining = findReadyTickets(
                 opts.tickets
@@ -4332,7 +4485,7 @@ export async function runWavesIsolated (opts:{
     // Advisory, like learnings: a broken review is reported and
     // never changes the run's result.
     let reviewLine:string|null = null
-    if (opts.review) {
+    if (opts.review && !stop.reason) {
         try {
             const runRole = {
                 agentCmd: opts.agentCmd,

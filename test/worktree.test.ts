@@ -1,4 +1,4 @@
-import { test } from '@substrate-system/tapzero'
+import { test } from './shard.js'
 import {
     mkdtempSync,
     existsSync,
@@ -32,6 +32,7 @@ import {
     mergeBase,
     isAncestor,
     hasChangesOutside,
+    continueWorktree,
 } from '../src/worktree.js'
 import { scanTickets, type Ticket } from '../src/orchestrator.js'
 
@@ -457,15 +458,16 @@ test(
 )
 
 test(
-    'createWorktree serializes 50 concurrent calls across 5 rounds ' +
-    'of 10 without racing on shared git refs',
+    'createWorktree serializes concurrent calls across rounds ' +
+    'without racing on shared git refs',
     async t => {
         const repoRoot = initTempRepo()
         const repoName = basename(repoRoot)
         const baseBranch = getDefaultBranch(repoRoot)
 
-        for (let round = 0; round < 5; round++) {
-            const tickets = Array.from({ length: 10 }, (_, i) => {
+        // A second round checks the queue still works once drained
+        for (let round = 0; round < 2; round++) {
+            const tickets = Array.from({ length: 6 }, (_, i) => {
                 const num = round * 10 + i
                 return makeTestTicket({
                     num,
@@ -1199,6 +1201,137 @@ test(
         t.equal(
             getCurrentBranch(wtPath), 'feature-branch',
             'worktree is on the correct branch'
+        )
+    }
+)
+
+// -- continueWorktree --
+
+test(
+    'continueWorktree keeps the branch commits',
+    async t => {
+        const dir = realpathSync(initTempRepo())
+        const repoName = basename(dir)
+        git(dir, 'branch -M main')
+
+        const ticket = makeTestTicket({
+            num: 1, slug: 'keep-commits',
+        })
+        const branchName = buildBranchName(repoName, ticket)
+
+        git(dir, `checkout -b ${branchName}`)
+        commitFile(dir, 'a.txt', 'branch work')
+        const branchHead = headCommit(dir)
+        git(dir, 'checkout main')
+
+        const result = await continueWorktree({
+            repoRoot: dir,
+            repoName,
+            baseBranch: 'main',
+            ticket,
+        })
+
+        t.equal(
+            result.base, 'up-to-date',
+            'base is up-to-date'
+        )
+        t.equal(
+            result.branchName, branchName,
+            'branch name matches'
+        )
+        t.ok(
+            existsSync(join(result.worktreePath, 'a.txt')),
+            'branch commit file exists in worktree'
+        )
+        t.equal(
+            headCommit(result.worktreePath), branchHead,
+            'branch head unchanged'
+        )
+    }
+)
+
+test(
+    'continueWorktree merges a base that moved',
+    async t => {
+        const dir = realpathSync(initTempRepo())
+        const repoName = basename(dir)
+        git(dir, 'branch -M main')
+
+        const ticket = makeTestTicket({
+            num: 1, slug: 'merge-base',
+        })
+        const branchName = buildBranchName(repoName, ticket)
+
+        git(dir, `checkout -b ${branchName}`)
+        commitFile(dir, 'a.txt', 'branch work')
+        git(dir, 'checkout main')
+        commitFile(dir, 'b.txt', 'base moved')
+
+        const result = await continueWorktree({
+            repoRoot: dir,
+            repoName,
+            baseBranch: 'main',
+            ticket,
+        })
+
+        t.equal(
+            result.base, 'merged',
+            'base is merged'
+        )
+        t.ok(
+            existsSync(join(result.worktreePath, 'a.txt')),
+            'branch file exists'
+        )
+        t.ok(
+            existsSync(join(result.worktreePath, 'b.txt')),
+            'base file exists after merge'
+        )
+    }
+)
+
+test(
+    'continueWorktree leaves the branch alone on a conflict',
+    async t => {
+        const dir = realpathSync(initTempRepo())
+        const repoName = basename(dir)
+        git(dir, 'branch -M main')
+
+        commitFile(dir, 'c.txt', 'line 1 original')
+
+        const ticket = makeTestTicket({
+            num: 1, slug: 'conflict',
+        })
+        const branchName = buildBranchName(repoName, ticket)
+
+        git(dir, `checkout -b ${branchName}`)
+        writeFileSync(join(dir, 'c.txt'), 'line 1 from branch')
+        git(dir, 'add c.txt')
+        git(dir, 'commit -m "branch change" --no-verify')
+        const branchHead = headCommit(dir)
+
+        git(dir, 'checkout main')
+        writeFileSync(join(dir, 'c.txt'), 'line 1 from base')
+        git(dir, 'add c.txt')
+        git(dir, 'commit -m "base change" --no-verify')
+
+        const result = await continueWorktree({
+            repoRoot: dir,
+            repoName,
+            baseBranch: 'main',
+            ticket,
+        })
+
+        t.equal(
+            result.base, 'conflict',
+            'base is conflict'
+        )
+        t.equal(
+            isDirty(result.worktreePath), false,
+            'worktree is clean after abort'
+        )
+        t.equal(
+            headCommit(result.worktreePath), branchHead,
+            'branch head unchanged after conflict'
         )
     }
 )

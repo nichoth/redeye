@@ -1,0 +1,184 @@
+{
+  "project": "redeye",
+  "branchName": "ralph/tiiny-overnight",
+  "description": "Overnight runs on a local model (tiiny): a retry or a new run continues the ticket's leftover branch instead of starting from base, and a pi provider error (e.g. a 404 because -m does not match the loaded model) stops the run instead of burning the queue. Source: docs/superpowers/specs/2026-11-20-tiiny-overnight-design.md and the plan docs/superpowers/plans/2026-11-20-tiiny-overnight.md (read the plan's Global Constraints and Review Focus before each story). Only runWavesIsolated (the git path) changes; runWaves (no git) is out of scope. The adversarial resume path (detectResume) keeps priority over continuing a branch. Tests assert exit codes, files, git state, ticket Status and recorded prompts compared against exported rule constants, never prose wording.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "continueWorktree checks out a ticket branch as it is",
+      "description": "As a redeye developer, I want a queued function that checks out an existing ticket branch without resetting it and merges the base in when the base has moved, so that a later attempt can build on earlier work. (Plan Task 1.)",
+      "acceptanceCriteria": [
+        "src/worktree.ts exports type ContinuedWorktree = { worktreePath, branchName, base:'up-to-date'|'merged'|'conflict' } and continueWorktree(opts:{ repoRoot, repoName, baseBranch, ticket }):Promise<ContinuedWorktree>",
+        "The worktree path computation used by createWorktree is extracted into one shared helper that both functions call; it is not copied",
+        "continueWorktree checks the branch out through addWorktreeForBranch (which runs on worktreeQueue), so it never resets the branch",
+        "When baseBranch is already an ancestor of the branch head, base is 'up-to-date' and the branch head is unchanged",
+        "Otherwise it runs git merge --no-edit <baseBranch> in the worktree; on success base is 'merged'",
+        "On a merge failure it runs git merge --abort and returns base 'conflict'; the worktree is clean and the branch head equals the head before the call",
+        "Test in test/worktree.test.ts 'continueWorktree keeps the branch commits': a file committed on the ticket branch exists in the returned worktree, base is 'up-to-date', branch head unchanged",
+        "Test 'continueWorktree merges a base that moved': a later commit on base and the branch's commit both appear in the worktree, base is 'merged'",
+        "Test 'continueWorktree leaves the branch alone on a conflict': branch and base both change line 1 of the same file; base is 'conflict', isDirty(worktreePath) is false, branch head unchanged",
+        "Every test repo sets user.name and user.email in its own git config",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "CONTINUE_RULE in the ticket prompt",
+      "description": "As a redeye user, I want the agent told when it is continuing an earlier attempt's branch, so that it runs the tests and picks up where it stopped instead of exploring from scratch. (Plan Task 2, prompt half.)",
+      "acceptanceCriteria": [
+        "src/rules.ts exports const CONTINUE_RULE:string saying a previous attempt left commits on this branch; run the test command first, read the ticket's history, then continue from where it stopped instead of starting over",
+        "renderPrompt in src/orchestrator.ts accepts continued?:boolean in its opts",
+        "When continued is true, CONTINUE_RULE appears right after the readDocsRule('ticket') line; when false or absent the prompt is unchanged from today",
+        "Unit test in test/orchestrator.test.ts 'renderPrompt adds the continue rule only when continuing': the prompt with continued:true includes CONTINUE_RULE, the prompt without it does not (compare against the exported constant, not literal text)",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Ticket attempts continue the ticket branch",
+      "description": "As a redeye user running a slow local model, I want a retry and a new run to continue the ticket's leftover branch, so that a timed-out or failed attempt's work is not thrown away. (Plan Task 2, orchestrator half; spec goals 1 and 2.)",
+      "acceptanceCriteria": [
+        "In runTicketAttempt's non-resume path (after detectResume, which keeps priority), when localBranchExists(repoRoot, branchName) && hasNewCommits(repoRoot, baseBranch, branchName), continueWorktree is called instead of createWorktree",
+        "A continueWorktree error returns { kind: 'worktree-error' } exactly as a createWorktree error does",
+        "When continuing, one line is logged through the display naming the ticket filename, the branch and the base result",
+        "When continuing, renderPrompt gets continued:true; otherwise createWorktree runs as today and continued is not set",
+        "An attempt on a continued branch that adds no commits of its own still goes to the test gate (the branch has commits ahead of base), not the no-commits path",
+        "New test/mock-agent-continue.js: if progress.txt exists in its cwd it appends 'seen' to it and creates pass.txt, otherwise it creates progress.txt; it commits either way",
+        "Integration test in test/integration.test.ts 'a retry continues the previous attempt's branch': fake pi with FAKE_PI_DELEGATE pointing at mock-agent-continue.js, a test command that passes only when pass.txt exists, --retries 1; exit 0, progress.txt on the base branch after merge contains 'seen', and the attempt-2 prompt recorded via FAKE_PI_RECORD_DIR includes CONTINUE_RULE",
+        "Integration test 'a new run continues a leftover branch': first run with --retries 0 leaves the ticket unfinished; a second run exits 0 and progress.txt on base contains 'seen'",
+        "Integration test 'a branch already merged into base starts fresh': the ticket branch points at the base head before the run; the recorded prompt does not include CONTINUE_RULE",
+        "Existing adversarial review and resume suites (test/review-integration.test.ts) pass unchanged",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "piTurnError reads one pi stream line",
+      "description": "As a redeye developer, I want a pure function that classifies one parsed pi JSON line as an error turn, a successful turn, or irrelevant, so that spawnAgent can tell when the agent ended on a provider error. (Plan Task 3, pure half.)",
+      "acceptanceCriteria": [
+        "src/orchestrator.ts exports piTurnError(obj:unknown):string|null|undefined",
+        "For {type:'message_end', message:{role:'assistant', stopReason:'error', errorMessage}} it returns errorMessage; a missing errorMessage returns 'unknown provider error'",
+        "For any other assistant message_end (e.g. stopReason 'toolUse' or 'stop') it returns null",
+        "For every other line (message_update, a user message_end, null, a string, a number) it returns undefined",
+        "The pi stream shape is the one verified in pi 1.6.0 (pi-ai/dist/api/openai-completions.js); if the installed pi differs, note it in progress.log",
+        "Unit tests in test/orchestrator.test.ts: 'piTurnError reads an error message_end', 'piTurnError returns null for a successful message_end', 'piTurnError ignores other lines'",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "spawnAgent reports a final pi provider error",
+      "description": "As a redeye developer, I want AgentResult to carry the provider error when a pi run ended on one, so that the orchestrator can stop instead of recording 'no commits'. (Plan Task 3, spawnAgent half.)",
+      "acceptanceCriteria": [
+        "AgentResult gains providerError?:string",
+        "In spawnAgent's pi line handler, the latest non-undefined piTurnError result is kept; in finish, providerError is set only when that result is a string and timedOut is false",
+        "Only the LAST assistant message_end counts: an error turn followed by a successful turn (pi retried and recovered) leaves providerError undefined",
+        "providerError is only set for the pi provider; claude and codex results are unchanged",
+        "New test/mock-agent-pi-error.js prints one assistant message_end with stopReason 'error' and an errorMessage, then exits 0",
+        "A second mock (new file under test/) prints an error message_end followed by a toolUse message_end, then exits 0",
+        "Test 'spawnAgent reports only a final pi error' in test/orchestrator.test.ts, using fake pi with FAKE_PI_DELEGATE: the error-then-toolUse mock gives providerError undefined; the error-only mock gives providerError equal to its errorMessage",
+        "Any new FAKE_* key a test sets is added to FAKE_ENV_KEYS in test/orchestrator.test.ts",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "provider-error ticket outcome",
+      "description": "As a redeye user, I want a ticket whose agent hit a provider error to stop retrying and keep its branch, so that the retries are not spent in seconds and no work is lost. (Plan Task 4, ticket half.)",
+      "acceptanceCriteria": [
+        "TicketOutcome gains { kind:'provider-error', message:string, branchName:string, agentRun:AgentRunRecord } and { kind:'skipped' }",
+        "In runTicketAttempt, right after spawnAgent, when agentResult.providerError is set, the worktree is removed quietly (the branch is kept) and the attempt returns provider-error with that message; it does not reach the no-commits check or the test gate",
+        "runTicketAttempts returns stop:true for provider-error, so the ticket is not retried",
+        "attemptEntry records provider-error with outcome 'error' and the message; skipped is never recorded",
+        "In runWavesIsolated's wave outcome loop, provider-error and skipped leave the ticket's **Status:** and progress.md unchanged and add the ticket key to failedKeys; the run's allDone is false",
+        "Integration test 'a provider error keeps the ticket branch': the ticket branch has a commit from an earlier run; with fake pi delegating to mock-agent-pi-error.js and --retries 2, exactly one invocation is recorded in FAKE_PI_RECORD_DIR, the branch still exists at the same head, the ticket Status is still ready-for-agent, and the exit code is 1",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "A provider error stops the run",
+      "description": "As a redeye user leaving a local model running overnight, I want the first provider error to stop the whole run with a message naming the model, so that every later ticket does not hit the same error. (Plan Task 4, run half; spec goal 3.)",
+      "acceptanceCriteria": [
+        "runWavesIsolated keeps a stop:{ reason:string|null } local",
+        "The pool callback returns { kind:'skipped' } without running the ticket when stop.reason is set",
+        "A provider-error result sets stop.reason to a message that names opts.model and the provider error",
+        "Tickets in the same wave that already finished are merged as usual",
+        "After the wave, when stop.reason is set, it is logged through the display and the wave loop breaks",
+        "The end-of-run review pass is skipped when the run was stopped",
+        "Integration test 'a provider error stops the run': two independent ready tickets, --concurrency 1 --retries 2, fake pi delegating to mock-agent-pi-error.js; exit code 1, exactly one invocation recorded in FAKE_PI_RECORD_DIR, and both ticket files still have Status ready-for-agent",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "README: local-model runs continue branches",
+      "description": "As a redeye user, I want the README's local-model section to explain continuing branches and provider errors and to recommend overnight settings, so that I can set up an unattended tiiny run. (Plan Task 5, step 1; spec section 4.)",
+      "acceptanceCriteria": [
+        "README section 'Local Model With `pi`' says a retry or a new run continues the ticket branch, and that deleting the branch starts the ticket clean",
+        "It says a model error (such as the 404 when -m does not match the loaded model) stops the run",
+        "The WARNING about retries being used up in seconds is replaced",
+        "The local-model run commands recommend --timeout 7200 --retries 3",
+        "The 'Run the Loop' section mentions that retries continue the ticket branch",
+        "No em dashes or arrow characters; lines wrap as the rest of the README does",
+        "npm run lint passes",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "AGENTS.md: continueWorktree and the new outcomes",
+      "description": "As a redeye developer, I want AGENTS.md to describe continuing branches and the provider-error and skipped outcomes, so that the next agent knows the cross-module rules. (Plan Task 5, step 2.)",
+      "acceptanceCriteria": [
+        "AGENTS.md's Project Structure notes for src/worktree.ts and src/orchestrator.ts mention continueWorktree and the provider-error/skipped outcomes",
+        "The Invariants 'Outcomes' section says a provider error stops the run without retrying, keeps the ticket branch and leaves the ticket's status unchanged, and that an attempt continues a ticket branch with commits ahead of base (detectResume first)",
+        "The overview paragraph no longer implies every attempt starts from the base branch",
+        "'Last verified' is set to the date of the change",
+        "Follows the file's 'Keeping this file small' rule: no signatures or log wording",
+        "npm run lint passes",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

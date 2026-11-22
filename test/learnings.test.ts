@@ -1,4 +1,4 @@
-import { test } from '@substrate-system/tapzero'
+import { test } from './shard.js'
 import { randomUUID } from 'node:crypto'
 import {
     spawnSync,

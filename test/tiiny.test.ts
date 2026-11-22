@@ -1,4 +1,4 @@
-import { test } from '@substrate-system/tapzero'
+import { test } from './shard.js'
 import {
     mkdtempSync, writeFileSync, rmSync, chmodSync,
 } from 'node:fs'

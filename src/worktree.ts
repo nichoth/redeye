@@ -312,6 +312,22 @@ function enqueue<T> (fn:() => Promise<T>):Promise<T> {
     return result
 }
 
+export function ticketWorktreePath (
+    repoRoot:string,
+    repoName:string,
+    ticket:Ticket
+):string {
+    const num = String(ticket.num).padStart(2, '0')
+    const prefix = ticket.feature ?
+        `${ticket.feature}-` :
+        ''
+    return join(
+        repoRoot,
+        '..',
+        `${repoName}.${prefix}${num}-${ticket.slug}`
+    )
+}
+
 export function createWorktree (
     opts:{
         repoRoot:string
@@ -321,18 +337,12 @@ export function createWorktree (
     }
 ):Promise<{ worktreePath:string; branchName:string }> {
     const { repoRoot, repoName, ticket } = opts
-    const num = String(ticket.num).padStart(2, '0')
-    const prefix = ticket.feature ?
-        `${ticket.feature}-` :
-        ''
     return enqueue(() => addWorktreeNow({
         repoRoot,
         baseBranch: opts.baseBranch,
         branchName: buildBranchName(repoName, ticket),
-        worktreePath: join(
-            repoRoot,
-            '..',
-            `${repoName}.${prefix}${num}-${ticket.slug}`
+        worktreePath: ticketWorktreePath(
+            repoRoot, repoName, ticket
         ),
     }))
 }
@@ -405,6 +415,62 @@ export function addWorktreeForBranch (
     }
 ):Promise<{ worktreePath:string; branchName:string }> {
     return enqueue(() => addWorktreeForBranchNow(opts))
+}
+
+export type ContinuedWorktree = {
+    worktreePath:string
+    branchName:string
+    base:'up-to-date'|'merged'|'conflict'
+}
+
+export function continueWorktree (opts:{
+    repoRoot:string
+    repoName:string
+    baseBranch:string
+    ticket:Ticket
+}):Promise<ContinuedWorktree> {
+    const { repoRoot, repoName, baseBranch, ticket } = opts
+    const branchName = buildBranchName(repoName, ticket)
+    const worktreePath = ticketWorktreePath(
+        repoRoot, repoName, ticket
+    )
+
+    return enqueue(async () => {
+        const { worktreePath: wt } =
+            await addWorktreeForBranchNow({
+                repoRoot,
+                branchName,
+                worktreePath,
+            })
+
+        if (isAncestor(wt, baseBranch, 'HEAD')) {
+            return { worktreePath: wt, branchName, base: 'up-to-date' }
+        }
+
+        try {
+            await execFileAsync(
+                'git',
+                ['merge', '--no-edit', baseBranch],
+                { cwd: wt }
+            )
+            return {
+                worktreePath: wt,
+                branchName,
+                base: 'merged',
+            }
+        } catch {
+            await execFileAsync(
+                'git',
+                ['merge', '--abort'],
+                { cwd: wt }
+            )
+            return {
+                worktreePath: wt,
+                branchName,
+                base: 'conflict',
+            }
+        }
+    })
 }
 
 export function removeWorktree (

@@ -107,6 +107,12 @@ export function notesRule (unit:string, subject:string):string {
         'file; the orchestrator collects it.'
 }
 
+export const CONTINUE_RULE =
+    '- A previous attempt left commits on this branch. ' +
+    'Run the test command first, read the ticket\'s ' +
+    'history, then continue from where it stopped ' +
+    'instead of starting over.'
+
 export const UNCHANGED_HEAD_RULE =
     'The branch head is unchanged since the last round. ' +
     'The fixer disputed rather than committed. Evaluate ' +

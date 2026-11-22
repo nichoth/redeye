@@ -1,0 +1,134 @@
+## Codebase Patterns
+- Test repos must set `user.name` and `user.email` in their own git config; the test harness hides the global config
+- `initTempRepo()` in worktree tests creates a temp repo with an initial commit; use `realpathSync` on the dir when worktree paths will be compared
+- Worktree path is `<repoRoot>/../<repoName>.<prefix><num>-<slug>` -- now computed by the shared `ticketWorktreePath` helper
+- `enqueue` serializes all worktree and branch mutations; new worktree operations must go through it
+- Build with `npm run build` before running tests when `src/` changed; tests run against `dist/`
+- Run a single test suite: `npx esbuild test/<name>.test.ts --format=esm --bundle --packages=external --outdir=dist/test --sourcemap && node dist/test/<name>.test.js`
+- When a test uses `initTempGitRepo({ templateDir })` and later does `git checkout main`, add `git branch -M main` right after init -- the test harness hides global config, so the default branch is 'master', not 'main'
+---
+
+## 2026-11-20 - US-001
+- Implemented `continueWorktree` in `src/worktree.ts`: checks out an existing ticket branch via `addWorktreeForBranch` (queued), then merges base if it moved ahead, or aborts on conflict
+- Extracted `ticketWorktreePath` as a shared helper so `createWorktree` and `continueWorktree` compute the worktree path identically
+- Exported `ContinuedWorktree` type with `base: 'up-to-date' | 'merged' | 'conflict'`
+- Files changed: `src/worktree.ts`, `test/worktree.test.ts`
+- **Learnings for future iterations:**
+  - `addWorktreeForBranchNow` handles stale worktree cleanup the same way `addWorktreeNow` does -- both prune and force-remove existing paths
+  - `isAncestor` works from any cwd that is inside the repo (including a worktree), so checking base ancestry after checkout works from the worktree path
+  - The `git merge --abort` path is needed even though the test suite's merge conflicts are simple -- real conflicts may be partial merges that leave index state
+---
+
+## 2026-11-20 - US-002
+- Added `CONTINUE_RULE` constant to `src/rules.ts` -- tells the agent a previous attempt left commits on the branch and to run tests first then continue
+- Updated `renderPrompt` in `src/orchestrator.ts` to accept `continued?:boolean` in opts; when true, `CONTINUE_RULE` is inserted right after the `readDocsRule('ticket')` line
+- Added unit test in `test/orchestrator.test.ts`: 'renderPrompt adds the continue rule only when continuing' -- compares against the exported constant, checks true/false/absent
+- Files changed: `src/rules.ts`, `src/orchestrator.ts`, `test/orchestrator.test.ts`, `specs/prd.json`
+- **Learnings for future iterations:**
+  - `renderPrompt` uses spread arrays (`...[]` or `...[item]`) for conditional rule insertion -- follow the same pattern for new optional rules
+  - The test imports `CONTINUE_RULE` from `../src/rules.js` directly, not through the orchestrator re-exports -- rule constants are tested against the source module
+---
+
+## 2026-11-20 - US-003
+- In `runTicketAttempt`, after `detectResume` returns null, added branch-continue logic: when `localBranchExists && hasNewCommits`, calls `continueWorktree` instead of `createWorktree`
+- `continueWorktree` errors return `{ kind: 'worktree-error' }` same as `createWorktree` errors
+- When continuing, logs ticket filename, branch name, and base result through the display
+- When continuing, `renderPrompt` receives `continued:true` so the prompt includes `CONTINUE_RULE`
+- The no-commits check (`hasNewCommits` at the test gate) naturally passes for continued branches since they already have commits ahead of base
+- Created `test/mock-agent-continue.js`: first run creates `progress.txt`, second run appends 'seen' and creates `pass.txt`
+- Three integration tests in `test/integration.test.ts` using fake-pi with `FAKE_PI_DELEGATE`:
+  - 'a retry continues the previous attempt's branch': --retries 1, test passes only on second attempt, prompt includes CONTINUE_RULE
+  - 'a new run continues a leftover branch': first run leaves ticket unfinished, second run picks up and completes
+  - 'a branch already merged into base starts fresh': branch at base head, prompt does not include CONTINUE_RULE
+- Files changed: `src/orchestrator.ts`, `test/integration.test.ts`, `test/mock-agent-continue.js`, `specs/prd.json`
+- **Learnings for future iterations:**
+  - `FAKE_PI_KEYS` list added to integration.test.ts for env cleanup in pi-based tests -- same pattern as `FAKE_CLAUDE_KEYS`
+  - The `hasNewCommits` no-commits guard naturally handles continued branches (previous commits are ahead of base), so no special-casing is needed
+  - `continueWorktree` returns a `base` field ('up-to-date', 'merged', 'conflict') -- log it so the user knows what happened to their branch
+  - Integration tests that use `runWavesIsolated` with fake-pi must save/restore `FAKE_PI_*` env vars manually (no `withHarness` equivalent in integration.test.ts)
+---
+
+## 2026-11-20 - US-004
+- Implemented `piTurnError(obj:unknown):string|null|undefined` in `src/orchestrator.ts` -- a pure function that classifies one parsed pi JSON stream line
+- Returns the `errorMessage` string for an assistant `message_end` with `stopReason:'error'`, or `'unknown provider error'` when `errorMessage` is missing
+- Returns `null` for any other assistant `message_end` (successful turn)
+- Returns `undefined` for every other line shape (not a relevant event)
+- Uses the existing `isRecord` guard from `src/stats.ts` for safe object narrowing
+- Added three unit tests in `test/orchestrator.test.ts`: error message_end, successful message_end, and other/irrelevant lines
+- Pi stream shape verified against pi 1.6.0 (the installed version matches the spec)
+- Files changed: `src/orchestrator.ts`, `test/orchestrator.test.ts`, `specs/prd.json`
+- **Learnings for future iterations:**
+  - The pi stream `message_end` shape has `{type:'message_end', message:{role, stopReason, errorMessage?}}` -- `stopReason:'error'` is the provider error case
+  - `isRecord` from `src/stats.ts` is already imported in `orchestrator.ts` and is the standard guard for safe field access on unknown objects
+  - `piTurnError` is placed right before `PiStreamFormatter` since both are pi stream utilities
+---
+
+## 2026-11-20 - US-005
+- Added `providerError?:string` to `AgentResult` type in `src/orchestrator.ts`
+- In spawnAgent's pi line handler, each raw JSON line is parsed and passed to `piTurnError`; the latest non-undefined result is tracked in `lastPiTurn`
+- In `finish()`, `providerError` is set only when `lastPiTurn` is a string (error) and `timedOut` is false
+- Only the last assistant `message_end` counts: an error followed by a successful turn (recovery) leaves `providerError` undefined
+- Created `test/mock-agent-pi-error.js`: outputs one error `message_end` then exits 0
+- Created `test/mock-agent-pi-error-recovered.js`: outputs an error `message_end` then a toolUse `message_end` then exits 0
+- Added test 'spawnAgent reports only a final pi error' in `test/orchestrator.test.ts`
+- Added `FAKE_PI_DELEGATE` to `FAKE_ENV_KEYS` in `test/orchestrator.test.ts`
+- Added `FAKE_PI` constant pointing to `test/fake-pi/pi`
+- Files changed: `src/orchestrator.ts`, `test/orchestrator.test.ts`, `test/mock-agent-pi-error.js`, `test/mock-agent-pi-error-recovered.js`, `specs/prd.json`
+- **Learnings for future iterations:**
+  - spawnAgent tests for pi-specific behavior use `test/fake-pi/pi` as agentCmd (so `basename` is 'pi') with `FAKE_PI_DELEGATE` pointing to the mock script
+  - The pi JSON stream lines are parsed twice in the pi handler: once for `piTurnError` tracking, once by `piFormatter.process()` -- piFormatter only handles `assistantMessageEvent` fields, while `message_end` is a top-level type
+  - `withFakeEnv` in orchestrator.test.ts saves/restores all keys in `FAKE_ENV_KEYS`, so new FAKE_* keys must be added there
+---
+
+## 2026-11-20 - US-006
+- Verified all provider-error ticket outcome code was already implemented in prior stories' uncommitted changes:
+  - `TicketOutcome` has `{ kind:'provider-error' }` and `{ kind:'skipped' }` variants
+  - `runTicketAttempt` returns `provider-error` after `spawnAgent` when `providerError` is set, removing the worktree but keeping the branch
+  - `runTicketAttempts` returns `stop:true` for `provider-error`, preventing retries
+  - `attemptEntry` records `provider-error` with outcome `'error'` and the message; `skipped` returns null (never recorded)
+  - `runWavesIsolated` wave outcome loop adds `provider-error` and `skipped` to `failedKeys` without touching ticket status or progress.md
+- Fixed integration test 'a provider error keeps the ticket branch': added `git branch -M main` after `initTempGitRepo({ templateDir })` so `git checkout main` works under the test harness (which hides global git config, making the default branch 'master')
+- Files changed: `test/integration.test.ts`, `specs/prd.json`, `progress.log`
+- **Learnings for future iterations:**
+  - When a test uses `initTempGitRepo({ templateDir })` and needs to switch back to the base branch by name, use `git branch -M main` immediately after init -- the `cliGitRepo()` helper already does this, but direct callers must do it themselves
+  - The test harness (`scripts/test.sh`) sets `GIT_CONFIG_NOSYSTEM=1` and a custom `GIT_CONFIG_GLOBAL`, so `init.defaultBranch` is unset and git falls back to its compiled-in default ('master' on git 2.49.0)
+---
+
+## 2026-11-20 - US-007
+- Implemented provider-error run stop in `runWavesIsolated`:
+  - Added `stop:{ reason:string|null }` local variable
+  - Pool callback returns `{ kind:'skipped' }` when `stop.reason` is set
+  - After `runTicketAttempts` returns a `provider-error`, `stop.reason` is set to a message naming `opts.model` and the error
+  - Already-finished tickets in the same wave still merge normally
+  - After the wave outcome loop, `stop.reason` is logged and the wave loop breaks
+  - End-of-run review pass is skipped when `stop.reason` is set
+- Added integration test 'a provider error stops the run': two independent ready tickets, `--concurrency 1 --retries 2`, fake pi delegating to `mock-agent-pi-error.js`; asserts exit code 1, exactly one invocation in `FAKE_PI_RECORD_DIR`, and both tickets still `ready-for-agent`
+- Files changed: `src/orchestrator.ts`, `test/integration.test.ts`, `specs/prd.json`, `progress.log`
+- **Learnings for future iterations:**
+  - `stop.reason` must be set inside the pool callback (after `runTicketAttempts` returns), not in the post-pool outcome loop -- the pool runs items sequentially with `concurrency 1`, so setting it after the pool finishes is too late to prevent the second ticket from running
+  - The `runPool` worker loop checks `stop.reason` before each item, so a stop from one ticket prevents the next ticket in the same wave from starting, but already-running tickets finish normally
+---
+
+## 2026-11-20 - US-008
+- Updated README's "Local Model With `pi`" section to document branch continuation and provider errors
+- Added intro paragraph explaining retries/new runs continue the ticket branch, with `git branch -D` to start clean
+- Replaced the WARNING about retries being used up in seconds with a NOTE about provider errors stopping the run
+- Updated all local-model run commands to recommend `--timeout 7200 --retries 3`
+- Added paragraph to "Run the Loop" section explaining retries continue the branch
+- Files changed: `README.md`, `specs/prd.json`, `progress.log`
+- **Learnings for future iterations:**
+  - Pure docs tasks (no code changes) only need lint and typecheck, not the full test suite
+  - The README's local-model section has two sets of run commands: the initial examples under "Local Model With `pi`" and the per-model commands under "2. Run the Loop" -- both need updating when flags change
+---
+
+## 2026-11-20 - US-009
+- Updated AGENTS.md to document `continueWorktree` and provider-error/skipped outcomes
+- Overview paragraph now mentions that retries/new runs continue a ticket branch with commits ahead of base
+- Project Structure: `src/worktree.ts` notes `continueWorktree`; `src/orchestrator.ts` notes provider-error and skipped outcomes
+- Invariants Outcomes section: added provider-error behavior (stops run, no retry, keeps branch, status unchanged) and branch continuation (detectResume first)
+- Updated "Last verified" to 2026-11-20
+- Files changed: `AGENTS.md`, `specs/prd.json`, `progress.log`
+- **Learnings for future iterations:**
+  - Pure docs tasks (AGENTS.md, README) only need lint and typecheck, not the full test suite
+  - AGENTS.md's "Keeping this file small" rule means no function signatures or log wording -- describe cross-module rules and the "why" only
+---

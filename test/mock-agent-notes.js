@@ -40,8 +40,10 @@ function commitEverything () {
             )
             return
         } catch (err) {
-            const msg = String(err.stderr || err)
-            if (msg.includes('nothing to commit')) return
+            // git prints "nothing to commit" (or "nothing added to
+            // commit" when untracked files exist) on stdout
+            const msg = `${err.stdout ?? ''}${err.stderr ?? ''}${err}`
+            if (/nothing (added )?to commit/.test(msg)) return
             lastErr = err
             const until = Date.now() + 20 + Math.random() * 30
             while (Date.now() < until) { /* busy-wait */ }

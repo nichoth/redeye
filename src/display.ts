@@ -32,6 +32,8 @@ export type WaveState = {
 
 export type DisplayConfig = {
     readonly stream:NodeJS.WriteStream
+    // How often an active phase repaints; tests pass a short one
+    readonly phaseTickMs:number
 }
 
 /**
@@ -259,6 +261,7 @@ export class StatusDisplay implements Display {
     constructor (config?:Readonly<Partial<DisplayConfig>>) {
         this.config = {
             stream: config?.stream ?? process.stdout,
+            phaseTickMs: config?.phaseTickMs ?? PHASE_TICK_MS,
         }
     }
 
@@ -418,7 +421,10 @@ export class StatusDisplay implements Display {
             // Repaints the elapsed time while the agent is quiet.
             // unref, so a phase left open never keeps the process
             // alive.
-            const timer = setInterval(() => this.render(), PHASE_TICK_MS)
+            const timer = setInterval(
+                () => this.render(),
+                this.config.phaseTickMs
+            )
             timer.unref()
             this.phaseTimer = timer
         }

@@ -42,6 +42,9 @@ export function detectInstallCmd (projectDir:string):string|null {
         '--no-fund --no-package-lock'
 }
 
+// How often a running test command reports that it is alive
+const TEST_HEARTBEAT_MS = 15_000
+
 export function runTestCmd (opts:{
     cmd:string
     cwd:string
@@ -50,6 +53,8 @@ export function runTestCmd (opts:{
     progress?:{
         label:string
         onLine:(line:string) => void
+        // Heartbeat period; tests pass a short one
+        intervalMs?:number
     }
 }):Promise<TestResult> {
     return new Promise(resolve => {
@@ -70,7 +75,7 @@ export function runTestCmd (opts:{
                 (performance.now() - started) / 1000
             )
             report(`tests still running (${elapsed}s elapsed)`)
-        }, 15000) : undefined
+        }, opts.progress?.intervalMs ?? TEST_HEARTBEAT_MS) : undefined
         heartbeat?.unref()
         const child = spawn('sh', ['-c', opts.cmd], {
             cwd: opts.cwd,
