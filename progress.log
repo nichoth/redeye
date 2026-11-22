@@ -1,19 +1,5 @@
-## 2026-11-20 -- US-001: Detect a Tiiny run and read the tiiny provider config
+# Ralph Progress Log
 
-New module src/tiiny.ts with three pure helpers:
-- isTiinyRun(provider, modelIds) -- true when provider is "pi" and
-  any model id starts with "tiiny/"
-- deviceModelIds(modelIds) -- returns distinct ids with the tiiny/
-  prefix stripped
-- loadTiinyProvider(modelsFile?) -- reads the tiiny provider from
-  ~/.pi/agent/models.json (or PI_MODELS_FILE), resolves $VAR apiKey
-  from env, returns { provider } or { error } (error always names
-  the file, never the resolved key)
-
-Added to: build-esm second esbuild call, TESTS in scripts/test.sh,
-AGENTS.md project structure and module boundaries.
-
-28 pure tests in test/tiiny.test.ts covering detection, id stripping,
-provider loading, env var resolution, error paths.
-
-No new dependencies. No imports from orchestrator.ts.
+Feature: hermes-noninteractive
+Spec: .scratch/hermes-noninteractive/spec.md
+Status: Converted to 20 stories; implementation not started.

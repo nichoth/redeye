@@ -1,0 +1,256 @@
+{
+  "project": "redeye",
+  "branchName": "ralph/tiiny-device",
+  "description": "Share the Tiiny device safely during a run: detect a Tiiny run (provider pi, a model id starting with tiiny/), take tiiny-router's cross-agent device lock and a hold file, load the run's models before the first agent starts, recover from not-loaded failures without spending a retry, release everything on every exit path, and warn when --effort or --concurrency cannot help on the device. Source: tasks/prd-tiiny-device.md. A run that is not a Tiiny run behaves exactly as it does today. Tests use a fake device HTTP server and a temp TIINY_HOME, never a real device, and assert observable results (exit code, lock and hold file contents, models the fake server was asked to load, ticket status, learnings outcome), never message wording.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Detect a Tiiny run and read the tiiny provider config",
+      "description": "As a developer, I need pure helpers that recognize a Tiiny run and read the device settings from pi's models.json, so later stories know which models to load and where the device is.",
+      "acceptanceCriteria": [
+        "New module src/tiiny.ts, added to the second esbuild call in build-esm in package.json",
+        "A helper reports a Tiiny run when the provider is pi and any model id used by the run (from -m or from a role string in .redeye.json, including the adversarial review role) starts with tiiny/",
+        "A helper returns the distinct device model ids with the tiiny/ prefix removed (e.g. tiiny/Qwen/Qwen3.6-35B-A3B-turbo -> Qwen/Qwen3.6-35B-A3B-turbo)",
+        "A loader reads the tiiny provider from ~/.pi/agent/models.json, or from PI_MODELS_FILE when set, and returns baseUrl, apiKey and compat",
+        "apiKey resolves like pi: if it names a set environment variable, that variable's value is used; otherwise the literal value is used",
+        "When models.json has no tiiny provider (or the file is missing), the loader returns an error value whose message names the file it read",
+        "The resolved key is never included in any error message or returned description",
+        "src/tiiny.ts imports no values from src/orchestrator.ts, and AGENTS.md's module-boundaries list names tiiny",
+        "Pure tests in new test/tiiny.test.ts, added to TESTS in scripts/test.sh",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Device client: list resident models and load a model",
+      "description": "As a developer, I need a small client that can tell which models are resident on the device and load one, so the run can start with its models in place.",
+      "acceptanceCriteria": [
+        "residentModels() calls GET <baseUrl>/models with Authorization: Bearer <key> and returns the ids in data[].id",
+        "A network error or non-200 response from residentModels() is returned as an error value, not thrown",
+        "loadModel(id) first POSTs <host>/api/v1/models/<id>/start with the same bearer, where <host> is TIINY_HOST or http://tiinyhost.local",
+        "If the HTTP start fails, loadModel(id) falls back to running `script -q /dev/null <tiiny> load <id> -y`, where <tiiny> is TIINY_BIN or ~/.local/tiiny/bin/tiiny",
+        "After either path, loadModel polls residentModels() every 2 seconds until id is listed or 180 seconds pass (poll interval and deadline may be parameters so tests run fast)",
+        "loadModel reports success only when the model is listed as resident afterwards, never from the HTTP status alone",
+        "Tests start a local fake device HTTP server (new helper under test/) that records which models it was asked to load; a test covers the HTTP path, the CLI fallback (TIINY_BIN pointing at a fake script), and a load that never becomes resident",
+        "No test contacts a real device",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Device lock compatible with tiiny-router",
+      "description": "As a user running redeye and tiiny-router on one machine, I want them to use the same lock file, shape and flock, so they never generate on the device at the same time.",
+      "acceptanceCriteria": [
+        "Lock path is TIINY_LOCK_FILE if set, else $TIINY_HOME/tiiny-lock.json, with TIINY_HOME defaulting to ~/.pi/agent/tiiny",
+        "A held lock is written as JSON {state:'held', owner, task, models, created, expires, pid} with created and expires in Unix seconds (floats allowed); a released lock is {state:'released', owner, task, released, pid}",
+        "acquire takes the lock when the file is missing, released, or held with expires in the past",
+        "acquire renews (extends expires) when the current holder has the same owner",
+        "acquire fails when another owner holds an unexpired lock, and the error names that owner, its task and the expiry time",
+        "Every read-modify-write of the lock file runs inside an exclusive flock on that file (the same primitive as Python fcntl.flock, e.g. via a short python3 helper or a native dependency); if the flock is busy, acquire reports that and does not write",
+        "release writes the released state (a write, not a delete) and succeeds only when redeye's owner matches the holder",
+        "redeye's owner string is redeye:<feature>:<pid> and the task is the feature name",
+        "Tests use a temp TIINY_HOME and assert lock file contents for: acquire on missing, acquire on expired, renew by same owner, refusal by another owner, release, release by a non-owner refused",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Interop test against tiiny-router's controller",
+      "description": "As a user, I want proof that redeye's lock and tiiny-router's lock exclude each other in both directions.",
+      "acceptanceCriteria": [
+        "A test acquires the lock in redeye, then runs `python3 <tiiny-router>/controller/tiiny_ctl.py reserve` against the same TIINY_HOME and shows it is refused",
+        "A test does the reverse: the controller reserves first, and redeye's acquire is refused",
+        "The tiiny-router directory comes from an env var (e.g. TIINY_ROUTER_DIR, defaulting to ~/code/tiiny_router)",
+        "The tests skip with a clear message when python3 or the controller script is not available",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Hold file",
+      "description": "As a user with a device watchdog, I want redeye to record the models it loaded, so the watchdog does not evict them mid-run.",
+      "acceptanceCriteria": [
+        "Hold path is TIINY_HOLD_FILE if set, else $TIINY_HOME/tiiny-hold",
+        "holdWrite(ids) writes one model id per line",
+        "holdClear() truncates the file to empty, then deletes it if it can; a truncated or missing file both count as released",
+        "If the hold file still has content after holdClear(), it returns an error naming the path",
+        "Tests use a temp TIINY_HOME and assert file contents",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Startup wiring: Tiiny run detection, new flags, dry-run",
+      "description": "As a user, I want redeye to recognize a Tiiny run at startup, accept the device-lock flags, and show in --dry-run what it would do with the device.",
+      "acceptanceCriteria": [
+        "The run command accepts --no-device-lock (boolean) and --device-lock-ttl <seconds> (default 1800)",
+        "For a Tiiny run with no tiiny provider in models.json, redeye exits non-zero before creating any worktree or integration branch",
+        "A run whose models do not start with tiiny/ never reads models.json (test: PI_MODELS_FILE points at an invalid file and the run behaves as before)",
+        "--dry-run on a Tiiny run prints the lock path and the device model ids, and never contacts the device or creates/changes the lock or hold files",
+        "--no-device-lock on a Tiiny run prints one line at startup saying the device lock is off",
+        "Any new env var a test sets (PI_MODELS_FILE, TIINY_*) is added to that test file's clear/restore key list",
+        "CLI tests in test/integration.test.ts assert exit code and file state, not message wording",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Reserve the device and load models before the first worktree",
+      "description": "As a user, I want a Tiiny run to take the device and make sure its models are loaded before any agent starts.",
+      "acceptanceCriteria": [
+        "For a Tiiny run without --no-device-lock, before the first worktree is created, redeye in order: acquires the lock with TTL --device-lock-ttl, writes the hold with the run's device model ids, loads each id that is not resident, then checks every id is resident",
+        "If another owner holds the lock, redeye exits non-zero before creating any worktree; the lock file is left unchanged",
+        "If any model is still not resident after loading, redeye clears the hold, releases the lock and exits non-zero",
+        "With --no-device-lock, redeye does not touch the lock or hold and does not ask the device to load anything",
+        "Integration tests use the fake device server and a temp TIINY_HOME and assert: models the fake server was asked to load, lock file state, hold file content, exit code, and that no worktree was created on refusal",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Renew the lock during the run and release on every exit path",
+      "description": "As a user, I want redeye to keep the device while it runs and give it back however the run ends.",
+      "acceptanceCriteria": [
+        "While a Tiiny run is in progress, redeye renews the lock every 5 minutes (a test-only env var may shorten the interval); a test shows expires moves forward during a run",
+        "The renewal timer does not keep the process alive after the run ends",
+        "After a run that finishes with all tickets done, the lock file is in the released state and the hold file is empty or missing",
+        "Same for a run with failed tickets (exit 1) and a run that ends in a runtime error (exit 2)",
+        "On SIGINT and SIGTERM, release and hold clear run in the existing handlers in src/index.ts before exit; exit codes stay 130 and 143",
+        "Release and hold clear do not throw when the lock was never taken, and their errors are logged, never change the exit code",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Classify not-loaded failures",
+      "description": "As a user, I want an attempt that failed because the model was not loaded to be reported as such, not as no-commits.",
+      "acceptanceCriteria": [
+        "After a pi agent exits, redeye scans its --mode json stream for an assistant message_end with stopReason 'error' and an errorMessage containing 'is not loaded' or 'model_not_found'",
+        "This check runs before the no-commits check",
+        "'not-loaded' is added to LEARNING_OUTCOMES in src/learnings.ts; its entry names the model and is parsed back like the existing outcomes",
+        "Without recovery (e.g. --no-device-lock), a not-loaded attempt is a failed attempt that counts toward --retries",
+        "The fake pi agent (test/mock-agent-pi.js) can emit a not-loaded error stream and exit 0, driven by a FAKE_PI_* env var added to the tests' key lists",
+        "Tests assert the learnings outcome and ticket status, not wording",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Reload and re-run after a not-loaded failure",
+      "description": "As a user, I want an attempt that failed only because the model was evicted to be re-run after a reload, so it does not cost a retry or get the ticket skipped.",
+      "acceptanceCriteria": [
+        "On a not-loaded failure in a Tiiny run holding the lock, redeye reloads the model with loadModel while still holding the lock, then re-runs the same attempt from a fresh worktree",
+        "The re-run does not count toward --retries, does not wait --retry-delay, and does not raise the effort level",
+        "Each attempt is recovered at most 2 times; after that it is an ordinary failed attempt",
+        "If the reload fails, the attempt is an ordinary failed attempt and its learnings entry says the model could not be reloaded",
+        "Each recovery appends a not-loaded learnings entry naming the model",
+        "With --no-device-lock, there is no reload (US-009 behavior)",
+        "Integration tests with the fake device and fake pi assert: models the fake server was asked to load, number of agent runs, ticket status, learnings outcomes",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Warn when --effort cannot reach the device",
+      "description": "As a user who passes --effort, I want to know at startup when that setting has no effect on the device, and what to change.",
+      "acceptanceCriteria": [
+        "For a Tiiny run where --effort is given or --retries is above 0, when the tiiny compat has supportsReasoningEffort not true and no thinkingFormat, redeye prints one warning that pi will not send a reasoning setting",
+        "When GET <baseUrl>/models succeeds, the warning includes each run model's thinking block (toggleable, levels, default_level) and suggests \"thinkingFormat\": \"qwen-chat-template\" for a toggleable model or \"supportsReasoningEffort\": true for a model with levels only",
+        "The warning is printed once per run, never blocks the run, and is skipped when the config would send a setting",
+        "The decision (warn or not, which fix) is a pure function in src/tiiny.ts with unit tests; tests do not check wording",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Warn about concurrency on a Tiiny run",
+      "description": "As a user, I want redeye to tell me when --concurrency above 1 will only slow a Tiiny run down.",
+      "acceptanceCriteria": [
+        "For a Tiiny run with --concurrency above 1 (including the default), redeye prints one warning at startup that the device answers one request at a time",
+        "The run proceeds with the concurrency the user chose",
+        "Non-Tiiny runs print no such warning",
+        "The decision is a pure function with a unit test; the test does not check wording",
+        "npm run lint passes",
+        "npm test passes (after npm run build)",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Document Tiiny runs",
+      "description": "As a user, I want the README and AGENTS.md to explain what redeye does with a Tiiny device and how to configure it.",
+      "acceptanceCriteria": [
+        "The \"Local Model With `pi`\" section of README.md describes the lock, the hold, loading at startup, not-loaded recovery, and the --no-device-lock and --device-lock-ttl flags",
+        "It shows the compat settings that let --effort reach the device and which applies to which kind of model",
+        "It explains that tiiny-router's `npx tr status` shows who holds the device and that redeye and tiiny-router share the lock",
+        "The Command Line Arguments table lists both new flags",
+        "AGENTS.md gains any cross-module invariant this feature introduced (e.g. the device lock is released on every exit path from src/index.ts) and src/tiiny.ts in Project Structure",
+        "README.md and AGENTS.md contain no em dashes and no arrow characters",
+        "No tests are written for docs",
+        "npm run lint passes",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
