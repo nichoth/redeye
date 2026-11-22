@@ -48,6 +48,7 @@ so they can't drift as long as you install the skills with this package.
       - [GLM 4.7 flash -- 57% NPU](#glm-47-flash----57%25-npu)
     + [2. Run the Loop](#2-run-the-loop)
       - [Qwen3.5-9B-Turbo](#qwen35-9b-turbo)
+      - [ornith-ai/Ornith-1.5-35B-A3B-Turbo](#ornith-aiornith-15-35b-a3b-turbo)
       - [Qwen3.6-35B-A3B-turbo](#qwen36-35b-a3b-turbo)
       - [Qwen3.6-27B-Turbo](#qwen36-27b-turbo)
       - [Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo](#huihui-ornith-15-35b-a3b-abliterated-turbo)
@@ -532,6 +533,14 @@ the agents evict each other's prompt cache (see
 
 ```sh
 caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.5-9B-Turbo --concurrency 1 --timeout 900 --retries 1
+```
+
+---
+
+##### ornith-ai/Ornith-1.5-35B-A3B-Turbo
+
+```sh
+caffeinate -i npx redeye pi -m tiiny/ornith-ai/Ornith-1.5-35B-A3B-Turbo --concurrency 1 --timeout 3600 --retries 1
 ```
 
 ---
