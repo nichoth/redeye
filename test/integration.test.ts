@@ -8255,3 +8255,132 @@ async t => {
         })
     }
 })
+
+// -- US-006: Keep prompt text free from shell interpretation --
+
+const SHELL_MARKER_006 = 'US006-SHELL-MARKER-' + randomUUID()
+
+const SPEC_SHELL_006 =
+    '# Spec with shell metacharacters\n' +
+    '\n' +
+    'Run this:\n' +
+    '```sh\n' +
+    `$(touch /tmp/${SHELL_MARKER_006}-spec-dollar)\n` +
+    '```\n' +
+    '\n' +
+    'Or this:\n' +
+    '```sh\n' +
+    `\`touch /tmp/${SHELL_MARKER_006}-spec-backtick\`\n` +
+    '```\n'
+
+const TICKET_SHELL_006 =
+    '# Ticket with shell commands\n' +
+    '\n' +
+    '**Status:** ready-for-agent\n' +
+    '\n' +
+    '## Steps\n' +
+    '\n' +
+    `1. \`$(touch /tmp/${SHELL_MARKER_006}-ticket-dollar)\`\n` +
+    `2. \`\`touch /tmp/${SHELL_MARKER_006}` +
+    '-ticket-backtick``\n'
+
+test('CLI subprocess - US-006: shell metacharacters in ' +
+    'prompt text are not interpreted',
+async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = tmp()
+    try {
+        const specPath = join(
+            projectDir, '.scratch', FEAT, 'spec.md'
+        )
+        writeFileSync(specPath, SPEC_SHELL_006)
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            TICKET_SHELL_006
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(recordDir, 'argv.log')
+        const stdinLog = join(recordDir, 'stdin.log')
+
+        const { code, stderr } = await spawnCli([
+            FAKE_HERMES,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_ARGV_LOG: argvLog,
+                FAKE_HERMES_STDIN_LOG: stdinLog,
+            }),
+        })
+
+        t.equal(code, 0,
+            `exit 0 (stderr: ${stderr.slice(0, 200)})`)
+
+        t.ok(existsSync(stdinLog), 'stdin log exists')
+        const stdin = readFileSync(stdinLog, 'utf8')
+
+        const dollarSpec =
+            `$(touch /tmp/${SHELL_MARKER_006}-spec-dollar)`
+        const backtickSpec =
+            '`touch /tmp/' +
+            SHELL_MARKER_006 + '-spec-backtick`'
+        const dollarTicket =
+            '$(touch /tmp/' +
+            `${SHELL_MARKER_006}-ticket-dollar)`
+        const backtickTicket =
+            '`touch /tmp/' +
+            SHELL_MARKER_006 + '-ticket-backtick`'
+
+        t.ok(stdin.includes(dollarSpec),
+            'spec $(...) literal reaches stdin')
+        t.equal(stdin.split(dollarSpec).length - 1, 1,
+            'spec $(...) occurs exactly once')
+
+        t.ok(stdin.includes(backtickSpec),
+            'spec backtick command reaches stdin')
+        t.equal(
+            stdin.split(backtickSpec).length - 1, 1,
+            'spec backtick command occurs exactly once'
+        )
+
+        t.ok(stdin.includes(dollarTicket),
+            'ticket $(...) literal reaches stdin')
+        t.equal(
+            stdin.split(dollarTicket).length - 1, 1,
+            'ticket $(...) occurs exactly once'
+        )
+
+        t.ok(stdin.includes(backtickTicket),
+            'ticket backtick command reaches stdin')
+        t.equal(
+            stdin.split(backtickTicket).length - 1, 1,
+            'ticket backtick command occurs exactly once'
+        )
+
+        const markerFiles = [
+            `/tmp/${SHELL_MARKER_006}-spec-dollar`,
+            `/tmp/${SHELL_MARKER_006}-spec-backtick`,
+            `/tmp/${SHELL_MARKER_006}-ticket-dollar`,
+            `/tmp/${SHELL_MARKER_006}-ticket-backtick`,
+        ]
+        for (const f of markerFiles) {
+            t.ok(!existsSync(f),
+                `no marker file: ${basename(f)}`)
+        }
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})

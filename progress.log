@@ -332,3 +332,36 @@ Status: DONE
 - npm run build: passed, including declaration typecheck.
 - npm test: full suite passed, all suites green, 0 failures.
 - Set passes:true for US-005 only. No other stories touched.
+
+## US-006: Keep prompt text free from shell interpretation
+
+Date: 2026-11-22
+Status: DONE
+
+### What changed
+- Added integration test in `test/integration.test.ts` that
+  verifies shell metacharacters in ticket and spec text pass
+  through stdin as literal data, never evaluated by a shell
+- Fixtures contain literal `$(touch /tmp/MARKER)` and
+  `` `touch /tmp/MARKER` `` with unique randomUUID markers
+- 14 assertions cover: each literal reaches stdin unchanged,
+  each occurs exactly once, and no marker files are created
+- No production changes needed: spawnAgent already uses
+  `spawn()` without `shell: true`, so prompt text is piped
+  directly to the agent process via stdin
+
+### Patterns and gotchas
+- eslint requires single quotes for non-interpolated string
+  fragments, even when concatenated with template literals
+- The test falls in integration shard 9/20 (index 149 % 20 = 9)
+- Pre-existing intermittent failures in shards 13/20 and 14/20
+  are unrelated (documented since US-001, timing-dependent under
+  parallel load)
+
+### Verification
+- npm run lint: passed (0 errors).
+- npm run build: passed, including declaration typecheck.
+- Focused test: TEST_SHARD=9/20, all 35 assertions passed.
+- npm test: full suite passed except pre-existing intermittent
+  failures in shards 13/20 and 14/20 (confirmed unrelated).
+- Set passes:true for US-006 only. No other stories touched.
