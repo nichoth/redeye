@@ -9249,3 +9249,183 @@ async t => {
         })
     }
 })
+
+// -- US-015: Retain Hermes final output and attempt diagnostics --
+
+test('CLI subprocess - US-015: successful hermes exit ' +
+    'retains stdout and stderr in attempt log',
+async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = mkdtempSync(
+        join(tmpdir(), 'redeye-us015a-')
+    )
+    const logsDir = join(
+        projectDir, '.scratch', FEAT, 'logs'
+    )
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(recordDir, 'argv.log')
+        const stdoutMarker =
+            'US015-STDOUT-OK-' + randomUUID()
+        const stderrMarker =
+            'US015-STDERR-OK-' + randomUUID()
+
+        const { code, stderr } = await spawnCli([
+            FAKE_HERMES,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_ARGV_LOG: argvLog,
+                FAKE_HERMES_OUTPUT:
+                    stdoutMarker + '\n',
+                FAKE_HERMES_STDERR:
+                    stderrMarker + '\n',
+            }),
+        })
+
+        // AC: successful exit
+        t.equal(code, 0,
+            `exit 0 (stderr: ${stderr.slice(0, 200)})`)
+
+        // AC: ticket marked done
+        const ticket = readFileSync(
+            join(issuesDir, '01-task.md'), 'utf8'
+        )
+        t.ok(
+            ticket.includes('**Status:** done'),
+            'ticket marked done'
+        )
+
+        // AC: attempt log retains both markers
+        const attemptLogs = existsSync(logsDir) ?
+            readdirSync(logsDir).filter(
+                f => f.endsWith('.log') &&
+                    !f.endsWith('.test.log')
+            ) :
+            []
+        t.ok(attemptLogs.length >= 1,
+            'attempt log files exist')
+        const allLogContent = attemptLogs.map(
+            f => readFileSync(
+                join(logsDir, f), 'utf8'
+            )
+        ).join('\n')
+        t.ok(
+            allLogContent.includes(stdoutMarker),
+            'stdout marker retained in attempt log'
+        )
+        t.ok(
+            allLogContent.includes(stderrMarker),
+            'stderr marker retained in attempt log'
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
+
+test('CLI subprocess - US-015: nonzero hermes exit ' +
+    'retains stdout and stderr in attempt log',
+async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = mkdtempSync(
+        join(tmpdir(), 'redeye-us015b-')
+    )
+    const logsDir = join(
+        projectDir, '.scratch', FEAT, 'logs'
+    )
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(recordDir, 'argv.log')
+        const stdoutMarker =
+            'US015-STDOUT-FAIL-' + randomUUID()
+        const stderrMarker =
+            'US015-STDERR-FAIL-' + randomUUID()
+
+        const { code } = await spawnCli([
+            FAKE_HERMES,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '0',
+            '--retry-delay', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_ARGV_LOG: argvLog,
+                FAKE_HERMES_EXIT: '1',
+                FAKE_HERMES_OUTPUT:
+                    stdoutMarker + '\n',
+                FAKE_HERMES_STDERR:
+                    stderrMarker + '\n',
+            }),
+        })
+
+        // AC: nonzero exit, ticket unfinished
+        t.ok(code !== 0,
+            `CLI exits nonzero (got ${code})`)
+        const ticket = readFileSync(
+            join(issuesDir, '01-task.md'), 'utf8'
+        )
+        t.ok(
+            !ticket.includes('**Status:** done'),
+            'ticket not marked done'
+        )
+
+        // AC: attempt log retains both markers
+        const attemptLogs = existsSync(logsDir) ?
+            readdirSync(logsDir).filter(
+                f => f.endsWith('.log') &&
+                    !f.endsWith('.test.log')
+            ) :
+            []
+        t.ok(attemptLogs.length >= 1,
+            'attempt log files exist')
+        const allLogContent = attemptLogs.map(
+            f => readFileSync(
+                join(logsDir, f), 'utf8'
+            )
+        ).join('\n')
+        t.ok(
+            allLogContent.includes(stdoutMarker),
+            'stdout marker retained in attempt log'
+        )
+        t.ok(
+            allLogContent.includes(stderrMarker),
+            'stderr marker retained in attempt log'
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
