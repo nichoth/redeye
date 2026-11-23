@@ -728,3 +728,22 @@ Status: BLOCKED on full-suite environment permissions
   did not pass. Stop until the environment permits the existing
   localhost fake-device listener; do not repeat Hermes implementation
   work to address this external prerequisite.
+
+### US-015 completed verification (2026-11-23)
+
+- Reviewed the existing final-output regressions and fake Hermes drain
+  fix. Both successful and nonzero turns retain stdout and stderr,
+  including final markers without trailing newlines after 64 KiB on
+  each stream. All 20 US-015 assertions passed in the full suite.
+- Production output callbacks, display routing and log flushing remain
+  unchanged. No Hermes event parsing, token stats or cost reporting
+  were added.
+- Fresh npm run build passed, including declaration typecheck.
+  npm run lint and git diff --check passed.
+- The sandboxed npm test run failed only on Tiiny's localhost listener
+  with listen EPERM. An approved run outside the sandbox then passed
+  the full npm test suite, including Tiiny and fake Hermes. Output:
+  /tmp/redeye-us015-20261123-unsandboxed.log.
+- Marked only US-015 passes:true in specs/prd.json. The earlier socket
+  restriction is resolved for this verification run; no test skips or
+  unrelated implementation changes were needed.
