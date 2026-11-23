@@ -6,7 +6,7 @@ import {
     readFileSync, existsSync, rmSync, chmodSync,
     symlinkSync, readdirSync,
 } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import {
@@ -8522,4 +8522,161 @@ async t => {
             recursive: true, force: true,
         })
     }
+})
+
+// -- US-009: Support both bare and full-path Hermes executables --
+
+const HERMES_DIR = dirname(FAKE_HERMES)
+
+async function hermesRun (
+    t:Test,
+    provider:string,
+    env:NodeJS.ProcessEnv,
+):{
+    code:number
+    argv:string[]
+    stdin:string
+} {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(recordDir, 'argv.log')
+        const stdinLog = join(recordDir, 'stdin.log')
+
+        const { code, stderr } = await spawnCli([
+            provider,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: {
+                ...env,
+                FAKE_HERMES_ARGV_LOG: argvLog,
+                FAKE_HERMES_STDIN_LOG: stdinLog,
+            },
+        })
+
+        t.equal(code, 0,
+            `exit 0 for ${provider} ` +
+            `(stderr: ${stderr.slice(0, 200)})`)
+
+        t.ok(existsSync(argvLog),
+            `argv log exists for ${provider}`)
+        t.ok(existsSync(stdinLog),
+            `stdin log exists for ${provider}`)
+
+        const argv:string[] = JSON.parse(
+            readFileSync(argvLog, 'utf8')
+                .trim().split('\n')[0]
+        )
+        const stdin = readFileSync(stdinLog, 'utf8')
+
+        const ticket = readFileSync(
+            join(issuesDir, '01-task.md'), 'utf8'
+        )
+        t.ok(
+            ticket.includes('**Status:** done'),
+            `ticket done for ${provider}`
+        )
+
+        return { code, argv, stdin }
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+}
+
+test('CLI subprocess - US-009: bare hermes resolves ' +
+    'through controlled PATH',
+async t => {
+    const baseEnv = fakeHermesEnv()
+    baseEnv.PATH = HERMES_DIR +
+        ':' + (baseEnv.PATH ?? '')
+
+    const { argv, stdin } = await hermesRun(
+        t, 'hermes', baseEnv,
+    )
+
+    // AC: same single-turn launch options
+    t.deepEqual(
+        argv.slice(0, HERMES_REQUIRED_PREFIX.length),
+        HERMES_REQUIRED_PREFIX,
+        'bare hermes gets required prefix args'
+    )
+
+    // AC: receives the complete fixture prompt on stdin
+    t.ok(stdin.length > 0,
+        'bare hermes received stdin')
+    t.ok(stdin.includes('AGENT INSTRUCTIONS'),
+        'bare hermes stdin includes agent instructions')
+})
+
+test('CLI subprocess - US-009: full-path hermes ' +
+    'preserves behavior',
+async t => {
+    const baseEnv = fakeHermesEnv()
+
+    const { argv, stdin } = await hermesRun(
+        t, FAKE_HERMES, baseEnv,
+    )
+
+    // AC: same single-turn launch options
+    t.deepEqual(
+        argv.slice(0, HERMES_REQUIRED_PREFIX.length),
+        HERMES_REQUIRED_PREFIX,
+        'full-path hermes gets required prefix args'
+    )
+
+    // AC: receives the complete fixture prompt on stdin
+    t.ok(stdin.length > 0,
+        'full-path hermes received stdin')
+    t.ok(stdin.includes('AGENT INSTRUCTIONS'),
+        'full-path hermes stdin includes agent instructions')
+})
+
+test('CLI subprocess - US-009: bare and full-path ' +
+    'hermes produce equivalent launch options',
+async t => {
+    const bareEnv = fakeHermesEnv()
+    bareEnv.PATH = HERMES_DIR +
+        ':' + (bareEnv.PATH ?? '')
+    const fullEnv = fakeHermesEnv()
+
+    const bare = await hermesRun(
+        t, 'hermes', bareEnv,
+    )
+    const full = await hermesRun(
+        t, FAKE_HERMES, fullEnv,
+    )
+
+    // AC: both routes capture the same launch options
+    t.deepEqual(bare.argv, full.argv,
+        'bare and full-path argv are identical')
+
+    // AC: both routes receive the complete prompt
+    t.ok(bare.stdin.length > 0,
+        'bare stdin non-empty')
+    t.ok(full.stdin.length > 0,
+        'full stdin non-empty')
+    t.ok(
+        bare.stdin.includes('AGENT INSTRUCTIONS') &&
+        full.stdin.includes('AGENT INSTRUCTIONS'),
+        'both routes include agent instructions'
+    )
 })

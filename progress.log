@@ -417,3 +417,31 @@ Status: DONE
 - Focused test: TEST_SHARD=11/20, all 33 assertions passed.
 - npm test: full suite passed, all suites green.
 - Set passes:true for US-008 only. No other stories touched.
+
+## US-009: Support both bare and full-path Hermes executables
+
+Date: 2026-11-22
+Status: DONE
+
+### What changed
+- Added `dirname` to the path import in `test/integration.test.ts`
+- Added `hermesRun` helper that runs a full hermes ticket flow and
+  returns captured argv and stdin, used by all three US-009 tests
+- Added three integration tests:
+  1. Bare `hermes` resolved through a controlled test PATH --
+     asserts required prefix args and stdin delivery
+  2. Full-path hermes (the FAKE_HERMES constant) -- asserts
+     the same required prefix args and stdin delivery
+  3. Equivalence test -- runs both routes and asserts their
+     captured argv arrays are identical and both receive the
+     agent instructions prompt
+- No production changes needed: `getProviderArgs` and `spawnAgent`
+  already use `basename(cmd)` to extract the provider name, so
+  both bare names and full paths produce the same provider args
+
+### Verification
+- npm run lint: passed (0 errors).
+- npm run build: passed, including declaration typecheck.
+- Focused tests: shards 12/20, 13/20, 14/20 all passed.
+- npm test: full suite passed, all suites green.
+- Set passes:true for US-009 only. No other stories touched.
