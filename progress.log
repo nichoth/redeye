@@ -237,3 +237,76 @@ Status: BLOCKED; passes remains false and no commit was made.
 - Left specs/prd.json unchanged, including US-005 and all manual stories.
   No task commit: the user's required successful verification has not
   occurred. Stopped without starting another story.
+
+## US-005: Current-checkout prerequisite check
+
+Date: 2026-11-22
+Status: BLOCKED; passes remains false and no task commit was made.
+
+- Read specs/prd.json and progress.log at session start.
+  docs/INDEX.md is absent; read docs/README.md instead.
+- The checkout started clean at 20f453b (wip). Contrary to earlier
+  progress entries, the existing US-005 regression is now committed
+  in the current history, rather than left as an uncommitted diff.
+- Confirmed the regression compares exact multiline spec and ticket
+  fixtures in their respective sections and in the complete stdin.
+- npm run lint failed with 89 indentation errors in test/tiiny.test.ts.
+- A standalone Node net.createServer listener on 127.0.0.1 failed
+  with EPERM. This reproduces the documented full-suite prerequisite
+  failure without running project code.
+- Stopped at the confirmed blockers, as instructed for failures that
+  cannot be fixed this session. Did not repeat the known-failing full
+  suite, modify unrelated Tiiny tests, or bypass verification gates.
+- No source or test changes, no PRD changes and no task commit.
+  Completing US-005 still requires successful lint and full tests in
+  an environment that permits the suite's localhost listeners.
+
+## US-005: Session prerequisite recheck
+
+Date: 2026-11-22
+Status: BLOCKED; passes remains false and no task commit was made.
+
+- Read specs/prd.json and progress.log before inspecting the checkout.
+  docs/INDEX.md is absent; read docs/README.md instead.
+- The checkout already contained the US-005 exact-fixture regression
+  and an uncommitted progress.log entry; preserved both.
+- Confirmed the existing test covers multiline Markdown, code fences,
+  single and double quotes, backticks, Unicode and exact occurrence
+  counts in each prompt section and the complete captured stdin.
+- npm run lint freshly failed with 89 indentation errors in untouched
+  test/tiiny.test.ts. A standalone Node localhost listener freshly
+  failed with listen EPERM on 127.0.0.1, confirming the full-suite
+  environment prerequisite remains unavailable.
+- Followed the instruction to stop at an unfixable session blocker.
+  Did not repeat the known-failing full suite or mutation cycle,
+  change unrelated tests, weaken verification, or add dependencies.
+- Left all PRD stories unchanged. No completion claim or task commit:
+  successful lint and full-suite verification are still required.
+
+## US-005: Direct suite-dependency investigation
+
+Date: 2026-11-22
+Status: BLOCKED; passes remains false and no task commit was made.
+
+- Read specs/prd.json and progress.log at session start. The requested
+  docs/INDEX.md is absent; read docs/README.md and AGENTS.md instead.
+- Reviewed the committed US-005 regression. It already compares the
+  exact spec and ticket fixtures, including Markdown fences, quotes,
+  backticks, Unicode and line breaks, once in each prompt section.
+- Tested the earlier environment assumption at the actual dependency
+  boundary instead of repeating the standalone net-server probe:
+  imported test/fake-device.ts directly with Node and called
+  createFakeDevice(). Its HTTP listener failed with listen EPERM on
+  127.0.0.1 before startup completed. The helper emits an unhandled
+  server error, so a try/catch around its promise cannot recover it.
+  This confirms the unchanged Tiiny suite cannot start its fake device
+  in the current execution environment, independently of Hermes.
+- npm run lint freshly failed with the same 89 indentation errors in
+  test/tiiny.test.ts. Git history confirms that file is unchanged by
+  US-005; no formatting or transport changes were made outside scope.
+- Preserved the existing regression and its recorded red/green proof.
+  Did not repeat the known-blocked full suite, add dependencies, skip
+  tests or weaken verification. The required passing lint and full
+  suite remain prerequisites to setting passes:true and committing.
+- Stopped at the verified environment blocker under the session's
+  error-handling rule. Left all PRD stories and manual work untouched.
