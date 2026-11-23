@@ -8384,3 +8384,77 @@ async t => {
         })
     }
 })
+
+// -- US-007: Forward the selected Hermes model unchanged --
+
+test('CLI subprocess - US-007: -m model value reaches ' +
+    'hermes argv unchanged',
+async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(recordDir, 'argv.log')
+
+        const MODEL = 'anthropic/claude-sonnet-4.6'
+
+        const { code, stderr } = await spawnCli([
+            FAKE_HERMES,
+            '-m', MODEL,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_ARGV_LOG: argvLog,
+            }),
+        })
+
+        t.equal(code, 0,
+            `exit 0 (stderr: ${stderr.slice(0, 200)})`)
+        t.ok(existsSync(argvLog), 'argv log exists')
+
+        const argv:string[] = JSON.parse(
+            readFileSync(argvLog, 'utf8')
+                .trim().split('\n')[0]
+        )
+
+        // AC: --model follows the chat options
+        const modelIdx = argv.indexOf('--model')
+        t.ok(modelIdx > -1,
+            '--model present in captured argv')
+        const chatIdx = argv.indexOf('chat')
+        t.ok(
+            chatIdx > -1 && modelIdx > chatIdx,
+            '--model follows the chat subcommand'
+        )
+
+        // AC: value is exactly the requested model
+        t.equal(argv[modelIdx + 1], MODEL,
+            'model value forwarded unchanged')
+
+        // AC: no rewriting -- provider prefix preserved
+        t.ok(
+            argv[modelIdx + 1].startsWith('anthropic/'),
+            'provider prefix not stripped'
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
