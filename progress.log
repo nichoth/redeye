@@ -91,3 +91,27 @@ Status: DONE
   provider args in `PROVIDER_ARGS.hermes`
 - The test falls in integration shard 6/20 (index 146 % 20 = 6)
 - Pre-existing failures in shards 13/20 and 14/20 are unrelated
+
+## US-004: Deliver the complete ticket prompt once through stdin
+
+Date: 2026-11-22
+Status: DONE
+
+### What changed
+- Added integration test in `test/integration.test.ts` that
+  asserts hermes receives the complete ticket prompt on stdin
+- Uses FAKE_HERMES_STDIN_LOG to capture what hermes reads
+- Ticket and spec contain unique fixture markers
+  (US004-SPEC-UNIQUE-7f3a2e, US004-TICKET-UNIQUE-9b1c4d)
+- 13 assertions cover: stdin captured (EOF observed), all three
+  prompt sections present (SPEC CONTEXT, TICKET, AGENT
+  INSTRUCTIONS), each fixture marker occurs exactly once,
+  prompt content absent from argv
+
+### Patterns and gotchas
+- No source changes needed -- spawnAgent already writes the
+  prompt to stdin and closes the pipe (lines 1378-1381 of
+  src/orchestrator.ts)
+- The test falls in integration shard 7/20 (index 147 % 20 = 7)
+- Pre-existing failure in shard 13/20 is intermittent and
+  unrelated

@@ -8018,3 +8018,117 @@ async t => {
         })
     }
 })
+
+// -- US-004: Deliver the complete ticket prompt once
+//            through stdin --
+
+const SPEC_MARKER_004 = 'US004-SPEC-UNIQUE-7f3a2e'
+const TICKET_MARKER_004 = 'US004-TICKET-UNIQUE-9b1c4d'
+
+test('CLI subprocess - US-004: hermes receives the ' +
+    'complete ticket prompt on stdin',
+async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = tmp()
+    try {
+        const specPath = join(
+            projectDir, '.scratch', FEAT, 'spec.md'
+        )
+        writeFileSync(
+            specPath,
+            `# Test spec\n\n${SPEC_MARKER_004}\n`
+        )
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            '# Test ticket\n\n' +
+            `${TICKET_MARKER_004}\n\n` +
+            '**Status:** ready-for-agent\n'
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(recordDir, 'argv.log')
+        const stdinLog = join(recordDir, 'stdin.log')
+
+        const { code, stderr } = await spawnCli([
+            FAKE_HERMES,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_ARGV_LOG: argvLog,
+                FAKE_HERMES_STDIN_LOG: stdinLog,
+            }),
+        })
+
+        t.equal(code, 0,
+            `exit 0 (stderr: ${stderr.slice(0, 200)})`)
+
+        // AC: stdin was captured (EOF was observed)
+        t.ok(existsSync(stdinLog),
+            'stdin log exists (EOF observed)')
+        const stdin = readFileSync(stdinLog, 'utf8')
+
+        // AC: stdin includes spec context
+        t.ok(stdin.includes('---- SPEC CONTEXT ----'),
+            'stdin contains spec context section')
+        t.ok(stdin.includes(SPEC_MARKER_004),
+            'stdin contains spec fixture marker')
+
+        // AC: stdin includes ticket body
+        t.ok(stdin.includes('---- TICKET ----'),
+            'stdin contains ticket section')
+        t.ok(stdin.includes(TICKET_MARKER_004),
+            'stdin contains ticket fixture marker')
+
+        // AC: stdin includes agent instructions
+        t.ok(
+            stdin.includes('---- AGENT INSTRUCTIONS ----'),
+            'stdin contains agent instructions section'
+        )
+
+        // AC: each fixture marker occurs exactly once
+        const specCount = stdin.split(SPEC_MARKER_004)
+            .length - 1
+        t.equal(specCount, 1,
+            'spec marker occurs exactly once')
+        const ticketCount = stdin.split(
+            TICKET_MARKER_004
+        ).length - 1
+        t.equal(ticketCount, 1,
+            'ticket marker occurs exactly once')
+
+        // AC: prompt content is absent from argv
+        t.ok(existsSync(argvLog), 'argv log exists')
+        const argv:string[] = JSON.parse(
+            readFileSync(argvLog, 'utf8')
+                .trim().split('\n')[0]
+        )
+        const argvStr = argv.join(' ')
+        t.ok(
+            !argvStr.includes(SPEC_MARKER_004),
+            'spec marker absent from argv'
+        )
+        t.ok(
+            !argvStr.includes(TICKET_MARKER_004),
+            'ticket marker absent from argv'
+        )
+        t.ok(
+            !argvStr.includes('AGENT INSTRUCTIONS'),
+            'prompt text absent from argv'
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
