@@ -588,3 +588,39 @@ Status: DONE
 - Focused test: TEST_SHARD=18/20, all 33 assertions passed.
 - npm test: full suite passed, all suites green, 0 failures.
 - Set passes:true for US-013 only. No other stories touched.
+
+## US-014: Reject exit-0 Hermes attempts that make no commits
+
+Date: 2026-11-22
+Status: DONE
+
+### What changed
+- Added integration test in `test/integration.test.ts` that
+  runs the built CLI with fake hermes in no-work mode
+  (FAKE_HERMES_NO_WORK=1) with bounded retries
+- Uses --retries 1 --retry-delay 0 to bound retry attempts
+- 7 assertions cover: CLI exits nonzero, ticket not marked
+  done, no hermes change file merged, argv log has exactly
+  2 turns (1 initial + 1 retry), learnings.md exists and
+  contains at least one no-commits outcome entry
+- No production changes needed: the existing no-commits
+  detection in runTicketAttempt (hasNewCommits check at
+  orchestrator.ts:2689) and retry policy in runWithRetries
+  already handle exit-0-no-commits correctly -- the outcome
+  falls through without stop:true so it is retried
+
+### Patterns and gotchas
+- The test falls in integration shard 19/20 (index 159 % 20 = 19)
+- The fake hermes no-work mode (FAKE_HERMES_NO_WORK=1) was
+  already implemented in US-001; this test exercises it through
+  the full CLI subprocess path with bounded retries
+- Unlike the nonzero-exit retry path (which checks exitCode),
+  the no-commits retry works because runWithRetries returns
+  stop:false for the no-commits outcome kind
+
+### Verification
+- npm run lint: passed (0 errors).
+- npm run build: passed, including declaration typecheck.
+- Focused test: TEST_SHARD=19/20, all 31 assertions passed.
+- npm test: full suite passed, all suites green, 0 failures.
+- Set passes:true for US-014 only. No other stories touched.

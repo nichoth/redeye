@@ -9160,3 +9160,92 @@ async t => {
         })
     }
 })
+
+// -- US-014: Reject exit-0 Hermes attempts with no commits --
+
+test('CLI subprocess - US-014: hermes exits 0 with no ' +
+    'commits leaves ticket unfinished',
+async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = mkdtempSync(
+        join(tmpdir(), 'redeye-us014-')
+    )
+    const learningsPath = join(
+        projectDir, '.scratch', FEAT, 'learnings.md'
+    )
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(recordDir, 'argv.log')
+
+        const { code } = await spawnCli([
+            FAKE_HERMES,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '1',
+            '--retry-delay', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_ARGV_LOG: argvLog,
+                FAKE_HERMES_NO_WORK: '1',
+            }),
+        })
+
+        // AC: CLI exits nonzero
+        t.ok(
+            code !== 0,
+            `CLI exits nonzero (got ${code})`
+        )
+
+        // AC: ticket is NOT marked done
+        const ticket = readFileSync(
+            join(issuesDir, '01-task.md'), 'utf8'
+        )
+        t.ok(
+            !ticket.includes('**Status:** done'),
+            'ticket not marked done'
+        )
+
+        // AC: no controlled ticket change merged
+        const changeFiles = readdirSync(projectDir)
+            .filter(f => f.startsWith('hermes-change-'))
+        t.equal(changeFiles.length, 0,
+            'no hermes change file merged')
+
+        // AC: retries bounded -- with --retries 1,
+        // exactly 2 attempts (1 initial + 1 retry)
+        t.ok(existsSync(argvLog), 'argv log exists')
+        const turns = readFileSync(argvLog, 'utf8')
+            .trim().split('\n').filter(Boolean)
+        t.equal(turns.length, 2,
+            'exactly 2 hermes turns ' +
+            '(1 initial + 1 retry)')
+
+        // AC: the existing no-commits outcome is recorded
+        t.ok(existsSync(learningsPath),
+            'learnings.md exists')
+        const entries = readEntries(learningsPath)
+        const noCommitEntries = entries.filter(
+            e => e.outcome === 'no-commits'
+        )
+        t.ok(noCommitEntries.length >= 1,
+            'at least one no-commits entry in learnings')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
