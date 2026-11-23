@@ -148,5 +148,6 @@ process.stdin.on('end', async () => {
     const stderrOut = process.env.FAKE_HERMES_STDERR
     if (stderrOut) process.stderr.write(stderrOut)
 
-    process.exit(exitCode)
+    // Let pending pipe writes drain before the process exits.
+    process.exitCode = exitCode
 })

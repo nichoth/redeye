@@ -624,3 +624,107 @@ Status: DONE
 - Focused test: TEST_SHARD=19/20, all 31 assertions passed.
 - npm test: full suite passed, all suites green, 0 failures.
 - Set passes:true for US-014 only. No other stories touched.
+
+## US-015: Retain Hermes final output and attempt diagnostics
+
+Date: 2026-11-22
+Status: BLOCKED on full-suite environment permissions
+
+### What changed
+- Strengthened the existing successful and nonzero Hermes CLI tests
+  with 64 KiB of output on each stream and distinct final markers
+  without trailing newlines.
+- Assert all filler bytes and both final markers survive in the single
+  attempt log, and final lines reach the existing display callback.
+- Observed both tests fail before changing the fake: process.exit()
+  truncated pending pipe writes. The fake now sets process.exitCode
+  and lets pending output drain naturally.
+- Kept production callbacks, log flushing and provider parsing intact.
+
+### Patterns and gotchas
+- stdout and stderr chunks can interleave within a line in their shared
+  log. Count distinct filler bytes rather than require each stream's
+  entire output or each line to be contiguous.
+- docs/INDEX.md does not exist in this checkout; read docs/README.md
+  as the available documentation entry point.
+
+### Verification and blocker
+- npm run build: passed, including declaration typecheck.
+- Focused US-015 cases: 20 assertions passed across
+  TEST_SHARD=160/162 and TEST_SHARD=161/162.
+- Fake Hermes suite: all 42 assertions passed.
+- npm run lint and git diff --check: passed.
+- Ran npm test once: all suites except tiiny passed. Tiiny aborts
+  when its fake device tries to listen on 127.0.0.1: listen EPERM,
+  operation not permitted. This environment denies local server
+  sockets; approval is unavailable. No unrelated code was changed.
+- Full output is in /tmp/redeye-us015-full.log for this session.
+- Left US-015 passes:false and did not commit: the required full-suite
+  gate has not passed. No other stories changed. Resume in an
+  environment that permits the existing local fake-device server,
+  rerun the final gate, then mark US-015 passing and commit.
+
+### US-015 resumed verification (2026-11-22)
+
+- Reviewed the existing test-first changes and retained their scope.
+  Production output callbacks and log flushing need no changes.
+- `docs/INDEX.md` is still absent; read `docs/README.md` instead.
+- `npm run build`: passed, including declaration typecheck.
+- Focused CLI cases (`TEST_SHARD=160/162` and `161/162`):
+  all 20 assertions passed. Fake Hermes: all 42 assertions passed.
+- `npm run lint` and `git diff --check`: passed.
+- A minimal Node localhost listener reproduced `listen EPERM` on
+  `127.0.0.1`, independently of the application or test fixtures.
+- Ran the full `npm test` gate once this session. Every suite except
+  `tiiny` passed; Tiiny cannot bind its existing fake-device server
+  under this environment's socket restrictions. Full output:
+  `/tmp/redeye-us015-resume-full.log`.
+- No test skips, dependency additions, or unrelated fixes were made.
+  No approval escalation is available in this session. US-015 remains
+  `passes:false`; no other PRD story changed and no commit was made
+  because the required full-suite gate did not pass.
+- Resume with localhost server sockets available, then rerun the gate
+  before marking US-015 passing and committing its existing changes.
+
+### US-015 socket preflight and focused verification (2026-11-22)
+
+- Re-read the PRD, progress log, available docs entry point and diff.
+  Reviewed the saved failing tests before retaining the fixture fix.
+- Tried an isolated socket preflight before another full-suite run.
+  A minimal Node net.Server still fails to listen on 127.0.0.1 with
+  EPERM, without any redeye code or test fixtures involved.
+- Inspected test/fake-device.ts: the existing Tiiny tests require that
+  localhost listener. Changing those unrelated tests or skipping them
+  would not satisfy this story's required full-suite gate.
+- Fresh npm run build (including typecheck) and npm run lint passed.
+  Rebundled the focused tests; US-015 passed all 20 assertions and
+  fake Hermes passed all 42 assertions. git diff --check passed.
+- Did not repeat npm test after reproducing its known prerequisite
+  failure. No source changes, dependency additions or test skips.
+- US-015 remains passes:false and uncommitted because the full-suite
+  gate remains blocked. No other story changed. Stop here until the
+  test environment permits localhost listening.
+
+### US-015 actual-suite prerequisite and final gate (2026-11-22)
+
+- Read specs/prd.json and progress.log at session start. Studied
+  docs/README.md because the requested docs/INDEX.md is absent.
+- Preserved the existing test-first regressions and fixture drain fix.
+  Reviewed the production close handler and log flush callback; no
+  additional output parsing or production changes are needed.
+- Checked the actual, freshly bundled Tiiny suite rather than repeating
+  a standalone socket probe. Its first fake-device listener fails with
+  listen EPERM on 127.0.0.1. This is an execution-policy restriction;
+  changing Hermes output handling cannot resolve it within this story.
+- npm run build passed, including declaration typecheck. Both focused
+  US-015 cases passed all 20 assertions; fake Hermes passed all 42.
+  npm run lint and git diff --check passed.
+- Ran npm test exactly once as the final gate. Only tiiny failed, with
+  the same listener EPERM; every other suite passed. Complete output:
+  /tmp/redeye-us015-current-full.log.
+- No dependencies, test skips, unrelated changes or permission bypasses
+  were added. All PRD stories remain unchanged, including US-015 with
+  passes:false. No task commit was made because the full-suite gate
+  did not pass. Stop until the environment permits the existing
+  localhost fake-device listener; do not repeat Hermes implementation
+  work to address this external prerequisite.

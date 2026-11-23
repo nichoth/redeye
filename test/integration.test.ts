@@ -9276,7 +9276,10 @@ async t => {
         const stderrMarker =
             'US015-STDERR-OK-' + randomUUID()
 
-        const { code, stderr } = await spawnCli([
+        const stdoutOutput = 'x\n'.repeat(32768) + stdoutMarker
+        const stderrOutput = 'y\n'.repeat(32768) + stderrMarker
+
+        const { code, stdout, stderr } = await spawnCli([
             FAKE_HERMES,
             '--spec', FEAT,
             '--concurrency', '1',
@@ -9288,10 +9291,8 @@ async t => {
             cwd: projectDir,
             env: fakeHermesEnv({
                 FAKE_HERMES_ARGV_LOG: argvLog,
-                FAKE_HERMES_OUTPUT:
-                    stdoutMarker + '\n',
-                FAKE_HERMES_STDERR:
-                    stderrMarker + '\n',
+                FAKE_HERMES_OUTPUT: stdoutOutput,
+                FAKE_HERMES_STDERR: stderrOutput,
             }),
         })
 
@@ -9308,6 +9309,12 @@ async t => {
             'ticket marked done'
         )
 
+        t.ok(stdout.includes(stdoutMarker),
+            'final stdout line reaches the display')
+        t.ok(stdout.includes(stderrMarker),
+            'final stderr line reaches the display')
+        t.equal(stderr, '', 'agent output uses the display')
+
         // AC: attempt log retains both markers
         const attemptLogs = existsSync(logsDir) ?
             readdirSync(logsDir).filter(
@@ -9315,13 +9322,18 @@ async t => {
                     !f.endsWith('.test.log')
             ) :
             []
-        t.ok(attemptLogs.length >= 1,
+        t.equal(attemptLogs.length, 1,
             'attempt log files exist')
         const allLogContent = attemptLogs.map(
             f => readFileSync(
                 join(logsDir, f), 'utf8'
             )
         ).join('\n')
+        // stdout and stderr chunks may interleave in the shared log.
+        t.equal(allLogContent.split('x').length - 1, 32768,
+            'all stdout filler bytes retained after exit')
+        t.equal(allLogContent.split('y').length - 1, 32768,
+            'all stderr filler bytes retained after exit')
         t.ok(
             allLogContent.includes(stdoutMarker),
             'stdout marker retained in attempt log'
@@ -9365,7 +9377,10 @@ async t => {
         const stderrMarker =
             'US015-STDERR-FAIL-' + randomUUID()
 
-        const { code } = await spawnCli([
+        const stdoutOutput = 'x\n'.repeat(32768) + stdoutMarker
+        const stderrOutput = 'y\n'.repeat(32768) + stderrMarker
+
+        const { code, stdout, stderr } = await spawnCli([
             FAKE_HERMES,
             '--spec', FEAT,
             '--concurrency', '1',
@@ -9379,10 +9394,8 @@ async t => {
             env: fakeHermesEnv({
                 FAKE_HERMES_ARGV_LOG: argvLog,
                 FAKE_HERMES_EXIT: '1',
-                FAKE_HERMES_OUTPUT:
-                    stdoutMarker + '\n',
-                FAKE_HERMES_STDERR:
-                    stderrMarker + '\n',
+                FAKE_HERMES_OUTPUT: stdoutOutput,
+                FAKE_HERMES_STDERR: stderrOutput,
             }),
         })
 
@@ -9397,6 +9410,12 @@ async t => {
             'ticket not marked done'
         )
 
+        t.ok(stdout.includes(stdoutMarker),
+            'final stdout line reaches the display')
+        t.ok(stdout.includes(stderrMarker),
+            'final stderr line reaches the display')
+        t.equal(stderr, '', 'agent output uses the display')
+
         // AC: attempt log retains both markers
         const attemptLogs = existsSync(logsDir) ?
             readdirSync(logsDir).filter(
@@ -9404,13 +9423,18 @@ async t => {
                     !f.endsWith('.test.log')
             ) :
             []
-        t.ok(attemptLogs.length >= 1,
+        t.equal(attemptLogs.length, 1,
             'attempt log files exist')
         const allLogContent = attemptLogs.map(
             f => readFileSync(
                 join(logsDir, f), 'utf8'
             )
         ).join('\n')
+        // stdout and stderr chunks may interleave in the shared log.
+        t.equal(allLogContent.split('x').length - 1, 32768,
+            'all stdout filler bytes retained after exit')
+        t.equal(allLogContent.split('y').length - 1, 32768,
+            'all stderr filler bytes retained after exit')
         t.ok(
             allLogContent.includes(stdoutMarker),
             'stdout marker retained in attempt log'
