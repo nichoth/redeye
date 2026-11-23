@@ -265,6 +265,25 @@ test('fake hermes rejects missing --quiet', async t => {
     t.equal(result.code, 2, 'exits 2 on missing --quiet')
 })
 
+test('fake hermes rejects misplaced --yolo ' +
+    '(after chat)', async t => {
+    const result = await runFake({
+        args: [
+            'chat', '--yolo', '--query-file', '-',
+            '--quiet',
+        ],
+        stdin: '',
+    })
+    t.equal(
+        result.code, 2,
+        'exits 2 when --yolo follows chat'
+    )
+    t.ok(
+        result.stderr.includes('missing or wrong flag'),
+        'error mentions wrong flag position'
+    )
+})
+
 // ---- Success mode: creates and commits ----
 
 test('fake hermes success mode commits a change',

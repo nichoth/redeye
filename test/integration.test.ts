@@ -8804,3 +8804,88 @@ async t => {
         })
     }
 })
+
+// -- US-011: Preserve autonomous Hermes approval behavior --
+
+test('CLI subprocess - US-011: --yolo precedes chat ' +
+    'and scenario completes without interaction',
+async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({
+                status: 'ready-for-agent',
+            })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(recordDir, 'argv.log')
+
+        const { code, stderr } = await spawnCli([
+            FAKE_HERMES,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_ARGV_LOG: argvLog,
+            }),
+        })
+
+        // AC: completes without terminal interaction
+        t.equal(code, 0,
+            `exit 0 (stderr: ${stderr.slice(0, 200)})`)
+        t.ok(existsSync(argvLog), 'argv log exists')
+
+        const argv:string[] = JSON.parse(
+            readFileSync(argvLog, 'utf8')
+                .trim().split('\n')[0]
+        )
+
+        // AC: --yolo precedes the chat subcommand
+        const yoloIdx = argv.indexOf('--yolo')
+        const chatIdx = argv.indexOf('chat')
+        t.ok(yoloIdx >= 0, '--yolo is present in argv')
+        t.ok(chatIdx >= 0, 'chat is present in argv')
+        t.ok(
+            yoloIdx < chatIdx,
+            '--yolo precedes chat in argv'
+        )
+
+        // AC: --yolo is the very first argument
+        t.equal(yoloIdx, 0,
+            '--yolo is the first argument')
+
+        // AC: no additional approval flags added
+        const approvalFlags = argv.filter(
+            a => a === '--yolo' || a === '-y' ||
+                a === '--auto-approve'
+        )
+        t.equal(approvalFlags.length, 1,
+            'exactly one approval flag (--yolo)')
+
+        // AC: ticket completed successfully
+        const ticket = readFileSync(
+            join(issuesDir, '01-task.md'), 'utf8'
+        )
+        t.ok(
+            ticket.includes('**Status:** done'),
+            'ticket marked done'
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})

@@ -480,3 +480,36 @@ Status: DONE
 - Focused test: TEST_SHARD=15/20, all 39 assertions passed.
 - npm test: full suite passed, all suites green, 0 failures.
 - Set passes:true for US-010 only. No other stories touched.
+
+## US-011: Preserve autonomous Hermes approval behavior
+
+Date: 2026-11-22
+Status: DONE
+
+### What changed
+- Added unit test in `test/hermes.test.ts` for misplaced --yolo
+  (after chat): confirms the fake rejects with exit 2 and an
+  error message when --yolo follows chat instead of preceding it
+- Added integration test in `test/integration.test.ts` that
+  asserts --yolo precedes chat in captured argv, --yolo is the
+  first argument, exactly one approval flag exists (no extra
+  --yolo, -y, or --auto-approve), and the scenario completes
+  without terminal interaction (exit 0, ticket done)
+- No production changes needed: spawnAgent already passes
+  --yolo as the first argument in PROVIDER_ARGS.hermes
+
+### Patterns and gotchas
+- The hermes unit test count increased from 40 to 42 (new
+  misplaced --yolo test adds 2 assertions)
+- The integration test falls in shard 16/20 (index 156 % 20 = 16)
+- Pre-existing intermittent failures in shards 13/20 and 14/20
+  are unrelated (documented since US-001)
+
+### Verification
+- npm run lint: passed (0 errors).
+- npm run build: passed, including declaration typecheck.
+- Focused tests: hermes suite all 42 passed; integration
+  TEST_SHARD=16/20, all 29 assertions passed.
+- npm test: full suite passed except pre-existing intermittent
+  failures in shards 13/20 and 14/20 (confirmed unrelated).
+- Set passes:true for US-011 only. No other stories touched.
