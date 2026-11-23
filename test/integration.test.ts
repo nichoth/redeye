@@ -8132,3 +8132,141 @@ async t => {
         })
     }
 })
+
+// -- US-005: Preserve multiline Markdown and special
+//            characters --
+
+const SPEC_MD_005 =
+    '# Spec with special characters\n' +
+    '\n' +
+    'US005-SPEC-FENCE-a1b2c3\n' +
+    '\n' +
+    '```ts\n' +
+    'const x = "hello";\n' +
+    "const y = 'world';\n" +
+    'const z = `tmpl`;\n' +
+    '```\n' +
+    '\n' +
+    'Unicode: éèê üöä ' +
+    '☃ ✔ ❤\n'
+
+const TICKET_MD_005 =
+    '# Ticket with Markdown\n' +
+    '\n' +
+    'US005-TICKET-BODY-d4e5f6\n' +
+    '\n' +
+    '## Subsection\n' +
+    '\n' +
+    '- item with "double quotes"\n' +
+    "- item with 'single quotes'\n" +
+    '- item with `backticks`\n' +
+    '\n' +
+    '```json\n' +
+    '{ "key": "valüé" }\n' +
+    '```\n' +
+    '\n' +
+    '**Status:** ready-for-agent\n'
+
+test('CLI subprocess - US-005: multiline Markdown and ' +
+    'special characters are preserved in stdin',
+async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = tmp()
+    try {
+        const specPath = join(
+            projectDir, '.scratch', FEAT, 'spec.md'
+        )
+        writeFileSync(specPath, SPEC_MD_005)
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            TICKET_MD_005
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(recordDir, 'argv.log')
+        const stdinLog = join(recordDir, 'stdin.log')
+
+        const { code, stderr } = await spawnCli([
+            FAKE_HERMES,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_ARGV_LOG: argvLog,
+                FAKE_HERMES_STDIN_LOG: stdinLog,
+            }),
+        })
+
+        t.equal(code, 0,
+            `exit 0 (stderr: ${stderr.slice(0, 200)})`)
+
+        t.ok(existsSync(stdinLog),
+            'stdin log exists')
+        const stdin = readFileSync(stdinLog, 'utf8')
+
+        // AC: code fence preserved
+        t.ok(stdin.includes('```ts\n'),
+            'ts code fence preserved')
+        t.ok(stdin.includes('```json\n'),
+            'json code fence preserved')
+
+        // AC: quotes and backticks preserved
+        t.ok(stdin.includes('"double quotes"'),
+            'double quotes preserved')
+        t.ok(stdin.includes("'single quotes'"),
+            'single quotes preserved')
+        t.ok(stdin.includes('`backticks`'),
+            'backticks preserved')
+
+        // AC: Unicode preserved
+        t.ok(stdin.includes('éèê'),
+            'accented chars preserved')
+        t.ok(stdin.includes('☃'),
+            'snowman preserved')
+        t.ok(stdin.includes('valüé'),
+            'Unicode in code block preserved')
+
+        // AC: multiline structure preserved
+        t.ok(stdin.includes('## Subsection'),
+            'markdown heading preserved')
+        t.ok(stdin.includes('- item with'),
+            'list items preserved')
+
+        // AC: fixture markers occur once in
+        //     their sections
+        const specCount = stdin.split(
+            'US005-SPEC-FENCE-a1b2c3'
+        ).length - 1
+        t.equal(specCount, 1,
+            'spec marker occurs exactly once')
+
+        const ticketCount = stdin.split(
+            'US005-TICKET-BODY-d4e5f6'
+        ).length - 1
+        t.equal(ticketCount, 1,
+            'ticket marker occurs exactly once')
+
+        // AC: line breaks preserved -- the
+        //     Subsection heading must follow a
+        //     blank line
+        const subIdx = stdin.indexOf('## Subsection')
+        t.ok(
+            subIdx > 0 && stdin[subIdx - 1] === '\n',
+            'line break before heading preserved'
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
