@@ -370,83 +370,83 @@ test('residentModels - empty when no models resident',
 
 test('residentModels - network error returns error ' +
     'value',
-    async t => {
-        const result = await residentModels(
-            'http://127.0.0.1:1',
-            'test-key'
-        )
-        t.ok('error' in result, 'returns error')
-    }
+async t => {
+    const result = await residentModels(
+        'http://127.0.0.1:1',
+        'test-key'
+    )
+    t.ok('error' in result, 'returns error')
+}
 )
 
 // --- loadModel ---
 
 test('loadModel - HTTP path loads and polls until ' +
     'resident',
-    async t => {
-        const dev = await createFakeDevice()
-        try {
-            setTimeout(() => {
-                dev.resident.add(
-                    'Qwen/Qwen3.6-35B-A3B-turbo'
-                )
-            }, 60)
+async t => {
+    const dev = await createFakeDevice()
+    try {
+        setTimeout(() => {
+            dev.resident.add(
+                'Qwen/Qwen3.6-35B-A3B-turbo'
+            )
+        }, 60)
 
-            const result = await loadModel(
-                'Qwen/Qwen3.6-35B-A3B-turbo',
-                {
-                    host: dev.url,
-                    apiKey: 'test-key',
-                    baseUrl: dev.url + '/v1',
-                    pollMs: 30,
-                    deadlineMs: 5000,
-                }
-            )
-            t.ok(
-                'ok' in result && result.ok,
-                'reports success'
-            )
-            t.deepEqual(
-                dev.loadRequests,
-                ['Qwen/Qwen3.6-35B-A3B-turbo'],
-                'posted start request'
-            )
-        } finally {
-            await dev.close()
-        }
+        const result = await loadModel(
+            'Qwen/Qwen3.6-35B-A3B-turbo',
+            {
+                host: dev.url,
+                apiKey: 'test-key',
+                baseUrl: dev.url + '/v1',
+                pollMs: 30,
+                deadlineMs: 5000,
+            }
+        )
+        t.ok(
+            'ok' in result && result.ok,
+            'reports success'
+        )
+        t.deepEqual(
+            dev.loadRequests,
+            ['Qwen/Qwen3.6-35B-A3B-turbo'],
+            'posted start request'
+        )
+    } finally {
+        await dev.close()
     }
+}
 )
 
 test('loadModel - already resident skips start and ' +
     'succeeds',
-    async t => {
-        const dev = await createFakeDevice({
-            resident: ['Qwen/Qwen3.6-35B-A3B-turbo'],
-        })
-        try {
-            const result = await loadModel(
-                'Qwen/Qwen3.6-35B-A3B-turbo',
-                {
-                    host: dev.url,
-                    apiKey: 'test-key',
-                    baseUrl: dev.url + '/v1',
-                    pollMs: 30,
-                    deadlineMs: 2000,
-                }
-            )
-            t.ok(
-                'ok' in result && result.ok,
-                'reports success'
-            )
-            t.deepEqual(
-                dev.loadRequests,
-                ['Qwen/Qwen3.6-35B-A3B-turbo'],
-                'still posted start (idempotent)'
-            )
-        } finally {
-            await dev.close()
-        }
+async t => {
+    const dev = await createFakeDevice({
+        resident: ['Qwen/Qwen3.6-35B-A3B-turbo'],
+    })
+    try {
+        const result = await loadModel(
+            'Qwen/Qwen3.6-35B-A3B-turbo',
+            {
+                host: dev.url,
+                apiKey: 'test-key',
+                baseUrl: dev.url + '/v1',
+                pollMs: 30,
+                deadlineMs: 2000,
+            }
+        )
+        t.ok(
+            'ok' in result && result.ok,
+            'reports success'
+        )
+        t.deepEqual(
+            dev.loadRequests,
+            ['Qwen/Qwen3.6-35B-A3B-turbo'],
+            'still posted start (idempotent)'
+        )
+    } finally {
+        await dev.close()
     }
+}
 )
 
 test('loadModel - CLI fallback when HTTP start fails',
@@ -487,27 +487,27 @@ test('loadModel - CLI fallback when HTTP start fails',
 
 test('loadModel - timeout when model never becomes ' +
     'resident',
-    async t => {
-        const dev = await createFakeDevice()
-        try {
-            const result = await loadModel(
-                'never-loads',
-                {
-                    host: dev.url,
-                    apiKey: 'test-key',
-                    baseUrl: dev.url + '/v1',
-                    pollMs: 20,
-                    deadlineMs: 100,
-                }
-            )
-            t.ok('error' in result, 'returns error')
-            t.ok(
-                (result as { error:string }).error
-                    .includes('never-loads'),
-                'error names the model'
-            )
-        } finally {
-            await dev.close()
-        }
+async t => {
+    const dev = await createFakeDevice()
+    try {
+        const result = await loadModel(
+            'never-loads',
+            {
+                host: dev.url,
+                apiKey: 'test-key',
+                baseUrl: dev.url + '/v1',
+                pollMs: 20,
+                deadlineMs: 100,
+            }
+        )
+        t.ok('error' in result, 'returns error')
+        t.ok(
+            (result as { error:string }).error
+                .includes('never-loads'),
+            'error names the model'
+        )
+    } finally {
+        await dev.close()
     }
+}
 )

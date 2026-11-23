@@ -310,3 +310,25 @@ Status: BLOCKED; passes remains false and no task commit was made.
   suite remain prerequisites to setting passes:true and committing.
 - Stopped at the verified environment blocker under the session's
   error-handling rule. Left all PRD stories and manual work untouched.
+
+## US-005: Completed
+
+Date: 2026-11-22
+Status: DONE
+
+### What changed
+- Previous sessions wrote the US-005 test regression (exact multiline
+  Markdown, code fences, quotes, backticks, Unicode fixtures compared
+  in captured stdin sections) and committed it. No production changes
+  were needed: stdin delivery already preserves the text exactly.
+- Fixed 89 pre-existing indentation errors in test/tiiny.test.ts using
+  eslint --fix. These were all @stylistic/indent violations on lines
+  373-512, unrelated to US-005 but blocking the required lint gate.
+- The localhost EPERM environment blocker from earlier sessions is now
+  resolved (the execution environment permits 127.0.0.1 binding).
+
+### Verification
+- npm run lint: passed (0 errors after tiiny indent fix).
+- npm run build: passed, including declaration typecheck.
+- npm test: full suite passed, all suites green, 0 failures.
+- Set passes:true for US-005 only. No other stories touched.
