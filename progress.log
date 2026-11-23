@@ -747,3 +747,115 @@ Status: BLOCKED on full-suite environment permissions
 - Marked only US-015 passes:true in specs/prd.json. The earlier socket
   restriction is resolved for this verification run; no test skips or
   unrelated implementation changes were needed.
+
+## US-016: Preserve Hermes cancellation and timeout handling
+
+Date: 2026-11-23
+Status: BLOCKED on full-suite environment permissions
+
+### What changed
+- Added built-CLI regressions for SIGINT and SIGTERM cancellation.
+  The fake records stdin EOF and waits for its descendant to record
+  its own PID before signalling readiness. Cancellation must exit
+  130/143 and kill both Hermes and the descendant holding stdout.
+- Added a coordinated timeout case: fake Hermes commits work, leaves
+  a dirty file and starts its descendant before signalling readiness.
+  With a 15-second timeout, committed and dirty work both reach the
+  real test gate and merge. One available retry must remain unused.
+- Extended spawnCli with an optional child callback and deadline for
+  lifecycle tests. Existing callers retain their defaults. Both fake
+  environment key lists include the new controls.
+- Kept production process groups, registries, timeout classification,
+  auto-commit policy and src/index.ts signal handlers unchanged.
+
+### Test-first evidence and patterns
+- Wrote the cancellation and timeout regressions first. Both failed
+  because the fake lacked the requested descendant coordination;
+  implemented the fake modes afterward and observed both pass.
+- Readiness contains the agent PID and is emitted only after the child
+  records its PID. Tests wait on conditions rather than fixed sleeps.
+- Cleanup signals the CLI first, waits for it, then uses the existing
+  process-group helper and removes worktrees and temporary files.
+- docs/INDEX.md is absent; studied docs/README.md as the available
+  documentation entry point. No new dependencies were needed.
+
+### Verification
+- npm run build passed, including declaration typecheck.
+- Focused integration shards 162/165, 163/165 and 164/165 passed all
+  24 assertions. The fake Hermes suite passed all 42 assertions.
+- npm run lint passed after correcting one property layout issue.
+  git diff --check passed; all added lines are under 80 columns.
+- Ran npm test once as the final gate. Tiiny's existing fake-device
+  localhost listener failed with listen EPERM on 127.0.0.1. This
+  session cannot request an execution-permission escalation.
+- Full-suite output: /tmp/redeye-us016-full.log. No test skips or
+  unrelated fixes were made. US-016 remains passes:false; no other
+  PRD story changed. No commit until the required full suite passes.
+- Final full-suite result: only tiiny failed. Every other suite passed,
+  including all three new US-016 CLI cases under parallel suite load.
+  Resume with localhost listening permitted, rerun the final gate,
+  then mark only US-016 passing and commit this task's changes.
+
+### US-016 resumed verification (2026-11-23)
+
+- Read specs/prd.json and progress.log at session start. Studied
+  docs/README.md because docs/INDEX.md remains absent.
+- Reviewed the existing test-first changes and shared production
+  process registry, group termination, signal and timeout paths.
+  No additional implementation changes were needed.
+- Fresh npm run build passed, including declaration typecheck.
+  npm run lint and git diff --check passed.
+- Rebundled and ran integration shards 162/165, 163/165 and 164/165:
+  all 24 US-016 assertions passed. Fake Hermes passed all 42 assertions.
+- Ran npm test exactly once as the final gate. Only tiiny failed:
+  its existing fake-device listener receives listen EPERM on
+  127.0.0.1. Every other suite passed, including the US-016 cases.
+  Full output: /tmp/redeye-us016-resume-20261123-full.log.
+- This session cannot request execution-permission escalation.
+  No dependencies, test skips, unrelated fixes or PRD changes were
+  made. US-016 remains passes:false and uncommitted because the
+  required full-suite gate failed. Resume with localhost listening
+  permitted, then verify the gate before marking and committing.
+
+### US-016 prerequisite audit (2026-11-23)
+
+- Re-read specs/prd.json and progress.log. docs/INDEX.md is absent;
+  studied docs/README.md and retained the saved test-first changes.
+- Reviewed the shared registry, process-group cleanup, CLI signal
+  handlers and timeout auto-commit path. No production change needed.
+- Fresh npm run build passed, including declaration typecheck.
+  npm run lint and git diff --check passed.
+- Freshly bundled integration shards 162/165, 163/165 and 164/165
+  passed all 24 lifecycle assertions. Fake Hermes passed all 42.
+- Tested the actual, freshly bundled Tiiny suite before repeating the
+  full gate. Its first residentModels fake-device listener still fails
+  with listen EPERM on 127.0.0.1, after 28 earlier assertions pass.
+  Output: /tmp/redeye-us016-tiiny-20261123-check.log.
+- Did not repeat npm test after its existing listener prerequisite
+  failed. Changing Hermes code or skipping Tiiny cannot satisfy the
+  required full-suite gate. Execution-permission escalation is not
+  available in this session.
+- No dependencies, test skips, source changes or PRD changes were made.
+  US-016 remains passes:false and uncommitted. Resume only when the
+  environment permits the existing localhost fake-device listener,
+  then run the full gate before marking this story and committing.
+
+### US-016 session prerequisite check (2026-11-23)
+
+- Read specs/prd.json and all of progress.log before resuming work.
+  docs/INDEX.md is absent; studied docs/README.md instead.
+- Reviewed the saved cancellation and timeout regressions, their
+  recorded test-first evidence, fake descendant coordination and
+  shared production process lifecycle. Preserved the existing changes.
+- Invoked createFakeDevice() from test/fake-device.ts directly with
+  Node v26.11.1 before repeating builds or the final gate. Its existing
+  HTTP listener failed immediately with listen EPERM on 127.0.0.1.
+  The fake could not start, so its request and cleanup checks did not
+  run. This confirms the full-suite prerequisite is still unavailable.
+- This session's execution policy forbids permission escalation.
+  No implementation change within US-016 can grant listener access.
+  Did not repeat the known-failing full suite, alter unrelated tests,
+  skip checks, add dependencies or change any PRD story.
+- Stopped under the requested unfixable-failure rule. US-016 remains
+  passes:false and uncommitted until the required full suite can pass
+  in an environment that permits the existing localhost listener.

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// pattern: Imperative Shell
 // Fake Hermes agent for tests. The shell wrapper
 // test/fake-hermes/hermes runs this, so spawnAgent's basename
 // check sees "hermes". Env vars drive behavior:
@@ -12,9 +13,13 @@
 //                             then do the controlled turn
 //   FAKE_HERMES_READY_FILE -- path: created after stdin EOF,
 //                             before waiting on WAIT_FILE
+//   FAKE_HERMES_CHILD_PID_FILE -- spawn a child that holds stdout;
+//                                  child records its own pid here
+//   FAKE_HERMES_WORK_BEFORE_WAIT -- "1": commit and leave dirty work
+//                                  before signalling readiness
 //   FAKE_HERMES_OUTPUT     -- text written to stdout before exit
 //   FAKE_HERMES_STDERR     -- text written to stderr before exit
-import { execSync } from 'node:child_process'
+import { execSync, spawn } from 'node:child_process'
 import {
     appendFileSync,
     existsSync,
@@ -111,9 +116,24 @@ process.stdin.on('end', async () => {
         writeFileSync(stdinLog, stdin)
     }
 
+    if (process.env.FAKE_HERMES_WORK_BEFORE_WAIT === '1') {
+        commitChange()
+        writeFileSync('hermes-uncommitted.txt',
+            'Hermes unfinished work\n')
+    }
+
+    const childPidFile = process.env.FAKE_HERMES_CHILD_PID_FILE
+    const child = childPidFile ? spawn(process.execPath, [
+        '--input-type=module', '-e',
+        "import { writeFileSync } from 'node:fs';" +
+        'writeFileSync(process.env.FAKE_HERMES_CHILD_PID_FILE,' +
+        'String(process.pid)); setInterval(() => {}, 1000)',
+    ], { stdio: ['ignore', 'inherit', 'inherit'] }) : undefined
+    if (childPidFile) await waitForFile(childPidFile)
+
     const readyFile = process.env.FAKE_HERMES_READY_FILE
     if (readyFile) {
-        writeFileSync(readyFile, '')
+        writeFileSync(readyFile, String(process.pid))
     }
 
     const waitFile = process.env.FAKE_HERMES_WAIT_FILE
@@ -125,6 +145,8 @@ process.stdin.on('end', async () => {
             process.exit(2)
         }
     }
+
+    child?.kill('SIGKILL')
 
     const exitCode = parseInt(
         process.env.FAKE_HERMES_EXIT || '0', 10

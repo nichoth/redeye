@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import {
     execFile, execFileSync, execSync, spawn,
+    type ChildProcess,
 } from 'node:child_process'
 import {
     findFeatureDirs,
@@ -224,6 +225,8 @@ function spawnCli (
         cwd?:string
         env?:NodeJS.ProcessEnv
         closeStdin?:boolean
+        onSpawn?:(child:ChildProcess) => void
+        timeoutMs?:number
     },
 ):Promise<{
     code:number
@@ -234,7 +237,11 @@ function spawnCli (
         const child = execFile(
             process.execPath,
             [CLI, ...args],
-            { timeout: 30_000, cwd: opts?.cwd, env: opts?.env },
+            {
+                timeout: opts?.timeoutMs ?? 30_000,
+                cwd: opts?.cwd,
+                env: opts?.env,
+            },
             (err, stdout, stderr) => {
                 const code = err && 'code' in err ?
                     (err as { code:number }).code :
@@ -246,6 +253,7 @@ function spawnCli (
                 })
             },
         )
+        opts?.onSpawn?.(child)
         if (opts?.closeStdin) child.stdin?.end()
     })
 }
@@ -5960,6 +5968,8 @@ const FAKE_HERMES_KEYS = [
     'FAKE_HERMES_READY_FILE',
     'FAKE_HERMES_OUTPUT',
     'FAKE_HERMES_STDERR',
+    'FAKE_HERMES_CHILD_PID_FILE',
+    'FAKE_HERMES_WORK_BEFORE_WAIT',
 ]
 
 function fakeHermesEnv (
@@ -9451,5 +9461,161 @@ async t => {
         rmSync(templateDir, {
             recursive: true, force: true,
         })
+    }
+})
+
+// -- US-016: Hermes cancellation and timeout handling --
+
+async function waitForHermesFile (path:string):Promise<void> {
+    const deadline = Date.now() + 20_000
+    while (!existsSync(path)) {
+        if (Date.now() >= deadline) {
+            throw new Error(`Hermes readiness missing: ${path}`)
+        }
+        await new Promise(resolve => setTimeout(resolve, 50))
+    }
+}
+
+for (const [signal, exitCode] of [
+    ['SIGINT', 130], ['SIGTERM', 143],
+] as const) {
+    test(`CLI subprocess - US-016: ${signal} kills Hermes ` +
+        'and its descendant', async t => {
+        const { projectDir, issuesDir, templateDir } = cliGitRepo()
+        const recordDir = tmp()
+        let child:ChildProcess|undefined
+        let agentPid:number|undefined
+        let descendantPid:number|undefined
+        let done:ReturnType<typeof spawnCli>|undefined
+        try {
+            writeFileSync(join(issuesDir, '01-task.md'),
+                makeTicketBody({ status: 'ready-for-agent' }))
+            commitAll(projectDir, 'add tickets')
+            const ready = join(recordDir, 'ready')
+            const pidFile = join(recordDir, 'child.pid')
+            done = spawnCli([
+                FAKE_HERMES, '--spec', FEAT,
+                '--timeout', '60', '--concurrency', '1',
+                '--retries', '0', '--no-review',
+                '--test-cmd', 'true',
+            ], {
+                cwd: projectDir,
+                onSpawn: proc => { child = proc },
+                env: fakeHermesEnv({
+                    FAKE_HERMES_READY_FILE: ready,
+                    FAKE_HERMES_WAIT_FILE: join(recordDir, 'never'),
+                    FAKE_HERMES_CHILD_PID_FILE: pidFile,
+                }),
+            })
+            await waitForHermesFile(ready)
+            t.ok(existsSync(pidFile), 'descendant started before signal')
+            descendantPid = Number(readFileSync(pidFile, 'utf8'))
+            agentPid = Number(readFileSync(ready, 'utf8'))
+            process.kill(agentPid, 0)
+            process.kill(descendantPid, 0)
+            child?.kill(signal)
+            const result = await done
+            t.equal(result.code, exitCode, 'CLI reports cancellation')
+            t.equal(await processGone(agentPid), true, 'Hermes is gone')
+            t.equal(await processGone(descendantPid), true,
+                'Hermes descendant is gone')
+            t.ok(!readFileSync(join(issuesDir, '01-task.md'), 'utf8')
+                .includes('**Status:** done'), 'ticket stays unfinished')
+        } finally {
+            // Exercise the CLI handler first, including on assertion errors.
+            child?.kill('SIGTERM')
+            if (done) await done
+            killProcessGroup(agentPid)
+            if (descendantPid) {
+                try { process.kill(descendantPid, 'SIGKILL') } catch {}
+            }
+            removeWorktreesAndRepo(projectDir)
+            rmSync(recordDir, { recursive: true, force: true })
+            rmSync(templateDir, { recursive: true, force: true })
+        }
+    })
+}
+
+test('CLI subprocess - US-016: timed-out Hermes work passes ' +
+    'the gate without retrying', async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const recordDir = tmp()
+    let child:ChildProcess|undefined
+    let done:ReturnType<typeof spawnCli>|undefined
+    let agentPid:number|undefined
+    let descendantPid:number|undefined
+    try {
+        writeFileSync(join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' }))
+        commitAll(projectDir, 'add tickets')
+        const ready = join(recordDir, 'ready')
+        const argvLog = join(recordDir, 'argv.log')
+        const pidFile = join(recordDir, 'child.pid')
+        const logsDir = join(projectDir, '.scratch', FEAT, 'logs')
+        const gate = 'git log --format=%s && ' +
+            'cat hermes-uncommitted.txt && ls hermes-change-*.txt'
+        done = spawnCli([
+            FAKE_HERMES, '--spec', FEAT, '--concurrency', '1',
+            '--timeout', '15', '--retries', '1', '--retry-delay', '0',
+            '--no-review', '--test-cmd', gate,
+        ], {
+            cwd: projectDir,
+            timeoutMs: 60_000,
+            onSpawn: proc => { child = proc },
+            env: fakeHermesEnv({
+                FAKE_HERMES_READY_FILE: ready,
+                FAKE_HERMES_WAIT_FILE: join(recordDir, 'never'),
+                FAKE_HERMES_ARGV_LOG: argvLog,
+                FAKE_HERMES_CHILD_PID_FILE: pidFile,
+                FAKE_HERMES_WORK_BEFORE_WAIT: '1',
+            }),
+        })
+        await waitForHermesFile(ready)
+        t.ok(existsSync(pidFile), 'descendant started before timeout')
+        descendantPid = Number(readFileSync(pidFile, 'utf8'))
+        agentPid = Number(readFileSync(ready, 'utf8'))
+        t.equal(logFiles(logsDir).filter(f => f.endsWith('.test.log'))
+            .length, 0, 'gate waits for the running Hermes turn')
+        const result = await done
+        t.equal(result.code, 0, `timeout work succeeds: ${result.stderr}`)
+        t.equal(await processGone(agentPid), true, 'Hermes is gone')
+        t.equal(await processGone(descendantPid), true,
+            'timeout kills the descendant too')
+        t.ok(readFileSync(join(issuesDir, '01-task.md'), 'utf8')
+            .includes('**Status:** done'), 'ticket is done')
+        t.equal(readFileSync(argvLog, 'utf8').trim().split('\n').length,
+            1, 'timeout is not retried despite an available retry')
+        const testLogs = logFiles(logsDir)
+            .filter(f => f.endsWith('.test.log'))
+        t.equal(testLogs.length, 1, 'test gate ran once')
+        const gateLog = readFileSync(join(logsDir, testLogs[0]), 'utf8')
+        t.ok(gateLog.includes('hermes agent change'),
+            'gate sees the original agent commit')
+        t.ok(gateLog.includes(
+            'redeye: auto-commit 01-task.md remaining changes'),
+        'gate sees the auto-commit of dirty work')
+        t.ok(gateLog.includes('Hermes unfinished work'),
+            'gate checks the dirty work content')
+        t.equal(readFileSync(join(projectDir,
+            'hermes-uncommitted.txt'), 'utf8'),
+        'Hermes unfinished work\n', 'dirty work merged into base')
+        t.equal(readdirSync(projectDir)
+            .filter(f => f.startsWith('hermes-change-')).length,
+        1, 'original committed work merged into base')
+        const agentLogs = logFiles(logsDir)
+            .filter(f => !f.endsWith('.test.log'))
+            .map(f => readFileSync(join(logsDir, f), 'utf8')).join('\n')
+        t.ok(agentLogs.includes('agent timed out after 15s'),
+            'attempt log records timeout classification')
+    } finally {
+        child?.kill('SIGTERM')
+        if (done) await done
+        killProcessGroup(agentPid)
+        if (descendantPid) {
+            try { process.kill(descendantPid, 'SIGKILL') } catch {}
+        }
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
     }
 })
