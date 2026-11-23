@@ -26,7 +26,6 @@ so they can't drift as long as you install the skills with this package.
 <!-- toc -->
 
 - [Install](#install)
-  * [Stale Local Package](#replace-a-stale-project-local-package)
   * [Requirements](#requirements)
   * [Install Dependency Skills](#install-dependency-skills)
 - [Example Workflow](#example-workflow)
@@ -85,89 +84,11 @@ so they can't drift as long as you install the skills with this package.
 npm i -S @substrate-system/redeye
 ```
 
-### Replace a Stale Project-Local Package
-
-`npx redeye` can select the project-installed dependency in `node_modules`.
-Building newer sibling source does not replace that installed copy. Check
-from the consumer project's root before retrying a run:
+Install the "skills":
 
 ```sh
-npm ls @substrate-system/redeye
-node - <<'NODE'
-const p = require.resolve('@substrate-system/redeye/package.json')
-console.log(p, require(p).version)
-NODE
-ls -l node_modules/.bin/redeye
-./node_modules/.bin/redeye --version
+npx redeye init
 ```
-
-The resolved path and bin link should identify the consumer's installed
-package. The package name is `@substrate-system/redeye`; its executable
-is `redeye`. See npm's [exec documentation][npm-exec] for local resolution.
-
-To verify unpublished changes, create a fresh tarball from the redeye
-source checkout. Use a new empty directory so an old tarball cannot be
-selected by the glob below. In one shell, run:
-
-```sh
-cd /path/to/redeye
-package_dir=$(mktemp -d)
-npm run build
-npm run lint
-npm test
-npm pack --pack-destination "$package_dir"
-```
-
-Build before tests: CLI regressions execute `dist/index.js` and read the
-bundled resources. `prepack` also runs the build, so `npm pack` includes
-fresh distribution files. It does not invoke the version or publish hooks.
-See npm's [pack documentation][npm-pack].
-
-In that same shell, switch to the consumer project and install the tarball:
-
-```sh
-cd /path/to/consumer
-npm install --save-exact "$package_dir"/*.tgz
-```
-
-Repeat the version, resolution and bin checks above. A local tarball may
-still report `0.1.8` during development; inspect its resolved path as well.
-Commit the consumer's package and lockfile changes only if keeping this
-local tarball dependency; keep the tarball available for future installs,
-or replace it with the released dependency below.
-
-For an optional real-Hermes check, prepare one small ready ticket in a test
-consumer repository, then run its installed CLI with your configured model:
-
-```sh
-./node_modules/.bin/redeye hermes --spec small-check \
-  -m anthropic/claude-sonnet-4.6 --concurrency 1
-```
-
-Inspect the commit, test gate and attempt log as described in
-[the Hermes manual check](#hermes). This is outside automated acceptance.
-
-A fixed release must have a distinct version from `0.1.8`. Publishing
-remains a separate maintainer action after verification. The existing
-`package.json` workflow runs lint in `preversion`, regenerates and stages
-this README's TOC in `version`; `postversion` runs push and publish.
-`prepublishOnly` runs the build; it does not run the tests. Run build, lint
-and full tests before a maintainer deliberately uses that release workflow.
-Do not run `npm version` just to prepare or test a local tarball.
-
-After the maintainer publishes the fixed release, replace `<fixed-version>`
-with that actual release number and upgrade in the consumer project:
-
-```sh
-npm install --save-exact '@substrate-system/redeye@<fixed-version>'
-```
-
-Repeat the checks above, then commit the consumer's package and lockfile
-updates. Upgrading the local dependency makes subsequent `npx redeye` runs
-use the fixed installed build.
-
-[npm-exec]: https://docs.npmjs.com/cli/commands/npm-exec/
-[npm-pack]: https://docs.npmjs.com/cli/commands/npm-pack/
 
 ### Requirements
 
