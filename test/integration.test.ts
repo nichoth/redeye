@@ -7958,3 +7958,63 @@ async t => {
         })
     }
 })
+
+// -- US-003: Guard the non-interactive Hermes launch contract --
+
+const HERMES_REQUIRED_PREFIX = [
+    '--yolo', 'chat', '--query-file', '-', '--quiet',
+]
+
+test('CLI subprocess - US-003: hermes argv begins with ' +
+    '--yolo chat --query-file - --quiet',
+async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(recordDir, 'argv.log')
+
+        const { code, stderr } = await spawnCli([
+            FAKE_HERMES,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_ARGV_LOG: argvLog,
+            }),
+        })
+
+        t.equal(code, 0,
+            `exit 0 (stderr: ${stderr.slice(0, 200)})`)
+        t.ok(existsSync(argvLog), 'argv log exists')
+
+        const argv:string[] = JSON.parse(
+            readFileSync(argvLog, 'utf8')
+                .trim().split('\n')[0]
+        )
+        const prefix = argv.slice(
+            0, HERMES_REQUIRED_PREFIX.length
+        )
+        t.deepEqual(prefix, HERMES_REQUIRED_PREFIX,
+            'argv begins --yolo chat --query-file - --quiet')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})

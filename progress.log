@@ -66,3 +66,28 @@ Status: DONE
 - The test falls in integration shard 5/20 (index 146 % 20 = 6,
   but count shifted, found via grep)
 - Pre-existing tiiny.test.ts lint errors (indent) are unrelated
+
+## US-003: Guard the non-interactive Hermes launch contract
+
+Date: 2026-11-22
+Status: DONE
+
+### What changed
+- Added integration test in `test/integration.test.ts` that
+  asserts captured hermes argv begins with
+  `--yolo chat --query-file - --quiet`
+- Uses same spawnCli + fakeHermesEnv pattern as US-002
+- Parses the argv JSON log and deepEquals the prefix
+
+### Mutation test
+- Saved `src/orchestrator.ts`, replaced hermes args with `[]`,
+  rebuilt dist and test: test failed (fake hermes rejected the
+  launch, argv log never written, ENOENT)
+- Restored the saved file, rebuilt: test passes
+- No git restore commands used; backup file cleaned up
+
+### Patterns and gotchas
+- No source changes needed -- the guard test validates existing
+  provider args in `PROVIDER_ARGS.hermes`
+- The test falls in integration shard 6/20 (index 146 % 20 = 6)
+- Pre-existing failures in shards 13/20 and 14/20 are unrelated
