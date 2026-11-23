@@ -1158,10 +1158,10 @@ export function spawnAgent (opts:{
             )
         }
     }
-    if (opts.effort && providerName in EFFORT_LADDERS) {
-        const ladder = EFFORT_LADDERS[
-            providerName as ProviderName
-        ]
+    if (opts.effort) {
+        const ladder = providerName in EFFORT_LADDERS ?
+            EFFORT_LADDERS[providerName as ProviderName] :
+            []
         if (
             !(ladder as readonly string[])
                 .includes(opts.effort)

@@ -610,3 +610,62 @@ test('fake hermes tests are independent under sharding',
             })
         }
     })
+
+test('US-019: Hermes docs explain configured Tiiny delegation', t => {
+    const readme = readFileSync('README.md', 'utf8')
+    const section = readme.split('### Hermes\n')[1]
+        .split('### Hermes + Local Model')[0]
+    const prose = section.replace(/\s+/g, ' ')
+
+    t.ok(/one complete noninteractive turn/.test(prose) &&
+        /stdin/.test(prose) && /EOF/.test(prose),
+    'explains complete single-turn prompt delivery')
+    t.ok(/Tiiny activity requires.*manager.*delegate/.test(prose) &&
+        /cloud manager turn.*does not prove local inference/.test(prose),
+    'distinguishes manager completion from delegated inference')
+    t.ok(/Optional manual check/.test(section) &&
+        /small.*ticket/.test(prose) &&
+        /--concurrency 1/.test(section) &&
+        /commit/.test(prose) && /attempt log/.test(prose),
+    'offers a small-ticket manual check of commits and logs')
+    t.ok(/automated.*fake Hermes/.test(prose) &&
+        /manual.*outside automated acceptance/.test(prose),
+    'keeps real inference outside offline acceptance checks')
+})
+
+test('US-020: stale local package replacement guidance', t => {
+    const readme = readFileSync('README.md', 'utf8')
+    const section = readme.split(
+        '### Replace a Stale Project-Local Package\n'
+    )[1]?.split('### Requirements')[0] ?? ''
+    const prose = section.replace(/\s+/g, ' ')
+
+    t.ok(/npx redeye.*project-installed dependency/.test(prose) &&
+        /sibling.*does not replace/.test(prose),
+    'explains why sibling source does not update the local CLI')
+    t.ok(section.includes('npm run build') &&
+        section.includes('npm pack --pack-destination') &&
+        section.includes('npm install --save-exact') &&
+        section.includes('"$package_dir"/*.tgz'),
+    'shows building and installing a fresh local tarball')
+    t.ok(section.includes('npm ls @substrate-system/redeye') &&
+        section.includes('require.resolve(') &&
+        section.includes('require(p).version') &&
+        section.includes('node_modules/.bin/redeye --version'),
+    'checks installed package resolution, version and executable')
+    t.ok(/redeye hermes --spec small-check/.test(section) &&
+        /-m anthropic\/claude-sonnet-4\.6/.test(section) &&
+        /--concurrency 1/.test(section),
+    'shows a single-ticket Hermes run with an explicit model')
+    t.ok(/distinct version.*0\.1\.8/.test(prose) &&
+        section.includes('@substrate-system/redeye@<fixed-version>'),
+    'requires a distinct fixed release and explicit consumer upgrade')
+    t.ok(/preversion.*lint/.test(prose) &&
+        /prepack.*build/.test(prose) &&
+        /postversion.*push.*publish/.test(prose) &&
+        /Publishing remains a separate maintainer action/.test(prose),
+    'describes actual lifecycle hooks and separate publishing')
+    t.ok(section.length > 0 && section.split('\n').every(
+        line => line.length < 80
+    ), 'keeps the guidance under 80 columns')
+})

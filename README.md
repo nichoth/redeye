@@ -1,8 +1,13 @@
 # `redeye`
 [![tests](https://img.shields.io/github/actions/workflow/status/nichoth/redeye/nodejs.yml?style=flat-square)](https://github.com/nichoth/redeye/actions/workflows/nodejs.yml)
 [![semantic versioning](https://img.shields.io/badge/semver-2.0.0-blue?logo=semver&style=flat-square)](https://semver.org/)
-[![install size](https://flat.badgen.net/packagephobia/install/redeye)](https://packagephobia.com/result?p=redeye)
+[![install size][install-size]][package-size]
 [![license](https://img.shields.io/badge/license-Big_Time-blue?style=flat-square)](LICENSE)
+
+[install-size]:
+  https://flat.badgen.net/packagephobia/install/@substrate-system/redeye
+[package-size]:
+  https://packagephobia.com/result?p=%40substrate-system%2Fredeye
 
 This is a minimal Node-based AI orchestrator. It reads local markdown tickets
 produced by
@@ -21,6 +26,7 @@ so they can't drift as long as you install the skills with this package.
 <!-- toc -->
 
 - [Install](#install)
+  * [Stale Local Package](#replace-a-stale-project-local-package)
   * [Requirements](#requirements)
   * [Install Dependency Skills](#install-dependency-skills)
 - [Example Workflow](#example-workflow)
@@ -48,9 +54,8 @@ so they can't drift as long as you install the skills with this package.
       - [GLM 4.7 flash -- 57% NPU](#glm-47-flash----57%25-npu)
     + [2. Run the Loop](#2-run-the-loop)
       - [Qwen3.5-9B-Turbo](#qwen35-9b-turbo)
-      - [ornith-ai/Ornith-1.5-35B-A3B-Turbo](#ornith-aiornith-15-35b-a3b-turbo)
       - [Qwen3.6-35B-A3B-turbo](#qwen36-35b-a3b-turbo)
-      - [Qwen3.6-27B-Turbo](#qwen36-27b-turbo)
+      - [Qwen3.8-27B-Turbo](#qwen38-27b-turbo)
       - [Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo](#huihui-ornith-15-35b-a3b-abliterated-turbo)
       - [Qwen3.8-27B-heretic-ara-Turbo](#qwen38-27b-heretic-ara-turbo)
       - [Ornith-1.5-35B-A3B-Turbo](#ornith-15-35b-a3b-turbo)
@@ -77,22 +82,106 @@ so they can't drift as long as you install the skills with this package.
 ## Install
 
 ```bash
-npm i -S redeye
+npm i -S @substrate-system/redeye
 ```
+
+### Replace a Stale Project-Local Package
+
+`npx redeye` can select the project-installed dependency in `node_modules`.
+Building newer sibling source does not replace that installed copy. Check
+from the consumer project's root before retrying a run:
+
+```sh
+npm ls @substrate-system/redeye
+node - <<'NODE'
+const p = require.resolve('@substrate-system/redeye/package.json')
+console.log(p, require(p).version)
+NODE
+ls -l node_modules/.bin/redeye
+./node_modules/.bin/redeye --version
+```
+
+The resolved path and bin link should identify the consumer's installed
+package. The package name is `@substrate-system/redeye`; its executable
+is `redeye`. See npm's [exec documentation][npm-exec] for local resolution.
+
+To verify unpublished changes, create a fresh tarball from the redeye
+source checkout. Use a new empty directory so an old tarball cannot be
+selected by the glob below. In one shell, run:
+
+```sh
+cd /path/to/redeye
+package_dir=$(mktemp -d)
+npm run build
+npm run lint
+npm test
+npm pack --pack-destination "$package_dir"
+```
+
+Build before tests: CLI regressions execute `dist/index.js` and read the
+bundled resources. `prepack` also runs the build, so `npm pack` includes
+fresh distribution files. It does not invoke the version or publish hooks.
+See npm's [pack documentation][npm-pack].
+
+In that same shell, switch to the consumer project and install the tarball:
+
+```sh
+cd /path/to/consumer
+npm install --save-exact "$package_dir"/*.tgz
+```
+
+Repeat the version, resolution and bin checks above. A local tarball may
+still report `0.1.8` during development; inspect its resolved path as well.
+Commit the consumer's package and lockfile changes only if keeping this
+local tarball dependency; keep the tarball available for future installs,
+or replace it with the released dependency below.
+
+For an optional real-Hermes check, prepare one small ready ticket in a test
+consumer repository, then run its installed CLI with your configured model:
+
+```sh
+./node_modules/.bin/redeye hermes --spec small-check \
+  -m anthropic/claude-sonnet-4.6 --concurrency 1
+```
+
+Inspect the commit, test gate and attempt log as described in
+[the Hermes manual check](#hermes). This is outside automated acceptance.
+
+A fixed release must have a distinct version from `0.1.8`. Publishing
+remains a separate maintainer action after verification. The existing
+`package.json` workflow runs lint in `preversion`, regenerates and stages
+this README's TOC in `version`; `postversion` runs push and publish.
+`prepublishOnly` runs the build; it does not run the tests. Run build, lint
+and full tests before a maintainer deliberately uses that release workflow.
+Do not run `npm version` just to prepare or test a local tarball.
+
+After the maintainer publishes the fixed release, replace `<fixed-version>`
+with that actual release number and upgrade in the consumer project:
+
+```sh
+npm install --save-exact '@substrate-system/redeye@<fixed-version>'
+```
+
+Repeat the checks above, then commit the consumer's package and lockfile
+updates. Upgrading the local dependency makes subsequent `npx redeye` runs
+use the fixed installed build.
+
+[npm-exec]: https://docs.npmjs.com/cli/commands/npm-exec/
+[npm-pack]: https://docs.npmjs.com/cli/commands/npm-pack/
 
 ### Requirements
 
 - Node 24 or newer (see `engines` in `package.json`) and git.
-- The agent CLI you name on the command line (`claude`, `codex` or `pi`)
-  installed and in your `PATH`. A run with no
+- The agent CLI you select (`claude`, `codex`, `pi` or `hermes`)
+  installed and in your `PATH`.
 - macOS or Linux. `redeye` runs agents in their own process group
   and uses `sh -c` for test and install commands. Does not run on Windows.
 
 ### Install Dependency Skills
 
-Install the required
-[Pocock skills](https://github.com/mattpocock/skills),
-and create a `.redeye.json` file in your repo.
+Install the bundled
+[Pocock skills](https://github.com/mattpocock/skills)
+and issue tracker templates in your repo:
 
 ```sh
 npx redeye init
@@ -118,7 +207,8 @@ yours. This applies with or without `-g`.
 After picking an issue tracker, `init` asks whether to enable adversarial
 review loops. On yes it prompts for an implement command and a review
 command (the same syntax as `.redeye.json`), validates each one,
-and writes the result to `.redeye.json`.
+and writes the result to `.redeye.json`. This config file is optional;
+`init` only creates or updates it when you enable adversarial review.
 
 >
 > [!IMPORTANT]  
@@ -129,9 +219,9 @@ and writes the result to `.redeye.json`.
 > `npx redeye init -g`.
 >
 
-The Pocock skills are bundled with this git repo, at `./skills`.
+The Pocock skills are bundled with this git repo, at `src/skills/`.
 They are cloned with some metadata, visible in
-[skill/upstream.json](skills/upstream.json).
+[src/skills/upstream.json](src/skills/upstream.json).
 That's how we prevent skill vs API drift.
 
 
@@ -250,6 +340,44 @@ The model ID uses the slug of the provider set in your Hermes config.
 ```sh
 caffeinate -i npx redeye hermes -m anthropic/claude-sonnet-4.6
 ```
+
+For each ticket attempt, redeye sends Hermes one complete noninteractive
+turn: the ticket and agent instructions arrive together on stdin, then
+redeye closes stdin (EOF). Hermes runs with
+`--yolo chat --query-file - --quiet`; redeye waits for the turn to finish
+before applying the existing commit and test gates.
+
+With Tiiny delegation already configured in Hermes, the selected model
+acts as the manager. Tiiny activity requires that manager to choose to
+delegate work to the configured device. A successful cloud manager turn
+does not prove local inference occurred. redeye delivers the ticket to
+Hermes; Hermes's existing delegation setup decides whether to use Tiiny.
+The local model aliases below select a model directly; selecting a cloud
+manager does not itself request delegation.
+
+**Optional manual check (real Hermes)**
+
+In a test repository with Hermes and Tiiny delegation already configured,
+prepare one small ready ticket with a verifiable file change and a test
+command. Run it with your configured manager model, for example:
+
+```sh
+npx redeye hermes -m anthropic/claude-sonnet-4.6 --concurrency 1
+```
+
+Inspect the resulting commit with `git log` and `git show`, check that the
+change passed the test gate and the ticket is done, then read the attempt
+log at `.scratch/<feature>/logs/<ticket>.log` (or
+`<ticket>.attempt<n>.log` on retries). Look for final output, diagnostics,
+and any delegation reported by Hermes. A commit and a passing gate verify
+ticket work; manager output alone cannot establish local inference. If
+Hermes reports no delegation, this run has not demonstrated Tiiny use.
+
+Keep this optional manual inference check outside automated acceptance.
+The automated tests use fake Hermes and require no credentials, model
+API calls or Tiiny device. This check uses your existing router, model
+loading, credentials and delegation settings; it does not force
+delegation or measure device utilization.
 
 >
 > [!NOTE]  
@@ -372,12 +500,14 @@ caffeinate -i npx redeye codex -m gpt-6.1-terra --effort medium
 
 ### Local Model With `pi`
 
-The model passed in here (`tiiny/Qwen/Qwen3.6-35B-A3B-turbo`) corresponds to
-the model ID in `~/.pi/agent/models.json`.
+The `-m` value combines the provider name and its configured model ID.
+For example, `tiiny/Qwen/Qwen3.6-35B-A3B-turbo` selects the `tiiny`
+provider's `Qwen/Qwen3.6-35B-A3B-turbo` entry. Register every model you
+use in `~/.pi/agent/models.json`; the example includes the models below.
 
 `~/.pi/agent/models.json`:
 
-```js
+```json
 {
   "providers": {
     "tiiny": {
@@ -420,6 +550,21 @@ the model ID in `~/.pi/agent/models.json`.
           "name": "Tiiny GLM 4.7 Flash",
           "contextWindow": 131072,
           "maxTokens": 16384
+        },
+        {
+          "id": "Qwen/Qwen3.6-27B"
+        },
+        {
+          "id": "Qwen/Qwen3.8-27B-Turbo"
+        },
+        {
+          "id": "huihui-ai/Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo"
+        },
+        {
+          "id": "trohrbaugh/Qwen3.8-27B-heretic-ara-Turbo"
+        },
+        {
+          "id": "ornith-ai/Ornith-1.5-35B-A3B-Turbo"
         }
       ]
     }
@@ -539,10 +684,11 @@ Keep `--concurrency 1` with every `tiiny` model. A higher value makes
 the agents evict each other's prompt cache (see
 [Local Model With `pi`](#local-model-with-pi)).
 
-Retries continue the ticket branch instead of starting from scratch,
-so a timed-out attempt's commits are not lost. `--timeout 7200`
-gives the model two hours per attempt and `--retries 3` gives each
-ticket up to four tries.
+Retries continue an existing ticket branch when it has commits ahead
+of the base branch. `--timeout 7200` gives the model two hours per
+attempt, and `--retries 3` gives each ticket up to four tries after
+failures. A timeout itself is not retried: redeye auto-commits dirty
+changes and sends the branch through the test gate and merge.
 
 ##### Qwen3.5-9B-Turbo
 
@@ -567,7 +713,7 @@ caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.6-35B-A3B-turbo \
 
 ---
 
-##### Qwen3.6-27B-Turbo
+##### Qwen3.8-27B-Turbo
 
 ```sh
 caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.8-27B-Turbo \
@@ -578,7 +724,8 @@ caffeinate -i npx redeye pi -m tiiny/Qwen/Qwen3.8-27B-Turbo \
 ##### Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo
 
 ```sh
-caffeinate -i npx redeye pi -m tiiny/huihui-ai/Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo \
+caffeinate -i npx redeye pi \
+  -m tiiny/huihui-ai/Huihui-Ornith-1.5-35B-A3B-abliterated-Turbo \
   --concurrency 1 --timeout 7200 --retries 3
 ```
 
@@ -668,7 +815,7 @@ Flags:
 | `--max-turns <n>` | no | -- | Max agentic turns per agent run. Forwarded as `--max-turns <n>` to `claude` only; for `codex` and `pi` the flag is skipped with a warning and the agent runs with no turn limit. The limit is per spawn, not a total for the ticket: every retry and every re-spawn after a merge conflict starts with a fresh budget of `n` turns, so with `--retries 3` one ticket can use up to 4 x `n`. When omitted (or `0`), no limit is passed, so `--timeout` is the only cap. Takes precedence over the `[turns]` positional when both are given. Reaching the limit is an error exit, so the attempt fails and is retried like any other failure |
 | `--effort <level>` | no | -- | Starting effort/reasoning level. Each provider has its own ladder: `claude` supports `low`, `medium`, `high`, `xhigh`, `max` (forwarded as `--effort`); `codex` supports `low`, `medium`, `high` (forwarded as `-c model_reasoning_effort=<level>`); `pi` supports `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` (forwarded as `--thinking`). Omitted = provider default. Each retry steps up from here (see `--retries`) |
 | `--prefer-subagent <model>` | no | -- | `claude` only. Sets `CLAUDE_CODE_SUBAGENT_MODEL=<model>` for every claude agent redeye spawns (tickets, merge-conflict re-spawns, the reviewer and the fixer) and adds a prompt rule: hand read-only work (exploring the codebase, searching code, test runs with long output) to subagents, and make every edit and commit yourself. The reviewer gets the rule without the edit and commit line, since it never edits. `""` is the same as omitting the flag. For `codex` and `pi` it is skipped with one warning at startup (`--prefer-subagent not supported by <provider>, skipping`). `--dry-run` prints `Prefer subagent: <model>`, or `(none)`. See [`--prefer-subagent` option](#--prefer-subagent-option) |
-| `--retries <n>` | no | `3` | Extra attempts per ticket after a failed run. Each retry starts from a fresh worktree and raises the effort level one rung (see Notes). `0` disables retries |
+| `--retries <n>` | no | `3` | Extra attempts after failure; see Notes |
 | `--retry-delay <n>` | no | `30` | Seconds to wait before the first retry; doubles each further retry (30s, 60s, 120s, ...). `0` disables the wait |
 | `--concurrency <n>` | no | `5` | Max agents running at once within a wave. A wave with more ready tickets than this runs them through a pool: as one agent exits, the next ticket starts. The wave still finishes fully before its branches are merged |
 
@@ -707,8 +854,10 @@ Flags:
 * A failed attempt is retried, up to `--retries` times, before the
   ticket is recorded as failed. Non-zero exit, exit 0 with no new
   commits, and a red test command all count as failures; a timeout
-  does not (see below). Each retry discards the previous worktree
-  and starts from a fresh one. Each retry also raises the effort
+  does not (see below). A retry continues an existing ticket branch
+  if it has commits ahead of base, preserving those commits and
+  merging in base if it has moved. Otherwise it starts fresh from
+  base. `--retries 0` disables retries. Each retry also raises the effort
   level one rung up the provider's ladder: without `--effort` the
   first retry uses `high`; with `--effort <level>` each retry
   steps one level up from the previous attempt, stopping at the
@@ -757,9 +906,10 @@ Flags:
   `--timeout 900` is a reasonable cap that catches stuck agents
   sooner than the one-hour default.
 * `.scratch/` should be listed in your project's `.gitignore`.
-  The orchestrator force-adds `progress.md` so it is tracked despite
-  the ignore rule, but ticket files, logs, and spec files are
-  working state and should not be committed to the project repo.
+  The orchestrator force-adds and commits ticket files, `progress.md`,
+  `learnings.md` and review logs despite that rule. These records live
+  on the branch where the run merges its work. Agent logs and spec
+  files are not automatically force-added.
 * Agent logs are written to `<dir>/../logs/<ticket>.log`.
 * Provider commands are launched non-interactively with default flags
   that grant the agent write access to the worktree, so tickets can
@@ -901,8 +1051,13 @@ Worktrees are created next to the repository, not inside it: a
 ticket's worktree is the sibling directory
 `<repo>.<feature>-<num>-<slug>` on the branch
 `<repo>--<feature>-<num>-<slug>`. A run that is interrupted leaves
-them in place; the next run removes a stale worktree and branch of
-the same name before creating a new one.
+them in place. On the next attempt, redeye continues an existing
+ticket branch with commits ahead of base, recreating its worktree
+and merging in base if it has moved. An interrupted adversarial
+review loop resumes from its recorded round. Otherwise, redeye
+removes the stale worktree and branch and starts fresh from base.
+Commit work you want to preserve before restarting: uncommitted
+changes in a stale worktree are discarded when it is recreated.
 
 A fresh worktree has only tracked files, so there is no
 `node_modules`. Before the agent starts, the orchestrator installs

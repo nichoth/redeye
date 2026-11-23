@@ -859,3 +859,254 @@ Status: BLOCKED on full-suite environment permissions
 - Stopped under the requested unfixable-failure rule. US-016 remains
   passes:false and uncommitted until the required full suite can pass
   in an environment that permits the existing localhost listener.
+
+### US-016 completed verification (2026-11-23)
+
+- Read specs/prd.json and progress.log at session start. The requested
+  docs/INDEX.md is absent; studied docs/README.md instead.
+- Reviewed the existing test-first lifecycle regressions and fake
+  coordination, already committed in eaf9441. No additional source
+  changes were needed. Shared process groups, registries, CLI signal
+  handlers and timeout auto-commit policy remain intact.
+- The actual createFakeDevice() localhost listener now starts, serves
+  a request and closes successfully in this execution environment.
+- Fresh npm run build passed, including declaration typecheck.
+  npm run lint and git diff --check passed.
+- Freshly bundled integration shards 162/165, 163/165 and 164/165
+  passed all 24 US-016 assertions. Fake Hermes passed all 42 assertions.
+- Ran npm test once as the final gate: the full suite passed, including
+  Tiiny and the Hermes lifecycle tests under parallel suite load.
+  Output: /tmp/redeye-us016-final-20261123.log.
+- Marked only US-016 passes:true. No dependencies, test skips, manual
+  story changes or unrelated implementation changes were added.
+- Completion commit attempted with message FEATURE: [US-016] - Preserve
+  Hermes cancellation and timeout handling. Both git add and git commit
+  failed: cannot create .git/index.lock, Operation not permitted.
+  This session permits reading .git but not writing repository metadata;
+  permission escalation is unavailable. The verified US-016 flag and
+  this progress entry remain uncommitted. Stop under the requested
+  unfixable-failure rule; commit these two files when Git writes are
+  permitted. No other story was started or marked passing.
+
+## US-017: Warn and omit unsupported Hermes provider options
+
+Date: 2026-11-23
+Status: Verified; completion commit pending.
+
+### What changed
+- Added a built-CLI regression exercising --effort high, --max-turns
+  17 and --prefer-subagent haiku together with offline fake Hermes.
+- Assert all three existing warning formats, exact captured argv with
+  no unsupported flags or values, no subagent prompt rules, one turn,
+  ticket completion and the controlled change passing the merge gate.
+- The test first failed only on the missing effort warning (8/9 pass).
+  spawnAgent now treats a provider without an effort ladder as having
+  no supported levels and emits the existing warning through onLine.
+- Existing max-turns and preferred-subagent omission rules remain
+  intact. No new flags, configuration changes or dependencies.
+
+### Verification and patterns
+- docs/INDEX.md is absent; studied docs/README.md instead.
+- npm run build passed, including declaration typecheck.
+- Focused US-017 regression: TEST_SHARD=164/166, all 9 assertions pass.
+- Existing orchestrator suite passed all 891 compatibility assertions.
+- npm run lint and git diff --check passed.
+- Ran npm test once as the final gate: every suite passed, including
+  US-017 under parallel load. Output: /tmp/redeye-us017-full.log.
+- Marked only US-017 passes:true. Preserved the pre-existing US-016
+  PRD flag and progress entry without including them in this task's
+  prepared commit patch. Left all remaining and manual stories alone.
+
+### Completion blocker
+- Staging the task-only patch failed: cannot create .git/index.lock,
+  Operation not permitted. The required git commit then reported no
+  staged changes. Repository metadata writes are blocked in this
+  session and escalation is unavailable.
+- Verified implementation, tests and US-017 passes:true remain on disk
+  uncommitted. The task-only patch is /tmp/redeye-us017-commit.patch;
+  it excludes the pre-existing US-016 edits. Recreate it to include
+  this blocker entry before committing when Git writes are permitted.
+- Stopped under the requested unfixable-failure rule. No next story
+  was started and no other story was marked passing this session.
+
+## US-018: Verify the installed CLI from a freshly packed artifact
+
+Date: 2026-11-23
+Status: Verified; completion commit pending.
+
+### What changed
+- Added prepack to run the existing build lifecycle before npm pack.
+  No version, publish, network, credentials or device calls are used.
+- Added an installed-artifact regression using the existing spawnCli
+  helper with an optional cliPath. The default remains dist/index.js.
+- Pack an isolated source copy with a deliberately stale dist/index.js.
+  Isolation prevents prepack's build from deleting parallel test shards.
+- Install the fresh tarball into a temporary consumer using npm offline,
+  an empty private cache, private npm/Git config and copied lockfile
+  runtime dependencies. No new dependencies or registry access needed.
+- Execute the consumer bin with fake Hermes. Check packaged resources,
+  exact argv, complete stdin, one turn, test gate, merged commit and
+  content, done status, exit 0, and retained stdout/stderr final logs.
+- Temporary source, consumer, tarball, config and worktrees are cleaned
+  up in finally, within the existing suite's private TMPDIR conventions.
+
+### Test-first evidence and verification
+- Before the fix, the regression reported missing packaged resources,
+  unchanged stale CLI contents and installed exit 77: STALE_ARTIFACT.
+  Adding prepack rebuilds that stale artifact and passes all 20 checks.
+- npm pack JSON differs across npm versions, and lifecycle compiler
+  output can mix with stdout. Discover the one fresh .tgz by directory
+  contents instead of parsing npm's presentation output.
+- docs/INDEX.md is absent; studied docs/README.md instead.
+- npm run build passed, including declaration typecheck.
+- Focused TEST_SHARD=166/167 passed all 20 assertions.
+- npm run lint and git diff --check passed.
+- Ran npm test once as the final gate: every suite passed, including
+  the packed installed CLI regression under parallel suite load.
+  Output: /tmp/redeye-us018-full.log.
+- Marked only US-018 passes:true; preserved all earlier uncommitted
+  work and left remaining/manual stories unchanged.
+
+### Completion blocker
+- Staging and committing both failed because Git cannot create
+  .git/index.lock: Operation not permitted. Repository metadata is
+  read-only under this session's execution policy; escalation is
+  unavailable. No commit was created.
+- Verified US-018 changes and passes:true remain on disk. The isolated
+  task patch is /tmp/redeye-us018-commit.patch; it excludes pre-existing
+  US-016 and US-017 changes and includes this blocker entry.
+- Stop under the requested unfixable-failure rule. Apply the patch to
+  the index and commit when Git metadata writes are permitted. No
+  other story was started or marked passing in this session.
+
+
+## US-019: Clarify Hermes delegation to a configured Tiiny device
+
+Date: 2026-11-23
+Status: Documentation implemented; full-suite gate failed.
+
+### What changed
+- docs/INDEX.md is absent; studied docs/README.md and the Hermes
+  README sections, feature spec and shared launcher instead.
+- Documented one complete noninteractive turn delivered through stdin
+  and EOF, followed by the existing commit and test gates.
+- Explained that configured Tiiny activity requires manager delegation;
+  a successful cloud manager turn does not prove local inference.
+- Added an optional real-Hermes small-ticket check with concurrency 1,
+  commit and test-gate inspection, ticket status and attempt log paths.
+- Kept real inference outside automated acceptance and preserved all
+  router, model loading, credential and delegation settings.
+- Added four offline documentation checks to the existing Hermes suite.
+  All four failed before the README change; all 46 Hermes assertions
+  passed afterward. No dependencies or runtime changes were added.
+
+### Verification and blocker
+- npm run build passed, including declaration typecheck.
+- npm run lint passed after removing one extra test blank line.
+  git diff --check and added-line checks under 80 columns passed.
+- Ran npm test once as requested. Hermes passed all 46 assertions, but
+  existing integration shards 13/20 and 14/20 failed: the typo-warning
+  CLI case returned 1, and the execute smoke case returned 1 with
+  unfinished tickets and no second attempt log. Other suites passed.
+  Full output: /tmp/redeye-us019-full.log.
+- Reran only those two cases as integration shards 13/167 and 14/167:
+  all 7 assertions passed. Logs: /tmp/redeye-us019-existing-typo.log
+  and /tmp/redeye-us019-existing-smoke.log. The failures did not
+  reproduce alone; the full run does not retain their CLI diagnostics.
+  Their cause remains unconfirmed. No unrelated tests were changed.
+- Stopped under the requested failure rule without claiming a passing
+  full gate. US-019 remains passes:false; every other story and all
+  pre-existing edits remain untouched. No completion commit was made
+  because the required full-suite gate failed. Resume by diagnosing
+  those existing CLI failures under parallel suite load, then verify
+  before marking and committing only US-019.
+- Saved only this session's changes in /tmp/redeye-us019-task.patch;
+  it excludes the pre-existing US-016, US-017 and US-018 changes.
+
+### US-019 resumed verification (2026-11-23)
+
+- Read specs/prd.json and progress.log at session start. docs/INDEX.md
+  is still absent; studied docs/README.md and the feature spec instead.
+- Reviewed the saved test-first docs checks and their four expected
+  failures in /tmp/redeye-us019-red.log. Rechecked all four assertions
+  against HEAD's README (all false) and the updated README (all true).
+- Verified launch flags, stdin EOF and attempt log paths against the
+  shared launcher. The optional small-ticket check inspects commits,
+  test results and logs without claiming proof of local inference.
+- Fresh npm run build passed, including declaration typecheck. The
+  Hermes suite passed all 46 assertions. Both previously failing CLI
+  cases passed their targeted runs (7 assertions total).
+- npm run lint and git diff --check passed. Every added docs and test
+  line is under 80 columns. No dependencies or runtime changes added.
+- Ran npm test once as this session's final gate: all 66 suite processes
+  passed, including the earlier typo-warning and execute smoke cases.
+  Their earlier parallel-load failures did not recur; no unrelated
+  test changes or timeout adjustments were needed.
+- Logs: /tmp/redeye-us019-session-{build,hermes,typo,smoke,lint,full}.log.
+- Marked only US-019 passes:true. Preserved all pre-existing US-016,
+  US-017 and US-018 edits, and left US-020 and manual stories untouched.
+
+### US-019 completion commit blocker (2026-11-23)
+
+- Prepared /tmp/redeye-us019-commit.patch with only the US-019 README,
+  Hermes docs test, progress entry and PRD flag. It excludes the earlier
+  US-016, US-017 and US-018 changes, including their PRD/log edits.
+- Staging failed: Git cannot create .git/index.lock (Operation not
+  permitted). This session permits reading repository metadata but not
+  writing it, and permission escalation is unavailable. No completion
+  commit was created. The verified changes remain on disk uncommitted.
+- Intended commit: FEATURE: [US-019] - Clarify Hermes Tiiny delegation.
+  Refreshed the task-only patch to include this blocker entry. Stopped
+  without starting another story or changing other stories' flags.
+
+
+## US-020: Document replacing a stale project-local redeye package
+
+Date: 2026-11-23
+Status: Verified; completion commit pending.
+
+### What changed
+- docs/INDEX.md is absent; studied docs/README.md instead.
+- Added README troubleshooting guidance explaining how npx can select
+  a project-installed dependency and why newer sibling source does not
+  replace that copy. Linked the section from the installation TOC.
+- Showed checking the scoped package version, resolved package path,
+  bin link and installed CLI version from the consumer project.
+- Documented build, lint, tests, packing into a fresh empty directory,
+  local consumer installation, and a configured single-ticket Hermes
+  check with an explicit model and --concurrency 1.
+- Documented upgrading the consumer to the actual fixed release with
+  a version distinct from 0.1.8. Publishing stays a maintainer action.
+- Checked package scripts directly: preversion lints, version updates
+  and stages the TOC, postversion pushes and publishes, prepack and
+  prepublishOnly build. prepublishOnly does not run tests, despite
+  the older project instructions claiming otherwise.
+- No dependencies, runtime changes, version changes, publishing,
+  pushes, other checkouts or observed runs were touched.
+
+### Test-first evidence and verification
+- Added seven offline docs checks to the existing Hermes suite.
+  All seven failed before the README edit (46 passed, 7 failed).
+  After the guide, all 53 assertions passed.
+- npm run build passed, including declaration typecheck.
+- npm run lint passed after removing one extra test blank line.
+- Ran npm test once as the final gate: all 66 suite processes passed.
+  Output: /tmp/redeye-us020-full.log. Focused red/green, build and lint
+  output: /tmp/redeye-us020-{red,green,build,lint}.log.
+- git diff --check passed. All added docs/test lines are under 80
+  columns, including the shortened TOC link label.
+- Marked only US-020 passes:true; all earlier edits and manual stories
+  remain unchanged. Prepared /tmp/redeye-us020-commit.patch relative
+  to the session baseline so earlier uncommitted work is excluded.
+
+### Completion blocker
+- Both staging the task-only patch and creating the required commit
+  failed: cannot create .git/index.lock, Operation not permitted.
+  Repository metadata is read-only in this session and permission
+  escalation is unavailable. No completion commit was created.
+- Verified US-020 docs, tests and passes:true remain uncommitted.
+  Refreshed /tmp/redeye-us020-commit.patch to include this blocker;
+  it excludes all pre-existing US-016 through US-019 changes.
+- Intended commit: FEATURE: [US-020] - Document replacing stale local
+  packages. Apply the task-only patch to the index and commit when
+  repository metadata writes are permitted. No other story started.

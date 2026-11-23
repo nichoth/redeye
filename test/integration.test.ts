@@ -2,7 +2,7 @@ import { type Test } from '@substrate-system/tapzero'
 import { test } from './shard.js'
 import {
     mkdtempSync, mkdirSync, writeFileSync,
-    appendFileSync, copyFileSync,
+    appendFileSync, copyFileSync, cpSync,
     readFileSync, existsSync, rmSync, chmodSync,
     symlinkSync, readdirSync, realpathSync,
 } from 'node:fs'
@@ -225,6 +225,7 @@ function spawnCli (
         cwd?:string
         env?:NodeJS.ProcessEnv
         closeStdin?:boolean
+        cliPath?:string
         onSpawn?:(child:ChildProcess) => void
         timeoutMs?:number
     },
@@ -236,7 +237,7 @@ function spawnCli (
     return new Promise(resolve => {
         const child = execFile(
             process.execPath,
-            [CLI, ...args],
+            [opts?.cliPath ?? CLI, ...args],
             {
                 timeout: opts?.timeoutMs ?? 30_000,
                 cwd: opts?.cwd,
@@ -9536,6 +9537,58 @@ for (const [signal, exitCode] of [
     })
 }
 
+test('CLI subprocess - US-017: unsupported Hermes options warn ' +
+    'and leave the launch contract unchanged', async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const recordDir = tmp()
+    try {
+        writeFileSync(join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' }))
+        commitAll(projectDir, 'add tickets')
+        const argvLog = join(recordDir, 'argv.log')
+        const stdinLog = join(recordDir, 'stdin.log')
+        const { code, stdout, stderr } = await spawnCli([
+            FAKE_HERMES, '--spec', FEAT,
+            '--concurrency', '1', '--timeout', '30',
+            '--retries', '0', '--no-review',
+            '--effort', 'high', '--max-turns', '17',
+            '--prefer-subagent', 'haiku',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_ARGV_LOG: argvLog,
+                FAKE_HERMES_STDIN_LOG: stdinLog,
+            }),
+        })
+        t.equal(code, 0, `exit 0 (stderr: ${stderr})`)
+        const output = stdout + stderr
+        for (const warning of [
+            "Warning: effort 'high' not supported by hermes, skipping",
+            'Warning: --max-turns not supported by hermes, skipping',
+            '--prefer-subagent not supported by hermes, skipping',
+        ]) {
+            t.ok(output.includes(warning), warning)
+        }
+        const turns = readFileSync(argvLog, 'utf8').trim().split('\n')
+        t.equal(turns.length, 1, 'one controlled ticket turn')
+        t.deepEqual(JSON.parse(turns[0]), HERMES_REQUIRED_PREFIX,
+            'no unsupported flags or values reach Hermes argv')
+        const prompt = readFileSync(stdinLog, 'utf8')
+        t.ok(!SUBAGENT_RULE.some(line => prompt.includes(line)),
+            'unsupported subagent preference adds no prompt rules')
+        t.ok(readFileSync(join(issuesDir, '01-task.md'), 'utf8')
+            .includes('**Status:** done'), 'ticket marked done')
+        t.equal(readdirSync(projectDir)
+            .filter(f => f.startsWith('hermes-change-')).length,
+        1, 'controlled change passed the gate and merged')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
+    }
+})
+
 test('CLI subprocess - US-016: timed-out Hermes work passes ' +
     'the gate without retrying', async t => {
     const { projectDir, issuesDir, templateDir } = cliGitRepo()
@@ -9617,5 +9670,156 @@ test('CLI subprocess - US-016: timed-out Hermes work passes ' +
         removeWorktreesAndRepo(projectDir)
         rmSync(recordDir, { recursive: true, force: true })
         rmSync(templateDir, { recursive: true, force: true })
+    }
+})
+
+test('CLI subprocess - US-018: freshly packed installed CLI ' +
+    'rebuilds stale dist and completes a Hermes ticket', async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const artifactDir = tmp()
+    const root = process.cwd()
+    const source = join(artifactDir, 'source')
+    const consumer = join(artifactDir, 'consumer')
+    const home = join(artifactDir, 'home')
+    try {
+        for (const dir of [source, consumer, home]) {
+            mkdirSync(dir, { recursive: true })
+        }
+        // An isolated copy keeps prepack's build from deleting dist/test
+        // while other suite shards are running.
+        for (const name of [
+            'package.json', 'tsconfig.json', 'tsconfig.build.json', 'src',
+        ]) {
+            cpSync(join(root, name), join(source, name), {
+                recursive: true,
+            })
+        }
+        symlinkSync(join(root, 'node_modules'),
+            join(source, 'node_modules'), 'dir')
+        mkdirSync(join(source, 'dist'))
+        writeFileSync(join(source, 'dist', 'index.js'),
+            'process.stderr.write("STALE_ARTIFACT\\n");' +
+            'process.exit(77)\n')
+
+        // Allowlist the environment: no user npmrc, cache, credentials,
+        // provider settings, or Git identity/config leaks into the run.
+        const env:NodeJS.ProcessEnv = {
+            PATH: process.env.PATH,
+            HOME: home,
+            TMPDIR: artifactDir,
+            XDG_CONFIG_HOME: home,
+            GIT_CONFIG_GLOBAL: join(home, 'gitconfig'),
+            GIT_CONFIG_NOSYSTEM: '1',
+            npm_config_userconfig: join(home, 'npmrc'),
+            npm_config_globalconfig: join(home, 'global-npmrc'),
+            npm_config_cache: join(home, 'cache'),
+            npm_config_offline: 'true',
+            npm_config_audit: 'false',
+            npm_config_fund: 'false',
+        }
+        execFileSync('npm', [
+            'pack', '--pack-destination', artifactDir,
+        ], { cwd: source, env, encoding: 'utf8', timeout: 120_000 })
+        const tarballs = readdirSync(artifactDir)
+            .filter(name => name.endsWith('.tgz'))
+        t.equal(tarballs.length, 1, 'one fresh tarball created')
+        const filename = tarballs[0]
+
+        // Seed only installed runtime dependencies from our lockfile.
+        // npm still installs the real tarball and creates its bin link;
+        // an empty private cache and --offline prohibit registry access.
+        const lock = JSON.parse(readFileSync(
+            join(root, 'package-lock.json'), 'utf8'
+        )) as { packages:Record<string, { dev?:boolean }> }
+        for (const [path, info] of Object.entries(lock.packages)) {
+            if (!path || info.dev) continue
+            cpSync(join(root, path), join(consumer, path), {
+                recursive: true,
+            })
+        }
+        writeFileSync(join(consumer, 'package.json'),
+            JSON.stringify({ private: true }))
+        execFileSync('npm', [
+            'install', '--offline', '--ignore-scripts', '--no-save',
+            '--package-lock=false', '--no-audit', '--no-fund',
+            join(artifactDir, filename),
+        ], { cwd: consumer, env, encoding: 'utf8', timeout: 60_000 })
+        const cliPath = join(consumer, 'node_modules', '.bin', 'redeye')
+        t.ok(realpathSync(cliPath).startsWith(realpathSync(consumer)),
+            'executes the installed consumer bin')
+        const installed = join(consumer, 'node_modules',
+            '@substrate-system', 'redeye', 'dist')
+        t.ok(existsSync(join(installed, 'skills', 'tdd', 'SKILL.md')),
+            'packed skills are installed')
+        t.ok(existsSync(join(installed, 'docs-templates')),
+            'packed document templates are installed')
+        t.ok(!readFileSync(cliPath, 'utf8').includes('STALE_ARTIFACT'),
+            'packing rebuilt the deliberately stale CLI')
+
+        const marker = 'US018 packed prompt: quotes \'" and Unicode λ'
+        writeFileSync(join(projectDir, '.scratch', FEAT, 'spec.md'),
+            marker + '\n')
+        writeFileSync(join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' }))
+        commitAll(projectDir, 'add packed CLI ticket')
+        const argvLog = join(artifactDir, 'argv.log')
+        const stdinLog = join(artifactDir, 'stdin.log')
+        const { code, stdout, stderr } = await spawnCli([
+            FAKE_HERMES, '--spec', FEAT, '--concurrency', '1',
+            '--timeout', '60', '--retries', '0', '--no-review',
+            '--test-cmd', 'git log -1 --format=%s && ' +
+                'cat hermes-change-*.txt',
+        ], {
+            cliPath,
+            cwd: projectDir,
+            timeoutMs: 90_000,
+            env: {
+                ...env,
+                FAKE_HERMES_ARGV_LOG: argvLog,
+                FAKE_HERMES_STDIN_LOG: stdinLog,
+                FAKE_HERMES_OUTPUT: 'US018 final stdout\n',
+                FAKE_HERMES_STDERR: 'US018 final stderr\n',
+            },
+        })
+        t.equal(code, 0, `installed CLI exits 0: ${stderr}`)
+        if (code !== 0) return
+        t.deepEqual(readFileSync(argvLog, 'utf8').trim().split('\n')
+            .map(line => JSON.parse(line)), [HERMES_REQUIRED_PREFIX],
+        'one installed turn uses the exact launch contract')
+        const prompt = readFileSync(stdinLog, 'utf8')
+        t.ok(prompt.includes(marker + '\n'),
+            'complete spec reaches stdin unchanged')
+        t.equal(prompt.split(marker).length - 1, 1,
+            'complete spec appears once')
+        t.ok(prompt.includes('---- TICKET ----') &&
+            prompt.includes('---- AGENT INSTRUCTIONS ----'),
+        'installed CLI sends ticket and agent instructions')
+        t.ok(readFileSync(join(issuesDir, '01-task.md'), 'utf8')
+            .includes('**Status:** done'), 'ticket is done')
+        const files = readdirSync(projectDir)
+            .filter(name => name.startsWith('hermes-change-'))
+        t.equal(files.length, 1, 'one controlled change merged')
+        const content = readFileSync(join(projectDir, files[0]), 'utf8')
+        const logsDir = join(projectDir, '.scratch', FEAT, 'logs')
+        const names = readdirSync(logsDir)
+        const gates = names.filter(name => name.endsWith('.test.log'))
+        t.equal(gates.length, 1, 'real test gate ran once')
+        const gate = readFileSync(join(logsDir, gates[0]), 'utf8')
+        t.ok(gate.includes('hermes agent change') &&
+            gate.includes(content), 'gate verified the committed change')
+        t.ok(gitOut(projectDir, ['log', '--oneline'])
+            .includes('hermes agent change'), 'agent commit merged')
+        const attempts = names.filter(name =>
+            name.endsWith('.log') && !name.endsWith('.test.log'))
+        t.equal(attempts.length, 1, 'one attempt log retained')
+        const log = readFileSync(join(logsDir, attempts[0]), 'utf8')
+        for (const final of ['US018 final stdout', 'US018 final stderr']) {
+            t.ok(log.includes(final), `${final} retained in attempt log`)
+            t.ok(stdout.includes(final), `${final} reaches display`)
+        }
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(templateDir, { recursive: true, force: true })
+        rmSync(artifactDir, { recursive: true, force: true })
     }
 })

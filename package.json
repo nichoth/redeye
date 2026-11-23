@@ -23,6 +23,7 @@
     "toc": "markdown-toc --maxdepth 5 -i README.md",
     "preversion": "npm run lint",
     "prepublishOnly": "npm run build",
+    "prepack": "npm run build",
     "version": "npm run toc && git add README.md",
     "postversion": "git push --follow-tags && npm publish",
     "demo": "npm run build && node test/demo-display.mjs",
