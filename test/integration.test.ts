@@ -9033,3 +9033,130 @@ async t => {
         })
     }
 })
+
+// -- US-013: Keep nonzero Hermes exits as unfinished attempts --
+
+test('CLI subprocess - US-013: nonzero hermes exit ' +
+    'leaves ticket unfinished',
+async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = mkdtempSync(
+        join(tmpdir(), 'redeye-us013-')
+    )
+    const logsDir = join(
+        projectDir, '.scratch', FEAT, 'logs'
+    )
+    const learningsPath = join(
+        projectDir, '.scratch', FEAT, 'learnings.md'
+    )
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(recordDir, 'argv.log')
+        const stderrMarker =
+            'US013-DIAG-' + randomUUID()
+        const stdoutMarker =
+            'US013-OUT-' + randomUUID()
+
+        const { code } = await spawnCli([
+            FAKE_HERMES,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '1',
+            '--retry-delay', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_ARGV_LOG: argvLog,
+                FAKE_HERMES_EXIT: '1',
+                FAKE_HERMES_OUTPUT: stdoutMarker,
+                FAKE_HERMES_STDERR: stderrMarker,
+            }),
+        })
+
+        // AC: CLI exits nonzero
+        t.ok(
+            code !== 0,
+            `CLI exits nonzero (got ${code})`
+        )
+
+        // AC: ticket is NOT marked done
+        const ticket = readFileSync(
+            join(issuesDir, '01-task.md'), 'utf8'
+        )
+        t.ok(
+            !ticket.includes('**Status:** done'),
+            'ticket not marked done'
+        )
+
+        // AC: no controlled ticket change merged
+        const changeFiles = readdirSync(projectDir)
+            .filter(f => f.startsWith('hermes-change-'))
+        t.equal(changeFiles.length, 0,
+            'no hermes change file merged')
+
+        // AC: retries bounded -- with --retries 1
+        // there should be exactly 2 attempts (1 + 1 retry)
+        t.ok(existsSync(argvLog), 'argv log exists')
+        const turns = readFileSync(argvLog, 'utf8')
+            .trim().split('\n').filter(Boolean)
+        t.equal(turns.length, 2,
+            'exactly 2 hermes turns (1 initial + 1 retry)')
+
+        // AC: diagnostics survive in the attempt log
+        // (learnings.md). The entry should record the
+        // exit code and have outcome 'exit'.
+        t.ok(existsSync(learningsPath),
+            'learnings.md exists')
+        const entries = readEntries(learningsPath)
+        const exitEntries = entries.filter(
+            e => e.outcome === 'exit'
+        )
+        t.ok(exitEntries.length >= 1,
+            'at least one exit-outcome entry in learnings')
+        const lastExit =
+            exitEntries[exitEntries.length - 1]
+        t.ok(
+            lastExit.body.includes('exit: 1'),
+            'learnings records exit code 1'
+        )
+
+        // AC: diagnostics (stdout/stderr markers) survive
+        // in the attempt log files on disk
+        const attemptLogs = existsSync(logsDir) ?
+            readdirSync(logsDir).filter(
+                f => f.endsWith('.log') &&
+                    !f.endsWith('.test.log')
+            ) :
+            []
+        t.ok(attemptLogs.length >= 1,
+            'attempt log files exist')
+        const allLogContent = attemptLogs.map(
+            f => readFileSync(
+                join(logsDir, f), 'utf8'
+            )
+        ).join('\n')
+        const hasStdout =
+            allLogContent.includes(stdoutMarker)
+        const hasStderr =
+            allLogContent.includes(stderrMarker)
+        t.ok(hasStdout || hasStderr,
+            'diagnostic markers in attempt logs')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})

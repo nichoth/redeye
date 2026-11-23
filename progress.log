@@ -551,3 +551,40 @@ Status: DONE
 - Focused test: TEST_SHARD=17/20, all 34 assertions passed.
 - npm test: full suite passed, all suites green, 0 failures.
 - Set passes:true for US-012 only. No other stories touched.
+
+## US-013: Keep nonzero Hermes exits as unfinished attempts
+
+Date: 2026-11-22
+Status: DONE
+
+### What changed
+- Added integration test in `test/integration.test.ts` that
+  runs the built CLI with fake hermes in nonzero exit mode
+  (FAKE_HERMES_EXIT=1) with diagnostic markers on stdout and
+  stderr
+- Uses --retries 1 --retry-delay 0 to bound retry attempts
+- 10 assertions cover: CLI exits nonzero, ticket not marked
+  done, no hermes change file merged, argv log has exactly
+  2 turns (1 initial + 1 retry), learnings.md exists and
+  contains at least one exit-outcome entry with exit code 1,
+  attempt log files exist and contain diagnostic markers
+- No production changes needed: the existing failure
+  classification in runTicketAttempt (kind:'failed',
+  reason:'exit') and retry policy in runWithRetries already
+  handle nonzero exits correctly
+
+### Patterns and gotchas
+- The test falls in integration shard 18/20 (index 158 % 20 = 18)
+- The fake hermes nonzero exit mode (FAKE_HERMES_EXIT) was
+  already implemented in US-001; this test exercises it through
+  the full CLI subprocess path with bounded retries
+- Diagnostic output (FAKE_HERMES_OUTPUT, FAKE_HERMES_STDERR)
+  flows through the agent process into the attempt log files
+  in the logs directory
+
+### Verification
+- npm run lint: passed (0 errors).
+- npm run build: passed, including declaration typecheck.
+- Focused test: TEST_SHARD=18/20, all 33 assertions passed.
+- npm test: full suite passed, all suites green, 0 failures.
+- Set passes:true for US-013 only. No other stories touched.
