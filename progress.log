@@ -445,3 +445,38 @@ Status: DONE
 - Focused tests: shards 12/20, 13/20, 14/20 all passed.
 - npm test: full suite passed, all suites green.
 - Set passes:true for US-009 only. No other stories touched.
+
+## US-010: Run Hermes inside its isolated ticket worktree
+
+Date: 2026-11-22
+Status: DONE
+
+### What changed
+- Added integration test in `test/integration.test.ts` that
+  asserts hermes runs inside the ticket worktree, not the base
+  project directory
+- Added `realpathSync` to fs imports for macOS /var symlink
+  handling (documented gotcha from US-001)
+- 10 assertions cover: cwd log exists, captured cwd differs from
+  base project dir, cwd is a worktree sibling of base (matches
+  `<repoName>.<feature>-<num>-<slug>` pattern), hermes commit
+  exists in history, ticket branch exists with expected name,
+  capture logs are outside the worktree, hermes change file
+  merged into base, ticket marked done
+- The worktree is removed after merge, so the test resolves the
+  parent directory (which persists) instead of the worktree path
+
+### Patterns and gotchas
+- No production changes needed: spawnAgent already passes
+  `worktree.worktreePath` as the cwd (orchestrator.ts:2600)
+- The worktree is cleaned up after merge, so realpathSync on
+  the captured cwd fails; resolve dirname + basename instead
+- tapzero has no `t.not`; use `t.notEqual` for inequality
+- The test falls in integration shard 15/20 (index 155 % 20 = 15)
+
+### Verification
+- npm run lint: passed (0 errors).
+- npm run build: passed, including declaration typecheck.
+- Focused test: TEST_SHARD=15/20, all 39 assertions passed.
+- npm test: full suite passed, all suites green, 0 failures.
+- Set passes:true for US-010 only. No other stories touched.

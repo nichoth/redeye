@@ -4,7 +4,7 @@ import {
     mkdtempSync, mkdirSync, writeFileSync,
     appendFileSync, copyFileSync,
     readFileSync, existsSync, rmSync, chmodSync,
-    symlinkSync, readdirSync,
+    symlinkSync, readdirSync, realpathSync,
 } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -8679,4 +8679,128 @@ async t => {
         full.stdin.includes('AGENT INSTRUCTIONS'),
         'both routes include agent instructions'
     )
+})
+
+// -- US-010: Run Hermes inside its isolated ticket worktree --
+
+test('CLI subprocess - US-010: hermes runs in the ' +
+    'ticket worktree, not the base dir',
+async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const cwdLog = join(recordDir, 'cwd.log')
+        const argvLog = join(recordDir, 'argv.log')
+
+        const { code, stderr } = await spawnCli([
+            FAKE_HERMES,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_CWD_LOG: cwdLog,
+                FAKE_HERMES_ARGV_LOG: argvLog,
+            }),
+        })
+
+        t.equal(code, 0,
+            `exit 0 (stderr: ${stderr.slice(0, 200)})`)
+
+        // AC: captured cwd is the ticket worktree,
+        // not the base project dir.
+        // The worktree is removed after merge, so
+        // resolve the parent dir (which still exists)
+        // and compare basenames.
+        t.ok(existsSync(cwdLog), 'cwd log exists')
+        const capturedCwd = readFileSync(
+            cwdLog, 'utf8'
+        ).trim().split('\n')[0]
+        const realProjectDir = realpathSync(projectDir)
+        const realParent = realpathSync(
+            dirname(capturedCwd)
+        )
+        const realCwd = join(
+            realParent, basename(capturedCwd)
+        )
+        t.notEqual(
+            realCwd, realProjectDir,
+            'agent cwd is not the base project dir'
+        )
+        // The worktree sits beside the repo as
+        // <repoName>.<feature>-<num>-<slug>
+        const repoName = basename(realProjectDir)
+        t.ok(
+            basename(realCwd).startsWith(
+                repoName + '.'
+            ),
+            'agent cwd is a worktree sibling of base'
+        )
+
+        // AC: the fake commits on the expected ticket
+        // branch inside the worktree
+        const gitLog = gitOut(projectDir, [
+            'log', '--all', '--oneline',
+        ])
+        t.ok(
+            gitLog.includes('hermes agent change'),
+            'hermes commit exists in repo history'
+        )
+        // The ticket branch follows the naming pattern
+        const branches = gitOut(projectDir, [
+            'branch', '--list', '--format=%(refname:short)',
+        ]).trim().split('\n')
+        const ticketBranch = branches.find(
+            b => b.includes(repoName + '--') &&
+                b.includes('01-task')
+        )
+        t.ok(ticketBranch,
+            'ticket branch exists with expected name')
+
+        // AC: captures are stored outside the removable
+        // worktree (recordDir is in /tmp, not in the
+        // worktree)
+        t.ok(
+            !cwdLog.startsWith(realCwd),
+            'cwd log is outside the worktree'
+        )
+        t.ok(
+            !argvLog.startsWith(realCwd),
+            'argv log is outside the worktree'
+        )
+
+        // AC: the base gains the ticket change through
+        // the merge
+        const mergedFiles = readdirSync(projectDir)
+            .filter(f => f.startsWith('hermes-change-'))
+        t.equal(mergedFiles.length, 1,
+            'hermes change file merged into base')
+
+        const ticket = readFileSync(
+            join(issuesDir, '01-task.md'), 'utf8'
+        )
+        t.ok(
+            ticket.includes('**Status:** done'),
+            'ticket marked done after merge'
+        )
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
 })
