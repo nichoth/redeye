@@ -17,6 +17,16 @@ const GIT_ENV = {
 // retry the add+commit pair past transient index/ref lock
 // contention from sibling processes.
 function commitFileWithRetry (filename) {
+    // In-place tests also run outside git. No retry can make
+    // that directory a repository.
+    try {
+        execSync('git rev-parse --is-inside-work-tree', {
+            stdio:'ignore', env:GIT_ENV,
+        })
+    } catch {
+        return
+    }
+
     let lastErr
     for (let attempt = 0; attempt < 50; attempt++) {
         try {

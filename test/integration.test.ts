@@ -36,7 +36,12 @@ import { parseEntries, readEntries } from '../src/learnings.js'
 import {
     readProgress, generateProgress, checkTicket, writeProgress,
 } from '../src/progress.js'
-import { parseReviewEntries } from '../src/review.js'
+import {
+    parseReviewEntries,
+    parseTicketReviewLog,
+    ticketReviewPath,
+    type TicketRoundEntry,
+} from '../src/review.js'
 import { subagentRule, CONTINUE_RULE } from '../src/rules.js'
 import { renderRunStats } from '../src/stats.js'
 
@@ -3176,13 +3181,13 @@ test('setup-then-execute composition', async t => {
             }),
         )
 
-        const { code } = await spawnCli([
+        const { code, stdout, stderr } = await spawnCli([
             MOCK_AGENT,
             '--spec', feature,
             '--timeout', '10',
         ], { cwd: projectDir })
 
-        t.equal(code, 0, 'exit code 0')
+        t.equal(code, 0, 'exit code 0: ' + stdout + stderr)
 
         const ticket1 = readFileSync(
             join(issuesDir, '01-alpha.md'), 'utf8'
@@ -9821,5 +9826,524 @@ test('CLI subprocess - US-018: freshly packed installed CLI ' +
         removeWorktreesAndRepo(projectDir)
         rmSync(templateDir, { recursive: true, force: true })
         rmSync(artifactDir, { recursive: true, force: true })
+    }
+})
+
+// --- Running with the implement and review roles ---
+
+// fakeClaudeEnv without the fake pi keys either, plus `extra`
+function rolesEnv (
+    extra:Record<string, string> = {}
+):NodeJS.ProcessEnv {
+    const env = fakeClaudeEnv()
+    for (const key of FAKE_PI_KEYS) delete env[key]
+    return { ...env, ...extra }
+}
+
+function readArgvLog (file:string):string[][] {
+    return readFileSync(file, 'utf8')
+        .split('\n')
+        .filter(line => line !== '')
+        .map(line => JSON.parse(line) as string[])
+}
+
+function readPiModelRecords (dir:string):{ model:string|null }[] {
+    return readdirSync(dir).map(name => {
+        return JSON.parse(
+            readFileSync(join(dir, name), 'utf8')
+        ) as { model:string|null }
+    })
+}
+
+// The value after `flag` in an argv list, or undefined
+function flagValue (argv:string[], flag:string):string|undefined {
+    const i = argv.indexOf(flag)
+    return i === -1 ? undefined : argv[i + 1]
+}
+
+test('CLI subprocess - bare redeye runs tickets with the ' +
+    'implement role; role flags win, CLI flags fill in',
+async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const logDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: `${FAKE_CLAUDE} -m role-model`,
+                    review: FAKE_PI,
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const argvLog = join(logDir, 'argv.log')
+        const recordDir = join(logDir, 'pi')
+        mkdirSync(recordDir)
+        const { code, stdout, stderr } = await spawnCli([
+            '--spec', FEAT,
+            '-m', 'cli-model',
+            '--effort', 'high',
+            '--timeout', '10',
+            '--test-cmd', 'true',
+            '--retries', '0',
+            '--no-review',
+        ], {
+            cwd: projectDir,
+            env: rolesEnv({
+                FAKE_CLAUDE_DELEGATE: MOCK_PASS,
+                FAKE_CLAUDE_ARGV_LOG: argvLog,
+                FAKE_PI_RECORD_DIR: recordDir,
+                FAKE_PI_RESPONSES: 'clean',
+                FAKE_PI_COUNTER: join(logDir, 'counter'),
+            }),
+            closeStdin: true,
+        })
+
+        t.equal(code, 0, 'exits 0: ' + stdout + stderr)
+        const runs = readArgvLog(argvLog)
+        t.equal(runs.length, 1, 'the implement provider ran once')
+        t.equal(flagValue(runs[0], '--model'), 'role-model',
+            'the role string model wins over -m')
+        t.equal(flagValue(runs[0], '--effort'), 'high',
+            'the CLI effort fills in what the role leaves out')
+        const reviews = readPiModelRecords(recordDir)
+        t.equal(reviews.length, 1, 'the review role ran once')
+        t.equal(reviews[0].model, 'cli-model',
+            'the CLI model fills in the review role')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(logDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
+    }
+})
+
+test('CLI subprocess - a CLI provider overrides implement in ' +
+    'a run and says so', async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const logDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: 'redeye-no-such-impl -m role-model',
+                    review: FAKE_PI,
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const argvLog = join(logDir, 'argv.log')
+        const { code, stdout, stderr } = await spawnCli([
+            FAKE_CLAUDE,
+            '--spec', FEAT,
+            '--timeout', '10',
+            '--test-cmd', 'true',
+            '--retries', '0',
+            '--no-review',
+        ], {
+            cwd: projectDir,
+            env: rolesEnv({
+                FAKE_CLAUDE_DELEGATE: MOCK_PASS,
+                FAKE_CLAUDE_ARGV_LOG: argvLog,
+                FAKE_PI_RESPONSES: 'clean',
+                FAKE_PI_COUNTER: join(logDir, 'counter'),
+            }),
+            closeStdin: true,
+        })
+
+        t.equal(code, 0, 'exits 0: ' + stdout + stderr)
+        t.ok(stdout.includes('overrides implement'),
+            'logs that the CLI provider overrides implement')
+        const runs = readArgvLog(argvLog)
+        t.equal(runs.length, 1, 'the CLI provider ran the ticket')
+        t.equal(flagValue(runs[0], '--model'), undefined,
+            'the implement role model does not carry over')
+
+        const integration = integrationBranches(projectDir)
+        const logText = gitOut(projectDir, [
+            'show',
+            `${integration}:${ticketReviewPath(FEAT, '01-task.md')}`,
+        ])
+        const rounds = parseTicketReviewLog(logText)
+            .filter(e => e.type === 'round') as TicketRoundEntry[]
+        t.equal(rounds.length, 1, 'the log has one round')
+        t.equal(rounds[0]?.implement, FAKE_CLAUDE,
+            'the log records the implement role that ran')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(logDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
+    }
+})
+
+test('CLI subprocess - same provider and model warns in a run ' +
+    'and the run goes ahead', async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const logDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        // Only the review role names a model; -m fills in the
+        // implement role, so both resolve to the same model.
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: FAKE_CLAUDE,
+                    review: `${FAKE_CLAUDE} -m opus`,
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const { stdout, stderr } = await spawnCli([
+            '--spec', FEAT,
+            '-m', 'opus',
+            '--timeout', '10',
+            '--test-cmd', 'true',
+            '--retries', '0',
+            '--no-review',
+        ], {
+            cwd: projectDir,
+            env: rolesEnv({ FAKE_CLAUDE_DELEGATE: MOCK_PASS }),
+            closeStdin: true,
+        })
+
+        const all = stdout + stderr
+        t.equal(all.split('same model').length - 1, 1,
+            'warns once about the same model')
+        t.notEqual(integrationBranches(projectDir), '',
+            'the run went ahead and created its branch')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(logDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
+    }
+})
+
+test('CLI subprocess - an open review finding leaves the ticket ' +
+    'unresolved, unmerged and blocking its dependent; exit 1',
+async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const logDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(issuesDir, '02-after.md'),
+            makeTicketBody({ status: 'ready-for-agent', blockers: [1] })
+        )
+        // maxRounds 1: a single review decides the outcome
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: FAKE_CLAUDE,
+                    review: FAKE_PI,
+                    maxRounds: 1,
+                    minRounds: 1,
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const argvLog = join(logDir, 'argv.log')
+        const { code, stdout, stderr } = await spawnCli([
+            '--spec', FEAT,
+            '--timeout', '10',
+            '--test-cmd', 'true',
+            '--retries', '1',
+            '--no-review',
+        ], {
+            cwd: projectDir,
+            env: rolesEnv({
+                FAKE_CLAUDE_DELEGATE: MOCK_PASS,
+                FAKE_CLAUDE_ARGV_LOG: argvLog,
+                FAKE_PI_RESPONSES: 'finding',
+                FAKE_PI_COUNTER: join(logDir, 'counter'),
+            }),
+            closeStdin: true,
+        })
+        const all = stdout + stderr
+
+        t.equal(code, 1, 'exits 1: ' + all)
+        t.equal(readArgvLog(argvLog).length, 1,
+            'only ticket 01 ran, once: not retried, 02 never ran')
+
+        const integration = integrationBranches(projectDir)
+        const status = (name:string) => {
+            const body = gitOut(projectDir, [
+                'show', `${integration}:.scratch/${FEAT}/issues/${name}`,
+            ])
+            return /\*\*Status:\*\*\s*(\S+)/.exec(body)?.[1]
+        }
+        t.equal(status('01-task.md'), 'ready-for-human',
+            'the unresolved ticket is ready-for-human')
+        t.equal(status('02-after.md'), 'ready-for-agent',
+            'the dependent is untouched')
+        t.ok(all.includes('02-after.md'),
+            'the dependent is reported')
+
+        const changed = gitOut(projectDir, [
+            'log', integration, '--name-only', '--format=',
+        ])
+        t.ok(!changed.includes('mock-agent-change-'),
+            'the ticket change is not merged')
+        const branches = gitOut(projectDir, [
+            'branch', '--list', '--format=%(refname:short)',
+        ]).split('\n')
+        t.ok(branches.some(b => b.includes('01-task') &&
+            b !== integration), 'the ticket branch is kept')
+        const worktrees = gitOut(projectDir, [
+            'worktree', 'list', '--porcelain',
+        ]).split('\n').filter(l => l.startsWith('worktree '))
+        t.equal(worktrees.length, 1, 'the ticket worktree is removed')
+
+        const progress = gitOut(projectDir, [
+            'show', `${integration}:.scratch/${FEAT}/progress.md`,
+        ])
+        const progressFile = join(logDir, 'progress.md')
+        writeFileSync(progressFile, progress)
+        const entry = readProgress(progressFile)?.tickets.find(
+            p => p.filename === '01-task.md'
+        )
+        t.equal(entry?.done, false, 'progress.md records 01 as not done')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(logDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
+    }
+})
+
+test('CLI subprocess - a dispute the reviewer keeps open until ' +
+    'maxRounds leaves the ticket unresolved and unmerged; exit 1',
+async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const logDir = tmp()
+    const recordDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: FAKE_CLAUDE,
+                    review: FAKE_PI,
+                    maxRounds: 2,
+                    minRounds: 1,
+                },
+            })
+        )
+        commitAll(projectDir, 'add ticket and config')
+
+        const { code, stdout, stderr } = await spawnCli([
+            '--spec', FEAT,
+            '--timeout', '10',
+            '--test-cmd', 'true',
+            '--retries', '1',
+            '--retry-delay', '0',
+            '--no-review',
+        ], {
+            cwd: projectDir,
+            env: rolesEnv({
+                FAKE_CLAUDE_DELEGATE: MOCK_REVIEW_AGENT,
+                MOCK_RECORD_DIR: recordDir,
+                MOCK_TICKET: 'pass',
+                MOCK_FIX_RESPONSES: 'dispute',
+                MOCK_FIX_COUNTER: join(logDir, 'fix-counter'),
+                FAKE_PI_RESPONSES: 'finding,verdict-open',
+                FAKE_PI_COUNTER: join(logDir, 'counter'),
+            }),
+            closeStdin: true,
+        })
+        const all = stdout + stderr
+        t.equal(code, 1, 'exits 1: ' + all)
+
+        const roles = readdirSync(recordDir).map(name => {
+            return (JSON.parse(
+                readFileSync(join(recordDir, name), 'utf8')
+            ) as { role:string }).role
+        })
+        t.equal(roles.filter(r => r === 'ticket').length, 1,
+            'implemented once, not retried')
+        t.equal(roles.filter(r => r === 'fixer').length, 1,
+            'the fixer runs after round 1 only')
+
+        const integration = integrationBranches(projectDir)
+        const body = gitOut(projectDir, [
+            'show', `${integration}:.scratch/${FEAT}/issues/01-task.md`,
+        ])
+        t.equal(/\*\*Status:\*\*\s*(\S+)/.exec(body)?.[1],
+            'ready-for-human', 'the ticket is ready-for-human')
+
+        const changed = gitOut(projectDir, [
+            'log', integration, '--name-only', '--format=',
+        ])
+        t.ok(!changed.includes('mock-change-'),
+            'the ticket change is not merged')
+        const branches = gitOut(projectDir, [
+            'branch', '--list', '--format=%(refname:short)',
+        ]).split('\n')
+        t.ok(branches.some(b => b.includes('01-task') &&
+            b !== integration), 'the ticket branch is kept')
+
+        const entries = parseTicketReviewLog(gitOut(projectDir, [
+            'show',
+            `${integration}:${ticketReviewPath(FEAT, '01-task.md')}`,
+        ]))
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        ) as TicketRoundEntry[]
+        t.equal(rounds.length, 2, 'the log has both rounds')
+        t.equal(rounds[0]?.findings[0]?.fixerResponse, 'disputed',
+            'round 1 records the dispute')
+        t.equal(rounds[1]?.findings[0]?.verdict, 'still-open',
+            'round 2 keeps the finding open')
+        const last = entries[entries.length - 1]
+        t.ok(last?.type === 'terminal' &&
+            last.outcome === 'unresolved', 'the loop ends unresolved')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(logDir, { recursive: true, force: true })
+        rmSync(recordDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
+    }
+})
+
+test('CLI subprocess - a run interrupted after a recorded round ' +
+    'resumes at the next round without implementing again',
+async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const logDir = tmp()
+    const recordDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: FAKE_CLAUDE,
+                    review: FAKE_PI,
+                    maxRounds: 3,
+                    minRounds: 1,
+                },
+            })
+        )
+        commitAll(projectDir, 'add ticket and config')
+
+        const args = [
+            '--spec', FEAT,
+            '--timeout', '20',
+            '--test-cmd', 'true',
+            '--retries', '0',
+            '--retry-delay', '0',
+            '--no-review',
+        ]
+        // round 1 finds, the fixer fixes, round 2 hangs until the
+        // run is interrupted; the resumed round 2 confirms the fix
+        const env = rolesEnv({
+            FAKE_CLAUDE_DELEGATE: MOCK_REVIEW_AGENT,
+            MOCK_RECORD_DIR: recordDir,
+            MOCK_TICKET: 'pass',
+            MOCK_FIX_RESPONSES: 'fix-all',
+            MOCK_FIX_COUNTER: join(logDir, 'fix-counter'),
+            FAKE_PI_RESPONSES: 'finding,hang,verdict-fixed',
+            FAKE_PI_COUNTER: join(logDir, 'counter'),
+        })
+
+        const logPath = join(
+            projectDir, ticketReviewPath(FEAT, '01-task.md')
+        )
+        const piCounter = join(logDir, 'counter')
+        const child = spawn(process.execPath, [CLI, ...args], {
+            cwd: projectDir, env,
+        })
+        child.stdin.end()
+        let firstOut = ''
+        child.stdout.on('data', c => { firstOut += String(c) })
+        child.stderr.on('data', c => { firstOut += String(c) })
+        const exited = new Promise<number>(resolve => {
+            child.on('exit', code => resolve(code ?? -1))
+        })
+        // the second reviewer has started once the counter reads 2
+        const deadline = Date.now() + 20_000
+        const hanging = ():boolean => existsSync(piCounter) &&
+            readFileSync(piCounter, 'utf8').trim() === '2'
+        while (!hanging() && Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 100))
+        }
+        t.ok(hanging(), 'the round 2 reviewer started: ' + firstOut)
+        child.kill('SIGINT')
+        t.equal(await exited, 130, 'the first run is interrupted')
+        const before = parseTicketReviewLog(readFileSync(logPath, 'utf8'))
+        t.equal(before.filter(e => e.type === 'round').length, 1,
+            'round 1 was recorded before the interrupt')
+
+        t.equal(gitOut(projectDir, ['status', '--porcelain']), '',
+            'the interrupted run leaves a clean tree')
+        const { code, stdout, stderr } = await spawnCli(args, {
+            cwd: projectDir, env, closeStdin: true,
+        })
+        const all = stdout + stderr
+        t.equal(code, 0, 'the resumed run exits 0: ' + all)
+
+        const roles = readdirSync(recordDir).map(name => {
+            return (JSON.parse(
+                readFileSync(join(recordDir, name), 'utf8')
+            ) as { role:string }).role
+        })
+        t.equal(roles.filter(r => r === 'ticket').length, 1,
+            'implemented once across both runs')
+
+        const integration = integrationBranches(projectDir)
+        const body = gitOut(projectDir, [
+            'show', `${integration}:.scratch/${FEAT}/issues/01-task.md`,
+        ])
+        t.equal(/\*\*Status:\*\*\s*(\S+)/.exec(body)?.[1],
+            'done', 'the ticket is done')
+        const changed = gitOut(projectDir, [
+            'log', integration, '--name-only', '--format=',
+        ])
+        t.ok(changed.includes('mock-change-'),
+            'the ticket change is merged')
+
+        const entries = parseTicketReviewLog(gitOut(projectDir, [
+            'show',
+            `${integration}:${ticketReviewPath(FEAT, '01-task.md')}`,
+        ]))
+        const rounds = entries.filter(
+            e => e.type === 'round'
+        ) as TicketRoundEntry[]
+        t.deepEqual(rounds.map(r => r.round), [1, 2],
+            'the log has round 1, then the resumed round 2')
+        const last = entries[entries.length - 1]
+        t.ok(last?.type === 'terminal' && last.outcome === 'pass',
+            'the loop ends in a pass')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(logDir, { recursive: true, force: true })
+        rmSync(recordDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
     }
 })

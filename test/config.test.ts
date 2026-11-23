@@ -6,6 +6,8 @@ import {
     parseRoleString,
     loadConfig,
     mergeRoleWithCli,
+    resolveRoles,
+    sameModel,
     type AdversarialConfig,
     type ParsedRole,
 } from '../src/config.js'
@@ -200,6 +202,41 @@ test('loadConfig - missing review rejects', t => {
         t.throws(
             () => loadConfig(dir),
             /review/i
+        )
+    } finally {
+        rmSync(dir, { recursive: true, force: true })
+    }
+})
+
+test('loadConfig - adversarial of the wrong shape ' +
+    'rejects', async t => {
+    const shapes:unknown[] = ['claude', null, 3, ['claude', 'pi']]
+    for (const adversarial of shapes) {
+        const dir = tmp()
+        try {
+            writeFileSync(
+                join(dir, '.redeye.json'),
+                JSON.stringify({ adversarial })
+            )
+            await t.throws(
+                () => loadConfig(dir),
+                /adversarial/i,
+                `rejects ${JSON.stringify(adversarial)}`
+            )
+        } finally {
+            rmSync(dir, { recursive: true, force: true })
+        }
+    }
+})
+
+test('loadConfig - top-level value that is not an object ' +
+    'rejects', async t => {
+    const dir = tmp()
+    try {
+        writeFileSync(join(dir, '.redeye.json'), '[]')
+        await t.throws(
+            () => loadConfig(dir),
+            /object/i
         )
     } finally {
         rmSync(dir, { recursive: true, force: true })
@@ -428,4 +465,132 @@ test('mergeRoleWithCli - applies separately to implement ' +
     t.equal(mergedRev.effort, 'high',
         'review effort wins over CLI')
     t.equal(mergedRev.maxTurns, 20)
+})
+
+// --- resolveRoles / sameModel tests ---
+
+function advConfig (
+    implementStr:string,
+    reviewStr:string
+):AdversarialConfig {
+    return {
+        implement: parseRoleString(implementStr),
+        review: parseRoleString(reviewStr),
+        implementStr,
+        reviewStr,
+        maxRounds: 3,
+        minRounds: 1,
+    }
+}
+
+test('resolveRoles - no config uses the CLI provider and flags', t => {
+    const roles = resolveRoles(
+        'claude',
+        { model: 'opus', effort: 'high', maxTurns: 9 },
+        null
+    )
+    t.deepEqual(roles.implement, {
+        provider: 'claude',
+        model: 'opus',
+        effort: 'high',
+        maxTurns: 9,
+        preferSubagent: undefined,
+    })
+    t.equal(roles.review, null, 'no review role')
+    t.equal(roles.overridden, false, 'nothing overridden')
+})
+
+test('resolveRoles - bare run uses implement, role flags win', t => {
+    const adv = advConfig('pi -m qwen', 'claude --effort high')
+    const roles = resolveRoles(
+        undefined,
+        { model: 'cli-model', effort: 'low', maxTurns: 7 },
+        adv
+    )
+    t.equal(roles.implement.provider, 'pi')
+    t.equal(roles.implement.model, 'qwen', 'role model wins')
+    t.equal(roles.implement.effort, 'low', 'CLI fills effort')
+    t.equal(roles.implement.maxTurns, 7, 'CLI fills max turns')
+    t.equal(roles.overridden, false)
+    t.equal(roles.review?.provider, 'claude')
+    t.equal(roles.review?.effort, 'high', 'review effort wins')
+    t.equal(roles.review?.model, 'cli-model',
+        'CLI fills the review model')
+})
+
+test('resolveRoles - a CLI provider replaces implement', t => {
+    const adv = advConfig('pi -m qwen --effort high', 'claude -m opus')
+    const roles = resolveRoles('codex', { effort: 'low' }, adv)
+    t.equal(roles.overridden, true)
+    t.equal(roles.implement.provider, 'codex')
+    t.equal(roles.implement.model, undefined,
+        'implement role flags do not carry over')
+    t.equal(roles.implement.effort, 'low', 'CLI effort applies')
+    t.equal(roles.review?.model, 'opus', 'review role kept')
+})
+
+test('resolveRoles - prefer-subagent is dropped from a review ' +
+    'role whose provider has no subagents', t => {
+    const adv = advConfig('claude', 'pi -m qwen')
+    const roles = resolveRoles(
+        'claude', { preferSubagent: 'haiku' }, adv
+    )
+    t.equal(roles.implement.preferSubagent, 'haiku',
+        'claude keeps prefer-subagent')
+    t.equal(roles.review?.preferSubagent, undefined,
+        'pi gets no prefer-subagent')
+    t.equal(roles.warnings.length, 1, 'one warning for pi')
+})
+
+test('resolveRoles - prefer-subagent in a non-claude role ' +
+    'string is dropped too', t => {
+    const adv = advConfig('pi --prefer-subagent haiku', 'claude')
+    const roles = resolveRoles(undefined, {}, adv)
+    t.equal(roles.implement.preferSubagent, undefined,
+        'pi implement role gets no prefer-subagent')
+    t.equal(roles.warnings.length, 1, 'one warning')
+})
+
+test('resolveRoles - no prefer-subagent, no warnings', t => {
+    const adv = advConfig('pi', 'claude')
+    const roles = resolveRoles(undefined, {}, adv)
+    t.deepEqual(roles.warnings, [])
+})
+
+test('resolveRoles - the implement string names the role ' +
+    'that runs', t => {
+    const adv = advConfig('pi -m qwen', 'claude -m opus')
+    t.equal(resolveRoles(undefined, {}, adv).implementStr,
+        'pi -m qwen', 'the config string without an override')
+    t.equal(
+        resolveRoles('claude', { model: 'sonnet' }, adv).implementStr,
+        'claude -m sonnet',
+        'the command-line provider and its flags on an override'
+    )
+})
+
+test('resolveRoles - no provider and no config throws', async t => {
+    await t.throws(() => resolveRoles(undefined, {}, null))
+})
+
+test('sameModel - same basename and model', t => {
+    t.ok(sameModel(
+        { provider: '/usr/bin/claude', model: 'opus' },
+        { provider: 'claude', model: 'opus' }
+    ))
+    t.ok(sameModel(
+        { provider: 'claude' },
+        { provider: 'claude' }
+    ), 'both on the provider default model')
+})
+
+test('sameModel - different provider or model', t => {
+    t.ok(!sameModel(
+        { provider: 'claude', model: 'opus' },
+        { provider: 'claude', model: 'sonnet' }
+    ))
+    t.ok(!sameModel(
+        { provider: 'claude', model: 'opus' },
+        { provider: 'pi', model: 'opus' }
+    ))
 })

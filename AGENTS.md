@@ -39,6 +39,11 @@ merges into that branch.
   its own. The machine is loaded while they run, so never rely
   on a child process doing its work within a 1-2s agent timeout
   or a fixed sleep; wait on a condition, or leave a wide margin
+- To run one test, copy its file with that test switched to
+  `test.only`, bundle it with esbuild (`--bundle --platform=node
+  --format=esm --packages=external`) and run it with
+  `GIT_CONFIG_GLOBAL` pointing at a file that sets
+  `user.useConfigOnly = true`, as `scripts/test.sh` does
 - `npm run lint` -- eslint
 - Both file lists are explicit: a new `src/` module must be
   added to the second esbuild call in `build-esm`
@@ -62,6 +67,18 @@ merges into that branch.
   `FAKE_ENV_KEYS` in `test/orchestrator.test.ts`, `ENV_KEYS`
   in `test/review-integration.test.ts`), so a test that sets a
   new key must add it to its file's list
+- `test/mock-agent-review.js` as fixer: mode `pass` prints a
+  fixed `[x] mock finding one`, which matches only `MOCK_REVIEW`
+  findings. To have the fixer mark a fake pi finding (so the
+  ticket review log records `fixed`), use `fix-all`, which marks
+  every finding in its prompt
+- The fake pi's `FAKE_PI_RESPONSES` takes `hang` (never exits),
+  for interrupting a CLI run mid-loop: wait until
+  `FAKE_PI_COUNTER` shows the hanging call started, then SIGINT
+- tapzero's `t.throws` is async: when `fn` does not throw, the
+  failing assert lands after a sync test has ended. Make the test
+  `async` and `await t.throws(...)` so a missing throw fails as
+  `not ok`
 - `npm version` -- `postversion` publishes, and `prepublishOnly`
   builds and tests first, so a red suite leaves the version
   commit and tag local
@@ -128,6 +145,13 @@ its tests.
   ticket statuses, `progress.md`, `learnings.md` and `review.md`
   are committed at every terminal point (with `git add --force`,
   since `.scratch/` may be ignored).
+- Every commit in the base checkout goes through `commitProgress`
+  in `src/progress.ts`, which runs them one at a time on its
+  `commitQueue`: tickets in a wave commit their bookkeeping
+  concurrently, and two git commits at once collide on
+  `.git/index.lock`. New base-checkout commits join that queue.
+- A worktree recreated on resume needs the install command like a
+  fresh one: untracked dependencies do not come with the branch.
 - Agents stay inside their worktree and never `git push`; the
   prompt rules in `src/rules.ts` say so.
 - `redeye graph` is read-only: no git, no provider preflight,
@@ -191,8 +215,17 @@ its tests.
   nothing-ready explanation) and `graph`, so the wording cannot
   drift between them.
 - Provider-specific options (`--max-turns`, `--prefer-subagent`)
-  warn and are dropped on providers without them. Each provider's
+  warn and are dropped on providers without them, for every role:
+  `resolveRoles` drops `--prefer-subagent` (its `warnings` are
+  printed by `src/index.ts`), and `spawnAgent` drops `--max-turns`
+  per spawn. Each provider's
   effort ladder is in `src/retry.ts`.
+- `resolveRoles` in `src/config.ts` is the one place that decides
+  each role's provider and flags: a CLI provider replaces
+  `implement` whole, each role's own flags win, and run-wide CLI
+  flags fill in the rest. `runExecute` reads effort, max turns,
+  model and prefer-subagent from the resolved roles, never from
+  `argv` directly.
 - In-place `runWaves` (outside a git repo) is the reduced path: no
   test gate, no learnings, no review.
 
@@ -206,7 +239,13 @@ its tests.
   `.scratch/<feature>/reviews/<ticket file name>` records every
   round and terminal entry for the adversarial review loop. It
   follows the same sentinel and append-only conventions as the
-  other logs.
+  other logs. Each entry is committed as it is appended, not only
+  at terminal points: resume reads the log from the base checkout,
+  and an uncommitted log would trip the dirty-tree check on the
+  next run, so the interrupted loop could never resume.
+- Fresh and resumed attempts share one round loop,
+  `runAdversarialLoop` in `src/orchestrator.ts`; a resume only
+  changes its start round. Keep round logic there.
 
 ### Module boundaries
 - `blockers`, `stats`, `retry`, `preflight`, `learnings`,

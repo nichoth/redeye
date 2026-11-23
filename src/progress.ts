@@ -232,7 +232,24 @@ export function writeProgress (
     )
 }
 
-export async function commitProgress (
+// Every bookkeeping commit in the base checkout runs on this
+// queue, so tickets committing at once cannot collide on
+// .git/index.lock.
+let commitQueue:Promise<unknown> = Promise.resolve()
+
+export function commitProgress (
+    repoRoot:string,
+    paths:string|string[],
+    message:string
+):Promise<boolean> {
+    const result = commitQueue.then(() =>
+        commitNow(repoRoot, paths, message)
+    )
+    commitQueue = result.catch(() => {})
+    return result
+}
+
+async function commitNow (
     repoRoot:string,
     paths:string|string[],
     message:string

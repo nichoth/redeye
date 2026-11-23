@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import yargs from 'yargs'
 import { ALL_EFFORT_LEVELS } from './retry.js'
 
@@ -125,6 +125,89 @@ export function mergeRoleWithCli (
     }
 }
 
+export interface ResolvedRoles {
+    // the role that implements tickets in this run
+    implement:ParsedRole
+    // null when .redeye.json has no adversarial key
+    review:ParsedRole|null
+    // true when a command-line provider replaced `implement`
+    overridden:boolean
+    // one line per provider that lost an unsupported option
+    warnings:string[]
+    // the implement role as a command string, for logs: the
+    // config string, or the command-line provider and flags
+    implementStr:string
+}
+
+// A role as a role string, in the form parseRoleString reads
+export function renderRoleString (role:ParsedRole):string {
+    const parts = [role.provider]
+    if (role.model) parts.push('-m', role.model)
+    if (role.effort) parts.push('--effort', role.effort)
+    if (role.maxTurns) parts.push('--max-turns', String(role.maxTurns))
+    if (role.preferSubagent) {
+        parts.push('--prefer-subagent', role.preferSubagent)
+    }
+    return parts.join(' ')
+}
+
+// claude is the only provider with subagents, so every other
+// role loses prefer-subagent, with one warning per provider.
+function dropUnsupported (
+    roles:ParsedRole[],
+    warnings:string[]
+):void {
+    for (const role of roles) {
+        if (!role.preferSubagent) continue
+        const name = basename(role.provider)
+        if (name === 'claude') continue
+        role.preferSubagent = undefined
+        const warning =
+            `--prefer-subagent not supported by ${name}, skipping`
+        if (!warnings.includes(warning)) warnings.push(warning)
+    }
+}
+
+// The effective roles for a run. A command-line provider replaces
+// the whole implement role, so its flags do not carry over; with
+// no provider, `implement` is used. Each role's own flags win and
+// the CLI flags fill in the rest. Throws when there is neither a
+// provider nor a config.
+export function resolveRoles (
+    cliProvider:string|undefined,
+    cli:CliOptions,
+    adv:AdversarialConfig|null
+):ResolvedRoles {
+    const review = adv ? mergeRoleWithCli(adv.review, cli) : null
+    if (!cliProvider && !adv) {
+        throw new Error(
+            'Specify a provider (e.g. redeye claude) ' +
+            'or set implement in .redeye.json'
+        )
+    }
+    const implement = cliProvider ?
+        mergeRoleWithCli({ provider: cliProvider }, cli) :
+        mergeRoleWithCli(adv!.implement, cli)
+    const warnings:string[] = []
+    dropUnsupported(review ? [implement, review] : [implement], warnings)
+    return {
+        implement,
+        review,
+        overridden: !!cliProvider && adv !== null,
+        warnings,
+        implementStr: cliProvider || !adv ?
+            renderRoleString(implement) :
+            adv.implementStr,
+    }
+}
+
+// True when two roles run the same provider (by basename) and the
+// same model. A role with no model runs its provider's default.
+export function sameModel (a:ParsedRole, b:ParsedRole):boolean {
+    return basename(a.provider) === basename(b.provider) &&
+        (a.model ?? '') === (b.model ?? '')
+}
+
 export interface AdversarialConfig {
     implement:ParsedRole
     review:ParsedRole
@@ -138,6 +221,12 @@ function isPositiveInteger (v:unknown):v is number {
     return typeof v === 'number' &&
         Number.isInteger(v) &&
         v > 0
+}
+
+function isPlainObject (
+    v:unknown
+):v is Record<string, unknown> {
+    return v !== null && typeof v === 'object' && !Array.isArray(v)
 }
 
 // Reads .redeye.json from `root`. Returns null when the file
@@ -162,18 +251,17 @@ export function loadConfig (
         )
     }
 
-    if (
-        raw === null ||
-        typeof raw !== 'object' ||
-        !('adversarial' in raw)
-    ) {
-        return null
+    if (!isPlainObject(raw)) {
+        throw new Error('.redeye.json: must be a JSON object')
     }
+    if (!('adversarial' in raw)) return null
 
-    const adv = (raw as Record<string, unknown>)
-        .adversarial as Record<string, unknown>|null
-    if (adv === null || typeof adv !== 'object') {
-        return null
+    const adv = raw.adversarial
+    if (!isPlainObject(adv)) {
+        throw new Error(
+            '.redeye.json: adversarial must be an object ' +
+            'with implement and review role strings'
+        )
     }
 
     if (typeof adv.implement !== 'string') {

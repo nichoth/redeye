@@ -204,11 +204,13 @@ If a skill with the same name is already installed and differs from the
 bundled copy, `init` asks before overwriting it. The default is to keep
 yours. This applies with or without `-g`.
 
-After picking an issue tracker, `init` asks whether to enable adversarial
-review loops. On yes it prompts for an implement command and a review
-command (the same syntax as `.redeye.json`), validates each one,
-and writes the result to `.redeye.json`. This config file is optional;
-`init` only creates or updates it when you enable adversarial review.
+After picking a tracker, `init` asks whether to run an adversarial
+review loop on each ticket (default no). On yes it prompts for an
+implement command and a review command (the same role-string syntax
+as [`.redeye.json`](#redeyejson)) and asks again if either one is
+invalid. It then writes the `adversarial` key, with `maxRounds: 3` and
+`minRounds: 1`, to `.redeye.json`, keeping any other keys already in
+the file. On no, `.redeye.json` is not created or changed.
 
 >
 > [!IMPORTANT]  
@@ -777,18 +779,78 @@ before it can merge.
 | `maxRounds` | no | `3` | Maximum review/fix rounds per ticket |
 | `minRounds` | no | `1` | Minimum rounds before a clean review can pass the ticket |
 
+Each ticket that passes the test gate goes through rounds in its
+own worktree:
+
+1. The `review` role reads the ticket, the spec and the branch's
+   diff, and writes findings. It cannot change anything.
+2. If findings are open and rounds remain, the `implement` role
+   acts as the fixer. It fixes each finding with `/tdd` and marks
+   it `[x]`, or disputes it by leaving it unchecked and writing
+   the reason in its notes file.
+3. The test gate runs again. A failure gets another fix attempt
+   with the failure in its prompt; when the fix attempts run out,
+   the ticket attempt fails and the normal `--retries` policy
+   applies.
+4. The next round's reviewer sees each open finding with the
+   fixer's response, and gives every one a verdict: confirmed
+   fixed, withdrawn, or still open. It may add new findings.
+   `No findings.` is only accepted when nothing was open.
+
+Only the reviewer closes a finding. A fixer's `[x]` stays open
+until the reviewer confirms it, and a dispute stays open until
+the reviewer withdraws the finding.
+
 A ticket passes when a round ends with no open findings and
 at least `minRounds` rounds have run. With `minRounds: 2`, a
 clean first round is followed by a second review before the
 ticket merges. When the review in round `maxRounds` leaves
 findings open, the ticket becomes `ready-for-human` (unresolved)
 with its branch kept, and the fixer does not run after that
-final review.
+final review. A reviewer that exits non-zero, times out or writes
+findings redeye cannot parse fails the attempt.
+
+Every round is appended to
+`.scratch/<feature>/reviews/<ticket file name>`: the findings and
+their verdicts, the fixer's response to each (fixed, or disputed
+with its reason), the test result and the branch head after the
+fix. Each entry is committed as it is written.
+
+If a run is interrupted mid-loop, the next run resumes the ticket
+at the round after the last one recorded, without implementing it
+again. This happens only when the ticket branch still exists, its
+head matches the head the log last recorded, and the log has no
+pass, unresolved or failed entry after that round. Otherwise, if
+the branch has commits ahead of base, the implement role continues
+that branch and the test gate and review rounds run again. A branch
+with no new commits starts fresh.
 
 A missing file or a file with no `adversarial` key leaves
-behavior unchanged. Invalid JSON, a missing role, or an
-invalid role string stops the run before any branch or
-worktree is created (exit 2).
+behavior unchanged. Invalid JSON, an `adversarial` value that
+is not an object, a missing role, or an invalid role string
+stops the run before any branch or worktree is created
+(exit 2).
+
+With `adversarial` set, a bare `redeye` runs tickets with the
+`implement` role. A provider on the command line replaces the
+whole `implement` role for that run (its flags do not carry
+over), and redeye logs one line saying so. Flags inside a role
+string win for that role; run-wide flags such as `-m` or
+`--effort` fill in whatever the string leaves out, for both
+roles:
+
+```sh
+# .redeye.json: implement "claude -m opus", review "pi"
+redeye --effort high -m qwen
+# implement: claude, model opus, effort high
+# review: pi, model qwen, effort high
+```
+
+Both role executables are checked before the run starts; a
+missing one exits 2 before any branch is created. When both
+roles resolve to the same provider and model, redeye warns once
+(also in `--dry-run`) and runs anyway. Outside a git repo the
+loop does not run, and redeye logs that it was skipped.
 
 A role string with `--max-turns` or `--prefer-subagent` on a
 provider that does not support them is not an error -- redeye
