@@ -41,3 +41,28 @@ Status: DONE
   vars (same pattern as FAKE_CLAUDE_KEYS in integration tests)
 - Pre-existing failures in integration shards 13/20 and 14/20
   are unrelated to this change (confirmed by running clean main)
+
+## US-002: Execute and merge a Hermes ticket through the built CLI
+
+Date: 2026-11-22
+Status: DONE
+
+### What changed
+- Added CLI subprocess test in `test/integration.test.ts` that
+  runs the full hermes ticket flow through the built CLI
+- Test uses `cliGitRepo()` for a hermetic git repo, `spawnCli`
+  with `FAKE_HERMES` as the agent command, `--concurrency 1`,
+  `--no-review`, and `--test-cmd 'ls hermes-change-*.txt'`
+- Added `FAKE_HERMES` constant, `FAKE_HERMES_KEYS` list, and
+  `fakeHermesEnv()` helper to integration test file
+- Assertions cover: exit 0, ticket done status, merged file
+  content (hermes-change-*.txt on base branch), test gate ran
+  and passed (test.log exists and contains the change file),
+  and exactly one agent turn (argv log has one entry)
+
+### Patterns and gotchas
+- No source changes needed -- the existing hermes provider path
+  in spawnAgent works correctly end-to-end with fake hermes
+- The test falls in integration shard 5/20 (index 146 % 20 = 6,
+  but count shifted, found via grep)
+- Pre-existing tiiny.test.ts lint errors (indent) are unrelated

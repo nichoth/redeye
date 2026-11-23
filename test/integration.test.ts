@@ -5946,6 +5946,29 @@ test('CLI subprocess - AC3.3 a closed feature prompt exits 2 with ' +
 // -- --prefer-subagent --
 
 const FAKE_CLAUDE = join(process.cwd(), 'test', 'fake-claude', 'claude')
+const FAKE_HERMES = join(
+    process.cwd(), 'test', 'fake-hermes', 'hermes'
+)
+
+const FAKE_HERMES_KEYS = [
+    'FAKE_HERMES_ARGV_LOG',
+    'FAKE_HERMES_CWD_LOG',
+    'FAKE_HERMES_STDIN_LOG',
+    'FAKE_HERMES_EXIT',
+    'FAKE_HERMES_NO_WORK',
+    'FAKE_HERMES_WAIT_FILE',
+    'FAKE_HERMES_READY_FILE',
+    'FAKE_HERMES_OUTPUT',
+    'FAKE_HERMES_STDERR',
+]
+
+function fakeHermesEnv (
+    extra:Record<string, string> = {}
+):NodeJS.ProcessEnv {
+    const env = { ...process.env }
+    for (const key of FAKE_HERMES_KEYS) delete env[key]
+    return { ...env, ...extra }
+}
 const SUBAGENT_RULE = subagentRule('haiku')
 const FAKE_CLAUDE_KEYS = [
     'CLAUDE_CODE_SUBAGENT_MODEL',
@@ -7840,3 +7863,98 @@ test('a branch already merged into base starts fresh',
             })
         }
     })
+
+// -- US-002: Execute and merge a Hermes ticket through the
+// built CLI --
+
+test('CLI subprocess - US-002: fake hermes executes a ' +
+    'ticket, passes test gate, merges and exits 0',
+async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(recordDir, 'argv.log')
+        const logsDir = join(
+            projectDir, '.scratch', FEAT, 'logs'
+        )
+
+        const { code, stderr } = await spawnCli([
+            FAKE_HERMES,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_ARGV_LOG: argvLog,
+            }),
+        })
+
+        t.equal(code, 0,
+            `exit 0 (stderr: ${stderr.slice(0, 200)})`)
+
+        // AC: ticket marked done
+        const ticket = readFileSync(
+            join(issuesDir, '01-task.md'), 'utf8'
+        )
+        t.ok(
+            ticket.includes('**Status:** done'),
+            'ticket marked done'
+        )
+
+        // AC: merged file content
+        const gitLog = gitOut(projectDir, [
+            'log', '--oneline',
+        ])
+        t.ok(
+            gitLog.includes('hermes agent change'),
+            'hermes commit merged into base'
+        )
+
+        // AC: the hermes change file is on the base branch
+        const files = readdirSync(projectDir)
+            .filter(f => f.startsWith('hermes-change-'))
+        t.equal(files.length, 1,
+            'exactly one hermes change file merged')
+
+        // AC: test gate ran and passed
+        const testLogs = existsSync(logsDir) ?
+            readdirSync(logsDir)
+                .filter(f => f.endsWith('.test.log')) :
+            []
+        t.equal(testLogs.length, 1,
+            'test log written (gate ran)')
+        const testLog = readFileSync(
+            join(logsDir, testLogs[0]), 'utf8'
+        )
+        t.ok(
+            testLog.includes('hermes-change-'),
+            'test log shows the hermes change file'
+        )
+
+        // AC: exactly one agent turn
+        t.ok(existsSync(argvLog), 'argv log exists')
+        const turns = readFileSync(argvLog, 'utf8')
+            .trim().split('\n').filter(Boolean)
+        t.equal(turns.length, 1,
+            'exactly one hermes agent turn ran')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
