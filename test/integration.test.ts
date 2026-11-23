@@ -8889,3 +8889,147 @@ async t => {
         })
     }
 })
+
+// -- US-012: Wait for EOF and the complete Hermes turn --
+
+test('CLI subprocess - US-012: waits for stdin EOF and ' +
+    'complete hermes turn before gating and merge',
+async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(recordDir, 'argv.log')
+        const readyFile = join(recordDir, 'ready')
+        const waitFile = join(recordDir, 'go')
+        const outputMarker =
+            `HERMES-FINAL-${randomUUID()}`
+        const logsDir = join(
+            projectDir, '.scratch', FEAT, 'logs'
+        )
+
+        // Start the CLI with hermes in coordinated-wait
+        // mode. The promise resolves when the CLI exits.
+        const cliDone = spawnCli([
+            FAKE_HERMES,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_ARGV_LOG: argvLog,
+                FAKE_HERMES_READY_FILE: readyFile,
+                FAKE_HERMES_WAIT_FILE: waitFile,
+                FAKE_HERMES_OUTPUT: outputMarker + '\n',
+            }),
+        })
+
+        // AC: record stdin EOF before allowing work.
+        // Poll for the ready file with a bounded deadline.
+        const readyDeadline = Date.now() + 20_000
+        while (!existsSync(readyFile)) {
+            if (Date.now() > readyDeadline) {
+                t.fail('ready file never appeared ' +
+                    '(stdin EOF not recorded)')
+                return
+            }
+            await new Promise(r => setTimeout(r, 50))
+        }
+        t.ok(true,
+            'ready file created - stdin EOF received')
+
+        // AC: while blocked, the CLI has not finished
+        // the ticket (status is still ready-for-agent).
+        const ticketWhileBlocked = readFileSync(
+            join(issuesDir, '01-task.md'), 'utf8'
+        )
+        t.ok(
+            !ticketWhileBlocked.includes(
+                '**Status:** done'
+            ),
+            'ticket not done while hermes is blocked'
+        )
+
+        // AC: release the fake; it commits then emits
+        // the output marker.
+        writeFileSync(waitFile, '')
+
+        // Await CLI completion with the existing 30s
+        // timeout from spawnCli.
+        const { code, stderr, stdout } = await cliDone
+
+        // AC: gate execution and merge follow completed
+        // agent work.
+        t.equal(code, 0,
+            `exit 0 (stderr: ${stderr.slice(0, 200)})`)
+
+        // AC: ticket marked done after agent completed.
+        const ticketAfter = readFileSync(
+            join(issuesDir, '01-task.md'), 'utf8'
+        )
+        t.ok(
+            ticketAfter.includes('**Status:** done'),
+            'ticket marked done after hermes finished'
+        )
+
+        // AC: hermes change merged into base.
+        const files = readdirSync(projectDir)
+            .filter(f => f.startsWith('hermes-change-'))
+        t.equal(files.length, 1,
+            'hermes change merged into base')
+
+        // AC: test gate ran after agent work.
+        const testLogs = existsSync(logsDir) ?
+            readdirSync(logsDir)
+                .filter(f => f.endsWith('.test.log')) :
+            []
+        t.equal(testLogs.length, 1,
+            'test log written (gate ran after agent)')
+
+        // AC: final output marker retained before CLI
+        // completion. The marker flows through the
+        // agent's stdout into the attempt log and
+        // the display.
+        const attemptLogs = existsSync(logsDir) ?
+            readdirSync(logsDir)
+                .filter(f => f.endsWith('.log') &&
+                    !f.endsWith('.test.log')) :
+            []
+        const attemptContent = attemptLogs.length > 0 ?
+            readFileSync(
+                join(logsDir, attemptLogs[0]), 'utf8'
+            ) :
+            ''
+        const outputRetained =
+            stdout.includes(outputMarker) ||
+            stderr.includes(outputMarker) ||
+            attemptContent.includes(outputMarker)
+        t.ok(outputRetained,
+            'final output marker retained')
+
+        // AC: exactly one agent turn ran.
+        t.ok(existsSync(argvLog), 'argv log exists')
+        const turns = readFileSync(argvLog, 'utf8')
+            .trim().split('\n').filter(Boolean)
+        t.equal(turns.length, 1,
+            'exactly one hermes agent turn')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
