@@ -394,3 +394,26 @@ Status: DONE
 - Focused test: TEST_SHARD=10/20, all 29 assertions passed.
 - npm test: full suite passed, all suites green.
 - Set passes:true for US-007 only. No other stories touched.
+
+## US-008: Leave omitted model selection to Hermes configuration
+
+Date: 2026-11-22
+Status: DONE
+
+### What changed
+- Added integration test in `test/integration.test.ts` that
+  runs the built CLI without -m/--model and asserts:
+  - --model is absent from captured hermes argv
+  - No empty or synthetic model value (empty string, 'undefined',
+    'null') appears in argv
+  - The fake hermes completes its controlled turn normally (exit 0)
+- No production changes needed: spawnAgent already guards
+  `--model` behind `if (opts.model)` at orchestrator.ts:1140,
+  so a null model produces no --model arg
+
+### Verification
+- npm run lint: passed (0 errors).
+- npm run build: passed, including declaration typecheck.
+- Focused test: TEST_SHARD=11/20, all 33 assertions passed.
+- npm test: full suite passed, all suites green.
+- Set passes:true for US-008 only. No other stories touched.

@@ -8458,3 +8458,68 @@ async t => {
         })
     }
 })
+
+test('CLI subprocess - US-008: omitted model keeps ' +
+    '--model out of hermes argv',
+async t => {
+    const { projectDir, issuesDir, templateDir } =
+        cliGitRepo()
+    const recordDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(recordDir, 'argv.log')
+
+        // AC: run the built CLI without -m / --model
+        const { code, stderr } = await spawnCli([
+            FAKE_HERMES,
+            '--spec', FEAT,
+            '--concurrency', '1',
+            '--timeout', '30',
+            '--retries', '0',
+            '--no-review',
+            '--test-cmd', 'ls hermes-change-*.txt',
+        ], {
+            cwd: projectDir,
+            env: fakeHermesEnv({
+                FAKE_HERMES_ARGV_LOG: argvLog,
+            }),
+        })
+
+        // AC: fake completes its controlled turn normally
+        t.equal(code, 0,
+            `exit 0 (stderr: ${stderr.slice(0, 200)})`)
+        t.ok(existsSync(argvLog), 'argv log exists')
+
+        const argv:string[] = JSON.parse(
+            readFileSync(argvLog, 'utf8')
+                .trim().split('\n')[0]
+        )
+
+        // AC: captured argv contains no --model option
+        t.equal(argv.indexOf('--model'), -1,
+            '--model absent from captured argv')
+
+        // AC: no empty or synthetic model value supplied
+        const modelLike = argv.filter(a =>
+            a === '--model' ||
+            a === '' ||
+            a === 'undefined' ||
+            a === 'null'
+        )
+        t.equal(modelLike.length, 0,
+            'no empty or synthetic model value in argv')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(recordDir, {
+            recursive: true, force: true,
+        })
+        rmSync(templateDir, {
+            recursive: true, force: true,
+        })
+    }
+})
