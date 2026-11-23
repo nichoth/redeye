@@ -8210,56 +8210,41 @@ async t => {
             'stdin log exists')
         const stdin = readFileSync(stdinLog, 'utf8')
 
-        // AC: code fence preserved
-        t.ok(stdin.includes('```ts\n'),
-            'ts code fence preserved')
-        t.ok(stdin.includes('```json\n'),
-            'json code fence preserved')
+        const specHeader = '---- SPEC CONTEXT ----\n'
+        const ticketHeader = '---- TICKET ----\n01-task.md\n'
+        const instructionsHeader = '---- AGENT INSTRUCTIONS ----'
+        const specStart = stdin.indexOf(specHeader)
+        const ticketStart = stdin.indexOf(ticketHeader)
+        const instructionsStart = stdin.indexOf(instructionsHeader)
+        t.ok(specStart >= 0 && ticketStart > specStart &&
+            instructionsStart > ticketStart,
+        'prompt sections appear in order')
 
-        // AC: quotes and backticks preserved
-        t.ok(stdin.includes('"double quotes"'),
-            'double quotes preserved')
-        t.ok(stdin.includes("'single quotes'"),
-            'single quotes preserved')
-        t.ok(stdin.includes('`backticks`'),
-            'backticks preserved')
-
-        // AC: Unicode preserved
-        t.ok(stdin.includes('éèê'),
-            'accented chars preserved')
-        t.ok(stdin.includes('☃'),
-            'snowman preserved')
-        t.ok(stdin.includes('valüé'),
-            'Unicode in code block preserved')
-
-        // AC: multiline structure preserved
-        t.ok(stdin.includes('## Subsection'),
-            'markdown heading preserved')
-        t.ok(stdin.includes('- item with'),
-            'list items preserved')
-
-        // AC: fixture markers occur once in
-        //     their sections
-        const specCount = stdin.split(
-            'US005-SPEC-FENCE-a1b2c3'
-        ).length - 1
-        t.equal(specCount, 1,
-            'spec marker occurs exactly once')
-
-        const ticketCount = stdin.split(
-            'US005-TICKET-BODY-d4e5f6'
-        ).length - 1
-        t.equal(ticketCount, 1,
-            'ticket marker occurs exactly once')
-
-        // AC: line breaks preserved -- the
-        //     Subsection heading must follow a
-        //     blank line
-        const subIdx = stdin.indexOf('## Subsection')
-        t.ok(
-            subIdx > 0 && stdin[subIdx - 1] === '\n',
-            'line break before heading preserved'
-        )
+        const sections = [
+            {
+                name: 'spec',
+                fixture: SPEC_MD_005,
+                text: stdin.slice(
+                    specStart + specHeader.length, ticketStart
+                ),
+            },
+            {
+                name: 'ticket',
+                fixture: TICKET_MD_005,
+                text: stdin.slice(
+                    ticketStart + ticketHeader.length,
+                    instructionsStart
+                ),
+            },
+        ]
+        for (const { name, fixture, text } of sections) {
+            t.equal(text.slice(0, fixture.length), fixture,
+                `${name} preserves exact Markdown, Unicode and newlines`)
+            t.equal(text.split(fixture).length - 1, 1,
+                `${name} fixture occurs once in its prompt section`)
+            t.equal(stdin.split(fixture).length - 1, 1,
+                `${name} fixture occurs once in the complete prompt`)
+        }
     } finally {
         removeWorktreesAndRepo(projectDir)
         rmSync(recordDir, {

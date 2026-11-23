@@ -115,3 +115,125 @@ Status: DONE
 - The test falls in integration shard 7/20 (index 147 % 20 = 7)
 - Pre-existing failure in shard 13/20 is intermittent and
   unrelated
+
+## US-005: Preserve multiline Markdown and special characters
+
+Date: 2026-11-22
+Status: BLOCKED at final verification; passes remains false.
+
+### What changed
+- Strengthened the existing built-CLI fake Hermes regression to compare
+  the complete spec and ticket fixtures exactly in their own sections.
+- Asserted each complete fixture occurs once in its section and once
+  in the complete captured stdin, preserving Markdown fences, quotes,
+  backticks, Unicode, blank lines and trailing newlines.
+- Existing stdin delivery already preserves the text; no production
+  changes are needed.
+
+### Verification
+- npm run build: passed, including declaration typecheck.
+- Focused test: TEST_SHARD=148/149, all 9 assertions passed.
+- Mutation check: temporarily replaced prompt newlines with spaces,
+  rebuilt the CLI AND test bundle, and observed 7 assertion failures.
+  Restored the exact original source, rebuilt and observed 9/9 pass.
+- Initial mutation attempt removed dist/test during build and therefore
+  failed to load the test; discarded that result and reran correctly.
+- eslint test/integration.test.ts and git diff --check: passed.
+- npm run lint: failed on 89 pre-existing indentation errors in
+  test/tiiny.test.ts, which this task does not modify.
+- npm test: ran once; all suites passed except tiiny, which crashed
+  with listen EPERM on 127.0.0.1 under the sandbox restrictions.
+- Optional whole-tree tsc --noEmit also found existing test type errors
+  (including missing Display.setRoundLabel); build typecheck passed.
+
+### Patterns and blockers
+- docs/INDEX.md is absent; consulted README.md and the supplied AGENTS
+  instructions instead.
+- renderPrompt puts the ticket filename before the ticket body; exact
+  body comparisons must account for that line.
+- npm run build deletes dist/test: bundle tests after every build.
+- Do not mark this story passing or commit it until the required lint
+  and full-suite gates pass. Left test changes uncommitted and the PRD
+  untouched, as required by the commit gate. Fixing unrelated Tiiny
+  formatting is outside this session's single-story scope; localhost
+  binding also needs an environment that permits it.
+
+## US-005: Verification retry
+
+Date: 2026-11-22
+Status: BLOCKED; passes remains false and no commit was made.
+
+- Re-read specs/prd.json, progress.log and the existing US-005 diff.
+  docs/INDEX.md is still absent; consulted docs/README.md and the
+  prompt rendering and stdin delivery code.
+- Preserved the existing test-first regression and its recorded
+  newline-flattening mutation result. No production changes are needed:
+  stdin already retains the exact fixtures.
+- npm run build passed, including declaration typecheck.
+- Rebundled integration tests after the build. The focused run
+  TEST_SHARD=148/149 passed all 9 US-005 assertions through the built
+  CLI and offline fake Hermes.
+- ESLint on test/integration.test.ts and git diff --check passed.
+- npm run lint still fails with 89 existing indentation errors in
+  untouched test/tiiny.test.ts (lines 373-512).
+- Ran npm test exactly once this session. Only the tiiny suite failed;
+  its localhost listener raised EPERM on 127.0.0.1 in this sandbox.
+- Did not change Tiiny tests, bypass checks, mark this or any other
+  story passing, or commit with failed gates. Resolving the unrelated
+  lint errors and providing a localhost-capable test environment are
+  prerequisites to completing the required verification.
+
+## US-005: Environment preflight and focused mutation retry
+
+Date: 2026-11-22
+Status: BLOCKED; passes remains false and no commit was made.
+
+- Re-read the PRD, progress log, existing regression and feature spec.
+  docs/INDEX.md is absent; docs/README.md is the available docs index.
+- Tried a different diagnostic approach before repeating the full suite:
+  a standalone Node server cannot bind an ephemeral port on 127.0.0.1.
+  It fails immediately with listen EPERM, independently of Tiiny code.
+  The Tiiny tests require a fake HTTP device, so the environment still
+  cannot satisfy the full-suite gate with the tests unchanged.
+- npm run lint reproduced the same 89 indentation errors, all in
+  untouched test/tiiny.test.ts (lines 373-512).
+- npm run build passed, including declaration typecheck. Rebundled
+  integration tests after the build, which removes dist/test.
+- Fresh mutation proof used only the built CLI: saved its exact bytes,
+  flattened prompt newlines, and ran TEST_SHARD=148/149. Seven of nine
+  assertions failed on section boundaries and exact fixture equality.
+  Restored the exact bytes in a finally block; all nine assertions then
+  passed through the built CLI and offline fake Hermes.
+- ESLint on test/integration.test.ts and git diff --check passed.
+- Did not rerun npm test after the environment preflight confirmed the
+  previously failing localhost prerequisite. Did not skip Tiiny tests,
+  weaken gates, alter unrelated code, or mark any other story passing.
+- Preserved the existing US-005 test changes. Required final gates are
+  still blocked, so the PRD is untouched and there is no task commit.
+
+## US-005: Verification prerequisite audit
+
+Date: 2026-11-22
+Status: BLOCKED; passes remains false and no commit was made.
+
+- Read specs/prd.json, progress.log, AGENTS.md and docs/README.md.
+  docs/INDEX.md remains absent. Reviewed the complete US-005 fixtures,
+  exact section comparisons and the shared stdin write/end path.
+- Tested the prerequisite directly before attempting another build or
+  full-suite run: Node cannot bind an ephemeral port on 127.0.0.1.
+  Its standalone net.createServer fails with listen EPERM, without
+  importing project code. The unchanged Tiiny suite requires this
+  listener, so another full-suite run cannot satisfy the commit gate.
+- Focused ESLint reproduced 89 indentation errors in the untouched
+  test/tiiny.test.ts. git diff --check passed for the current changes.
+- No new production or test changes were necessary for US-005. Preserved
+  the existing exact-fixture regression and its recorded red/green proof.
+  Did not repeat the build, mutation test or known-failing full suite.
+- This session's execution policy forbids permission escalation. A test
+  environment permitting localhost listeners and resolution of existing
+  Tiiny lint failures are required before the mandated gates can pass.
+  Did not replace the transport, skip tests or change lint configuration
+  to manufacture a passing gate for an unrelated Markdown regression.
+- Left specs/prd.json unchanged, including US-005 and all manual stories.
+  No task commit: the user's required successful verification has not
+  occurred. Stopped without starting another story.
