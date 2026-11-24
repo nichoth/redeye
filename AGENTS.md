@@ -1,6 +1,6 @@
 # redeye
 
-Last verified: 2026-11-20
+Last verified: 2026-11-23
 
 Small orchestrator that runs a single-agent session per issue. It
 loads tickets from `.scratch/<feature>/issues/`, runs the ready ones
@@ -97,6 +97,8 @@ merges into that branch.
   `continueWorktree` (checks out an existing ticket branch and
   merges base when it has moved)
 - `src/merge.ts` -- merging a wave's branches
+- `src/localfiles.ts` -- picks and copies the root's gitignored
+  `.agents`, `.env` and `.dev.vars` into new worktrees
 - `src/progress.ts` -- per-feature `progress.md`
 - `src/learnings.ts` -- per-attempt `learnings.md` log and the
   agent's notes file
@@ -152,6 +154,11 @@ its tests.
   `.git/index.lock`. New base-checkout commits join that queue.
 - A worktree recreated on resume needs the install command like a
   fresh one: untracked dependencies do not come with the branch.
+- Every new worktree gets the launch checkout's root `.agents`,
+  `.env` and `.dev.vars`, copied by the two private add functions
+  in `src/worktree.ts` before install. Only gitignored ones are
+  copied, so the timeout auto-commit's `git add -A` can never stage
+  a secret; untracked but unignored ones are only warned about.
 - Agents stay inside their worktree and never `git push`; the
   prompt rules in `src/rules.ts` say so.
 - `redeye graph` is read-only: no git, no provider preflight,
@@ -249,7 +256,7 @@ its tests.
 
 ### Module boundaries
 - `blockers`, `stats`, `retry`, `preflight`, `learnings`,
-  `rules`, `config` and `tiiny` import no values from
+  `rules`, `config`, `tiiny` and `localfiles` import no values from
   `src/orchestrator.ts`; `review`
   imports only its `AgentResult` type and takes `spawnAgent` and
   the process registry as injected `deps`.

@@ -38,6 +38,7 @@ import {
     sameModel,
 } from './config.js'
 import { detectTestCmd, detectInstallCmd } from './testcmd.js'
+import { listLocalFiles } from './localfiles.js'
 import { resolveExecutable } from './preflight.js'
 import { createDisplay } from './display.js'
 import {
@@ -775,6 +776,16 @@ async function runExecute (argv:{
         (isolated ?
             detectInstallCmd(getRepoRoot()) ?? undefined :
             undefined)
+    // Worktrees get only gitignored local files, so an unignored
+    // secret can never be auto-committed. Say what is left out.
+    if (isolated) {
+        for (const path of listLocalFiles(getRepoRoot()).skipped) {
+            console.log(
+                `${path} is not gitignored, so it is not copied ` +
+                'into worktrees.'
+            )
+        }
+    }
     const conflictStrategy = argv.stopOnConflict ?
         'stop' :
         'respawn'
