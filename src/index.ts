@@ -712,6 +712,18 @@ async function runExecute (argv:{
     const preferSubagent = implement.preferSubagent || undefined
 
     const isolated = isGitRepo()
+    // Worktrees get only gitignored local files, so a secret can
+    // never be auto-committed. An unignored one also makes the
+    // tree dirty, which stops the run below, and that error says
+    // to commit it. Point at .gitignore first.
+    if (isolated) {
+        for (const path of listLocalFiles(getRepoRoot()).skipped) {
+            console.log(
+                `${path} is not gitignored, so redeye will not ` +
+                'copy it into worktrees. Add it to .gitignore.'
+            )
+        }
+    }
     const featureNames = [...loaded.specBodies.keys()]
     let plan:IntegrationPlan|null = null
     if (isolated && !argv.dryRun) {
@@ -776,16 +788,6 @@ async function runExecute (argv:{
         (isolated ?
             detectInstallCmd(getRepoRoot()) ?? undefined :
             undefined)
-    // Worktrees get only gitignored local files, so an unignored
-    // secret can never be auto-committed. Say what is left out.
-    if (isolated) {
-        for (const path of listLocalFiles(getRepoRoot()).skipped) {
-            console.log(
-                `${path} is not gitignored, so it is not copied ` +
-                'into worktrees.'
-            )
-        }
-    }
     const conflictStrategy = argv.stopOnConflict ?
         'stop' :
         'respawn'

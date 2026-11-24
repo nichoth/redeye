@@ -150,3 +150,29 @@ test('copyLocalFiles - does not overwrite the branch', t => {
 
     t.equal(readFileSync(join(wt, '.env'), 'utf8'), 'branch\n')
 })
+
+test('listLocalFiles - .agents ignored by its contents', t => {
+    const repo = initRepo()
+    commitFile(repo, '.gitignore', '.agents/*\n')
+    addSkill(repo)
+    t.deepEqual(listLocalFiles(repo), { copy: ['.agents'], skipped: [] })
+    const wt = addWorktree(repo)
+    t.deepEqual(copyLocalFiles(repo, wt), ['.agents'])
+    t.ok(existsSync(join(wt, '.agents', 'skills', 'x', 'SKILL.md')))
+})
+
+test('copyLocalFiles - skips what the branch does not ignore', t => {
+    const repo = initRepo()
+    // forked before .env was ignored, like a stale ticket branch
+    git(repo, ['branch', 'stale'])
+    ignoreAll(repo)
+    writeFileSync(join(repo, '.env'), 'A=1\n')
+    const wt = join(
+        mkdtempSync(join(tmpdir(), 'redeye-localfiles-wt-')),
+        'wt'
+    )
+    git(repo, ['worktree', 'add', wt, 'stale'])
+
+    t.deepEqual(copyLocalFiles(repo, wt), [])
+    t.equal(existsSync(join(wt, '.env')), false, '.env not copied')
+})

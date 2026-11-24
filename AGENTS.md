@@ -156,9 +156,12 @@ its tests.
   fresh one: untracked dependencies do not come with the branch.
 - Every new worktree gets the launch checkout's root `.agents`,
   `.env` and `.dev.vars`, copied by the two private add functions
-  in `src/worktree.ts` before install. Only gitignored ones are
-  copied, so the timeout auto-commit's `git add -A` can never stage
-  a secret; untracked but unignored ones are only warned about.
+  in `src/worktree.ts` before install. Only files ignored both in
+  the launch checkout and on the worktree's branch (a resumed branch
+  can predate a `.gitignore` line) are copied, so the timeout
+  auto-commit's `git add -A` can never stage a secret. An untracked
+  unignored one makes the tree dirty, which stops the run;
+  `src/index.ts` says so first.
 - Agents stay inside their worktree and never `git push`; the
   prompt rules in `src/rules.ts` say so.
 - `redeye graph` is read-only: no git, no provider preflight,
