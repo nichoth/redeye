@@ -135,11 +135,15 @@ the file. On no, `.redeye.json` is not created or changed.
 
 >
 > [!IMPORTANT]  
-> If you use the `pi` harness, `.agents/` **must not be git ignored**.
-> Each agent runs in a fresh git worktree, so ignored files are not
-> there, and `pi` stops looking for `.agents/skills/` at the worktree
-> root. Commit `.agents/`, or install the skills globally with
-> `npx redeye init -g`.
+> Each agent runs in a fresh git worktree, which only has committed
+> files. So redeye copies `.agents/`, `.env` and `.dev.vars` from your
+> repo root into every worktree it creates, before installing
+> dependencies, when git ignores them, in your checkout and on the
+> worktree's branch. That way an agent can never commit a secret. An
+> untracked file that is not ignored is never copied, and it stops
+> the run (git counts it as a change), so redeye prints a line telling
+> you to add it to `.gitignore`. Only the root is checked, not
+> subdirectories. `docs/agents/` is never copied, so commit it.
 >
 
 The Pocock skills are bundled with this git repo, at `src/skills/`.

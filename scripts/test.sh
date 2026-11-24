@@ -27,6 +27,7 @@ TESTS=(
     merge:3
     display:3
     testcmd
+    localfiles
     preflight
     resolve
     config
