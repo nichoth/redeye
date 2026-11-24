@@ -1335,3 +1335,58 @@ test(
         )
     }
 )
+
+// -- local files --
+
+// A repo whose gitignored .env and .agents/ exist only in the
+// launch checkout, as they would on a developer's machine.
+function repoWithLocalFiles ():string {
+    const dir = realpathSync(initTempRepo())
+    git(dir, 'branch -M main')
+    commitFile(dir, '.gitignore', '.env\n.agents/\n')
+    writeFileSync(join(dir, '.env'), 'SECRET=1\n')
+    mkdirSync(join(dir, '.agents', 'skills', 'x'), { recursive: true })
+    writeFileSync(join(dir, '.agents', 'skills', 'x', 'SKILL.md'), '# x\n')
+    return dir
+}
+
+test('createWorktree copies ignored .env and .agents', async t => {
+    const repoRoot = repoWithLocalFiles()
+    const wt = await createWorktree({
+        repoRoot,
+        repoName: basename(repoRoot),
+        baseBranch: 'main',
+        ticket: makeTestTicket({ num: 7, slug: 'local-files' }),
+    })
+    t.ok(existsSync(join(wt.worktreePath, '.env')), '.env copied')
+    t.ok(
+        existsSync(join(wt.worktreePath, '.agents', 'skills', 'x')),
+        '.agents copied'
+    )
+})
+
+test('addWorktreeForBranch copies ignored .env', async t => {
+    const dir = repoWithLocalFiles()
+    git(dir, 'branch existing')
+    const wt = await addWorktreeForBranch({
+        repoRoot: dir,
+        branchName: 'existing',
+        worktreePath: join(dir, '..', `${basename(dir)}.existing`),
+    })
+    t.ok(existsSync(join(wt.worktreePath, '.env')), '.env copied')
+})
+
+test('worktree with copied files removes cleanly', async t => {
+    const repoRoot = repoWithLocalFiles()
+    const wt = await createWorktree({
+        repoRoot,
+        repoName: basename(repoRoot),
+        baseBranch: 'main',
+        ticket: makeTestTicket({ num: 8, slug: 'removes' }),
+    })
+    await removeWorktree(wt.worktreePath)
+    t.equal(
+        existsSync(wt.worktreePath), false,
+        'removed without --force'
+    )
+})

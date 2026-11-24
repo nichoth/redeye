@@ -2,6 +2,7 @@ import { execFile, execFileSync } from 'node:child_process'
 import { promisify } from 'node:util'
 import { basename, dirname, join, resolve } from 'node:path'
 import { existsSync } from 'node:fs'
+import { copyLocalFiles } from './localfiles.js'
 import type { Ticket } from './orchestrator.js'
 
 const execFileAsync = promisify(execFile)
@@ -297,6 +298,8 @@ async function addWorktreeNow (opts:{
         ],
         { cwd: repoRoot }
     )
+    // Before install and the agent: they may need the secrets
+    copyLocalFiles(repoRoot, worktreePath)
 
     return { worktreePath, branchName }
 }
@@ -403,6 +406,7 @@ async function addWorktreeForBranchNow (opts:{
         ['worktree', 'add', worktreePath, branchName],
         { cwd: repoRoot }
     )
+    copyLocalFiles(repoRoot, worktreePath)
 
     return { worktreePath, branchName }
 }
