@@ -699,7 +699,7 @@ before it can merge.
 
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `implement` | yes | -- | Role string for the implementing agent. Same syntax as the CLI: `<provider> [-m model] [--effort level] [--max-turns n] [--prefer-subagent model]` |
+| `implement` | yes | -- | Role string for the implementing agent. Same syntax as the CLI: `<provider> [-m model] [--effort level] [--max-turns n] [--prefer-subagent model] [-- harness args]`. See [Extra harness arguments](#extra-harness-arguments---) |
 | `review` | yes | -- | Role string for the reviewing agent |
 | `maxRounds` | no | `3` | Maximum review/fix rounds per ticket |
 | `minRounds` | no | `1` | Minimum rounds before a clean review can pass the ticket |
@@ -805,6 +805,7 @@ Flags:
 | `--retries <n>` | no | `3` | Extra attempts after failure; see Notes |
 | `--retry-delay <n>` | no | `30` | Seconds to wait before the first retry; doubles each further retry (30s, 60s, 120s, ...). `0` disables the wait |
 | `--concurrency <n>` | no | `5` | Max agents running at once within a wave. A wave with more ready tickets than this runs them through a pool: as one agent exits, the next ticket starts. The wave still finishes fully before its branches are merged |
+| `-- <args>` | no | -- | Everything after `--` goes to the implement agent's harness as written. See [Extra harness arguments](#extra-harness-arguments---) |
 
 
 ### Notes
@@ -1002,6 +1003,72 @@ Subagent turns do not count toward `--max-turns`. That was observed on
 Claude Code 2.1.296 and is not documented by Anthropic, so it may
 change. Subagent time does count against `--timeout`, because the
 timeout covers the whole agent process.
+
+### Extra harness arguments (`--`)
+
+Everything after `--` is passed to the agent harness as written.
+redeye does not parse it, so it can hold flags redeye has no option
+for.
+
+On the command line, the extra args go to the implement role:
+
+```sh
+# every implement agent runs as `pi ... --no-skills`
+npx redeye pi -m sonnet -- --no-skills
+```
+
+In `.redeye.json`, each role string can end with its own `--` list:
+
+```json
+{
+  "adversarial": {
+    "implement": "claude -m opus -- --disallowedTools WebFetch",
+    "review": "pi --effort medium -- --no-skills"
+  }
+}
+```
+
+Which args each role gets:
+
+* A provider on the command line replaces the implement role whole,
+  so implement gets the CLI's extra args only.
+* With no provider on the command line, implement gets its role
+  string's extra args followed by the CLI's.
+* The review role gets its own role string's extra args only. CLI
+  extra args never reach the reviewer.
+
+The implement role's extra args reach every agent it runs: ticket
+attempts and retries, merge-conflict re-spawns, the adversarial
+loop's fixer, and the fixer in the end-of-run review pass. The
+reviewer in the adversarial loop, and in the end-of-run review when
+`adversarial` is set, gets the review role's list. The run header
+shows the implement role with its extra args.
+
+Each extra arg is its own argv entry, with no shell in between, so
+an arg your shell passed with spaces or `$` in it reaches the
+harness unchanged. A role string is split on whitespace and has no
+quoting, so an extra arg in `.redeye.json` cannot contain a space. They go after
+every flag redeye builds (the provider's defaults, `--model`,
+`--max-turns`, `--thinking` or `--effort`, codex's `-c`), and before
+pi's `@<prompt file>`, so the prompt stays the last argument.
+
+redeye does not check these args. A flag the harness rejects fails
+the attempt like any other non-zero exit, and it is retried. Some
+flags break the run outright: anything that changes the harness's
+output format (pi's `--mode`, claude's `--output-format`) or its
+permission mode (see the default flags under [Notes](#notes)).
+redeye reads the harness's output and needs it to run without
+prompts.
+
+Provider notes:
+
+* pi's `--no-context-files` also stops pi from loading the target
+  project's `AGENTS.md`, so the agent works without the project's
+  own instructions.
+* For hermes, the extra args land after `chat`
+  (`hermes --yolo chat --query-file - --quiet ... <args>`), so only
+  `chat` options work there.
+
 
 ### Environment Settings
 

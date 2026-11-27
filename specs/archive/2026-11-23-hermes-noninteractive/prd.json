@@ -1,0 +1,410 @@
+{
+  "project": "redeye",
+  "branchName": "ralph/hermes-noninteractive",
+  "description": "Reliable non-interactive Hermes execution and delivery",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add an offline fake Hermes process for CLI tests",
+      "description":
+        "As a maintainer, I want offline proof of ticket execution.",
+      "acceptanceCriteria": [
+        "Start from test/integration.test.ts and its spawnCli helper.",
+        "Provide an executable named hermes; never run real Hermes.",
+        "Record argv, cwd and complete stdin outside the worktree.",
+        "Reject missing single-turn flags before doing ticket work.",
+        "Read stdin to EOF before performing the controlled turn.",
+        "Success mode creates and commits one controlled change.",
+        "Provide nonzero, no-work and coordinated-wait modes.",
+        "Use hermetic Git repos with local user.name and user.email.",
+        "Isolate config and credentials; never contact model APIs.",
+        "Clean up all child processes and temporary files.",
+        "Register new test env keys in each clear/restore key list.",
+        "Keep tests independent under the existing suite sharding.",
+        "Add any new test suite to TESTS in scripts/test.sh.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Execute and merge a Hermes ticket through the built CLI",
+      "description":
+        "As a user, I want ticket runs to produce committed work.",
+      "acceptanceCriteria": [
+        "Build dist/index.js before running this CLI regression.",
+        "Run one ready ticket with fake hermes and concurrency 1.",
+        "Use a temporary repo and the existing spawnCli boundary.",
+        "Disable unrelated review passes using existing controls.",
+        "Fake Hermes commits its controlled change in the worktree.",
+        "Exercise a real test command that checks the ticket change.",
+        "Record observable proof that the test gate ran and passed.",
+        "Assert the CLI waits, merges the change and exits 0.",
+        "Assert the merged file content and ticket done status.",
+        "Assert exactly one controlled ticket agent turn ran.",
+        "Keep the existing commit and test gates unchanged.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Guard the non-interactive Hermes launch contract",
+      "description": "As a user, I want unattended Hermes turns to exit.",
+      "acceptanceCriteria": [
+        "Assert argv begins --yolo chat --query-file - --quiet.",
+        "Use the shared provider selection and spawning path.",
+        "Keep working source logic and existing argument tests.",
+        "Add no second launcher and change no public command syntax.",
+        "The fake rejects missing query-file or quiet flags.",
+        "Temporarily remove Hermes provider args in a saved copy.",
+        "Rebuild and observe the behavioral regression test fail.",
+        "Restore the saved file, rebuild and observe the test pass.",
+        "Preserve unrelated edits; do not use Git restore commands.",
+        "Record the mutation result in progress.log.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Deliver the complete ticket prompt once through stdin",
+      "description":
+        "As a user, I want Hermes to receive all ticket instructions.",
+      "acceptanceCriteria": [
+        "Assert captured stdin includes spec and agent instructions.",
+        "Use unique markers for the intended ticket prompt section.",
+        "Assert its fixture markers occur exactly once there.",
+        "Send prompt data through the existing stdin pipe.",
+        "Close stdin after writing; the fake observes EOF.",
+        "Assert prompt content is absent from argv.",
+        "Do not use Pi prompt files or terminal input simulation.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Preserve multiline Markdown and special characters",
+      "description": "As a user, I want ticket text to retain its meaning.",
+      "acceptanceCriteria": [
+        "Use multiline Markdown, code fences and Unicode fixtures.",
+        "Include single quotes, double quotes and backticks.",
+        "Compare the exact fixture text in captured stdin.",
+        "Verify each fixture occurs once in its prompt section.",
+        "Verify line breaks and Unicode are preserved unchanged.",
+        "Exercise the built CLI with the offline fake Hermes.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Keep prompt text free from shell interpretation",
+      "description":
+        "As a user, I want command examples to remain literal data.",
+      "acceptanceCriteria": [
+        "Include literal dollar substitutions and backtick commands.",
+        "Commands would create unique marker files if evaluated.",
+        "Assert the literal strings reach stdin unchanged and once.",
+        "Assert no substitution marker file is created.",
+        "Retain direct process spawning without a shell for Hermes.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Forward the selected Hermes model unchanged",
+      "description": "As a user, I want Hermes to use my requested model.",
+      "acceptanceCriteria": [
+        "Run the built CLI with -m anthropic/claude-sonnet-4.6.",
+        "Assert --model follows the chat options in captured argv.",
+        "Assert its value is exactly anthropic/claude-sonnet-4.6.",
+        "Do not rewrite provider prefixes, aliases or model slugs.",
+        "Keep existing lower-level model argument coverage.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Leave omitted model selection to Hermes configuration",
+      "description": "As a user, I want my existing default model to apply.",
+      "acceptanceCriteria": [
+        "Run the built CLI without a model in isolated run config.",
+        "Assert captured argv contains no --model option.",
+        "Assert no empty or synthetic model value is supplied.",
+        "Assert the fake completes its controlled turn normally.",
+        "Do not read or modify the real user Hermes configuration.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Support both bare and full-path Hermes executables",
+      "description":
+        "As a user, I want executable paths to preserve behavior.",
+      "acceptanceCriteria": [
+        "Resolve bare hermes through a controlled test PATH.",
+        "Also run with an explicit full path whose basename is hermes.",
+        "Both routes capture the same single-turn launch options.",
+        "Both routes receive the complete fixture prompt on stdin.",
+        "Both routes complete the controlled ticket successfully.",
+        "Preserve existing executable preflight and basename logic.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Run Hermes inside its isolated ticket worktree",
+      "description":
+        "As a user, I want agent commits isolated from my checkout.",
+      "acceptanceCriteria": [
+        "Assert captured cwd is the ticket worktree, not base cwd.",
+        "Assert the fake commits on the expected ticket branch.",
+        "Assert captures are stored outside the removable worktree.",
+        "Assert the base gains the ticket change through the merge.",
+        "Reuse existing worktree selection and queued operations.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Preserve autonomous Hermes approval behavior",
+      "description": "As a user, I want agent turns to proceed unattended.",
+      "acceptanceCriteria": [
+        "Assert --yolo precedes the chat subcommand.",
+        "Have the fake reject a missing or misplaced --yolo.",
+        "Complete the CLI scenario without terminal interaction.",
+        "Preserve current approvals and add no new Hermes flags.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Wait for EOF and the complete Hermes turn",
+      "description":
+        "As a user, I want gating to wait for completed agent work.",
+      "acceptanceCriteria": [
+        "Use condition-based coordination with the fake process.",
+        "Record stdin EOF before allowing controlled work to begin.",
+        "While blocked, assert the CLI has not finished the ticket.",
+        "Release the fake, then create the change and commit it.",
+        "Emit a final output marker only after the commit exists.",
+        "Assert gate execution and merge follow completed agent work.",
+        "Assert final output is retained before CLI completion.",
+        "Use bounded deadlines, no fixed sleeps or 1-2s assumptions.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Keep nonzero Hermes exits as unfinished attempts",
+      "description":
+        "As a user, I want failed agent work reported as unfinished.",
+      "acceptanceCriteria": [
+        "Run fake Hermes with a known nonzero exit and diagnostics.",
+        "Bound retries using existing CLI options.",
+        "Assert the ticket is not marked done and CLI is nonzero.",
+        "Assert no controlled ticket change is merged.",
+        "Assert diagnostics survive in the attempt log.",
+        "Retain existing failure classification and retry policy.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Reject exit-0 Hermes attempts that make no commits",
+      "description":
+        "As a user, I want an empty agent turn to stay unfinished.",
+      "acceptanceCriteria": [
+        "Run fake Hermes in no-work mode with exit code 0.",
+        "Use bounded retries and record the number of fake turns.",
+        "Assert the existing no-commits outcome is recorded.",
+        "Assert the ticket remains unfinished and CLI is nonzero.",
+        "Assert no ticket implementation change is merged.",
+        "Preserve established retry behavior; add no success bypass.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Retain Hermes final output and attempt diagnostics",
+      "description":
+        "As a user, I want logs that explain quiet or failed runs.",
+      "acceptanceCriteria": [
+        "Emit distinct final stdout and stderr markers from the fake.",
+        "Assert the attempt log retains both markers after exit.",
+        "Cover successful and nonzero fake turn output.",
+        "Keep existing output callbacks and log flushing behavior.",
+        "Route active-run messages through the existing display.",
+        "Add no Hermes event parsing, token stats or cost reporting.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Preserve Hermes cancellation and timeout handling",
+      "description":
+        "As a user, I want unattended processes to stay manageable.",
+      "acceptanceCriteria": [
+        "Keep Hermes in the shared process group and registry.",
+        "Use fake readiness conditions before sending cancellation.",
+        "Assert cancellation cleans up the agent process group.",
+        "Keep signal handlers only in src/index.ts.",
+        "Exercise a timeout with deterministic fake coordination.",
+        "Assert timed-out work still reaches the existing gate.",
+        "Assert timeout work retains the current commit policy.",
+        "Do not turn timeouts into retries or ordinary failures.",
+        "Use wide timing margins and existing process cleanup.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Warn and omit unsupported Hermes provider options",
+      "description": "As a user, I want unsupported options to stay harmless.",
+      "acceptanceCriteria": [
+        "Exercise effort, max-turns and preferred subagent options.",
+        "Assert each uses the existing warning and omission rules.",
+        "Assert no unsupported option reaches captured Hermes argv.",
+        "Do not map these settings to new flags or config changes.",
+        "Keep existing provider argument tests as compatibility guards.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Verify the installed CLI from a freshly packed artifact",
+      "description":
+        "As a maintainer, I want the shipped package verified offline.",
+      "acceptanceCriteria": [
+        "Build using the existing package lifecycle before packing.",
+        "Pack a fresh tarball without invoking version or publish.",
+        "Install it in a temporary consumer with offline dependencies.",
+        "Keep registry access and real user configuration out of tests.",
+        "Run the installed CLI, not a source or global executable.",
+        "Reuse the successful offline fake Hermes ticket scenario.",
+        "Assert installed argv and stdin match the launch contract.",
+        "Assert committed work passes the real test gate and merges.",
+        "Assert ticket done status, exit 0 and retained final logs.",
+        "Test must expose a stale or incomplete dist artifact.",
+        "Clean up the consumer and tarball using suite conventions.",
+        "Use no real credentials, model APIs or Tiiny device.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Clarify Hermes delegation to a configured Tiiny device",
+      "description":
+        "As a user, I want normal turns to reach my delegation setup.",
+      "acceptanceCriteria": [
+        "Document that Hermes receives one complete noninteractive turn.",
+        "Explain that Tiiny activity requires manager delegation.",
+        "Do not claim a cloud manager turn proves local inference.",
+        "Describe an optional real-Hermes small-ticket manual check.",
+        "The manual check inspects the commit and attempt log.",
+        "Keep manual inference out of automated acceptance checks.",
+        "Change no router, model loading, credentials or delegation.",
+        "Do not force delegation or add device utilization measures.",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Document replacing a stale project-local redeye package",
+      "description": "As a user, I want npx to execute the verified build.",
+      "acceptanceCriteria": [
+        "Explain npx can select the project-installed dependency.",
+        "Explain newer sibling source does not replace that copy.",
+        "Document build, fresh tarball and local consumer installation.",
+        "Show checking the installed package version and resolution.",
+        "Show a Hermes run with model and --concurrency 1.",
+        "Document upgrading the local dependency to the fixed release.",
+        "State a fixed release must have a distinct version from 0.1.8.",
+        "Prepare guidance using the existing package release workflow.",
+        "Publishing remains a separate maintainer action.",
+        "Do not invoke push, publish or npm version hooks in this work.",
+        "Do not alter Roast, another checkout or the observed run.",
+        "Run focused regressions, then build, full tests and lint.",
+        "Run npm run build before npm test uses distribution files.",
+        "Keep documentation lines under 80 columns.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

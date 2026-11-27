@@ -229,7 +229,8 @@ its tests.
   `resolveRoles` drops `--prefer-subagent` (its `warnings` are
   printed by `src/index.ts`), and `spawnAgent` drops `--max-turns`
   per spawn. Each provider's
-  effort ladder is in `src/retry.ts`.
+  effort ladder is in `src/retry.ts`. Extra args after `--` are
+  decided per role in `resolveRoles` and placed by `spawnAgent`.
 - `resolveRoles` in `src/config.ts` is the one place that decides
   each role's provider and flags: a CLI provider replaces
   `implement` whole, each role's own flags win, and run-wide CLI

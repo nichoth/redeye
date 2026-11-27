@@ -2630,6 +2630,7 @@ const FAKE_ENV_KEYS = [
     'FAKE_CLAUDE_HANG',
     'FAKE_CLAUDE_PROMPT_DIR',
     'FAKE_CLAUDE_STREAM',
+    'FAKE_PI_ARGV_LOG',
     'FAKE_PI_DELEGATE',
 ]
 
@@ -2850,6 +2851,85 @@ test('spawnAgent denies claude its self-scheduling tools',
         const denied = (argv[flag + 1] ?? '').split(',')
         t.ok(denied.includes('ScheduleWakeup'), 'ScheduleWakeup is denied')
         t.ok(denied.includes('CronCreate'), 'CronCreate is denied')
+    }
+)
+
+// The argv each call to spawnAgent gives the fake, in call order
+async function spawnedArgv (
+    agentCmd:string,
+    logKey:'FAKE_CLAUDE_ARGV_LOG'|'FAKE_PI_ARGV_LOG',
+    calls:Array<{ extraArgs?:string[] }>
+):Promise<string[][]> {
+    const base = tmp()
+    const argvLog = join(base, 'argv.log')
+    await withFakeEnv({ [logKey]: argvLog }, async () => {
+        for (const call of calls) {
+            await spawnAgent({
+                prompt: 'test',
+                agentCmd,
+                model: 'opus',
+                timeout: 10,
+                logPath: join(base, 'test.log'),
+                maxTurns: 3,
+                effort: 'high',
+                ...call,
+            })
+        }
+    })
+    return readEnvLog(argvLog) as string[][]
+}
+
+const EXTRA_ARGS = ['--no-skills', 'two words', '--foo=$HOME', '-x']
+
+test('spawnAgent puts claude extra args after every redeye flag',
+    async t => {
+        const [plain, extra] = await spawnedArgv(
+            FAKE_CLAUDE,
+            'FAKE_CLAUDE_ARGV_LOG',
+            [{}, { extraArgs: EXTRA_ARGS }]
+        )
+        t.deepEqual(extra, [...plain, ...EXTRA_ARGS],
+            'extra args follow the unchanged argv, verbatim and in order')
+        const start = extra.indexOf(EXTRA_ARGS[0])
+        t.ok(start > extra.indexOf('--model'),
+            'extra args come after --model')
+        t.deepEqual(extra.slice(start, start + EXTRA_ARGS.length),
+            EXTRA_ARGS, 'extra args are one contiguous run')
+    }
+)
+
+test('spawnAgent argv is unchanged when extraArgs is empty',
+    async t => {
+        const claude = await spawnedArgv(
+            FAKE_CLAUDE,
+            'FAKE_CLAUDE_ARGV_LOG',
+            [{}, { extraArgs: [] }]
+        )
+        t.deepEqual(claude[1], claude[0], 'claude argv is unchanged')
+        const pi = await spawnedArgv(
+            FAKE_PI,
+            'FAKE_PI_ARGV_LOG',
+            [{}, { extraArgs: [] }]
+        )
+        t.deepEqual(pi[1].slice(0, -1), pi[0].slice(0, -1),
+            'pi argv is unchanged, up to its prompt file')
+    }
+)
+
+test('spawnAgent puts pi extra args before the prompt file',
+    async t => {
+        const [plain, extra] = await spawnedArgv(
+            FAKE_PI,
+            'FAKE_PI_ARGV_LOG',
+            [{}, { extraArgs: EXTRA_ARGS }]
+        )
+        const last = extra[extra.length - 1] ?? ''
+        t.ok(last.startsWith('@'), 'the prompt file is still last')
+        t.deepEqual(extra.slice(0, -1),
+            [...plain.slice(0, -1), ...EXTRA_ARGS],
+            'extra args follow every flag redeye builds')
+        t.ok(extra.indexOf(EXTRA_ARGS[0]) > extra.indexOf('--thinking'),
+            'extra args come after --thinking')
     }
 )
 
@@ -6286,5 +6366,123 @@ test('spawnAgent reports only a final pi error',
             undefined,
             'providerError is undefined after recovery'
         )
+    }
+)
+
+// The logged argvs, one per spawn of the fake claude.
+function readArgvLog (path:string):string[][] {
+    return readFileSync(path, 'utf8')
+        .split('\n')
+        .filter(line => line !== '')
+        .map(line => JSON.parse(line) as string[])
+}
+
+function endsWith (argv:string[], tail:string[]):boolean {
+    return JSON.stringify(argv.slice(-tail.length)) ===
+        JSON.stringify(tail)
+}
+
+test('runWavesIsolated passes extraArgs to ticket attempts, ' +
+    'retries and the merge-conflict respawn', async t => {
+    const base = initTempGitRepo()
+    const issuesDir = join(base, 'issues')
+    const logsDir = join(base, '.logs')
+    const record = tmp()
+    const argvLog = join(record, 'argv.log')
+    mkdirSync(issuesDir)
+    writeFileSync(join(base, '.gitignore'), '.logs/\n')
+    for (const name of ['01-a.md', '02-b.md']) {
+        writeFileSync(
+            join(issuesDir, name),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+    }
+    execSync('git add -A', { cwd: base })
+    execSync('git commit -m "tickets" --no-verify', { cwd: base })
+    const tickets = scanTickets(issuesDir)
+
+    const originalCwd = process.cwd()
+    const mock = join(originalCwd, 'test', 'mock-agent-conflict.js')
+    try {
+        await withFakeEnv({
+            FAKE_CLAUDE_DELEGATE: mock,
+            FAKE_CLAUDE_ARGV_LOG: argvLog,
+            FAKE_CLAUDE_FAIL_ONCE: join(record, 'failed-once'),
+        }, async () => {
+            process.chdir(base)
+            const { runWavesIsolated } = await import(
+                '../src/orchestrator.js'
+            )
+            const result = await runWavesIsolated({
+                tickets,
+                specBody: 'test spec',
+                agentCmd: FAKE_CLAUDE,
+                model: 'sonnet',
+                timeout: 30,
+                logsDir,
+                featureName: 'feature',
+                conflictStrategy: 'respawn',
+                testCmd: 'true',
+                retries: 1,
+                retryDelay: 0,
+                extraArgs: EXTRA_ARGS,
+            })
+            t.ok(result.allDone, 'both tickets finish')
+        })
+    } finally {
+        process.chdir(originalCwd)
+    }
+
+    t.ok(
+        readdirSync(logsDir).some(f => f.endsWith('.respawn.log')),
+        'a merge-conflict agent ran'
+    )
+    const argvs = readArgvLog(argvLog)
+    t.equal(argvs.length, 4,
+        'two attempts, one retry and one respawn were spawned')
+    t.ok(
+        argvs.every(argv => endsWith(argv, EXTRA_ARGS)),
+        'every spawn ends with the extra args'
+    )
+    rmSync(base, { recursive: true, force: true })
+    rmSync(record, { recursive: true, force: true })
+})
+
+test('runWaves in place passes extraArgs to every attempt',
+    async t => {
+        const base = tmp()
+        const issuesDir = join(base, 'issues')
+        const record = tmp()
+        const argvLog = join(record, 'argv.log')
+        mkdirSync(issuesDir)
+        writeFileSync(
+            join(issuesDir, '01-a.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        const tickets = scanTickets(issuesDir)
+        const mock = join(process.cwd(), 'test', 'mock-agent-pass.js')
+
+        await withFakeEnv({
+            FAKE_CLAUDE_DELEGATE: mock,
+            FAKE_CLAUDE_ARGV_LOG: argvLog,
+            FAKE_CLAUDE_FAIL_ONCE: join(record, 'failed-once'),
+        }, async () => {
+            const { allDone } = await runWaves(
+                tickets, 'spec', FAKE_CLAUDE, null, 30,
+                join(base, 'logs'), 'true', undefined,
+                undefined, undefined, 1, 0, undefined,
+                [], undefined, EXTRA_ARGS,
+            )
+            t.ok(allDone, 'the ticket finishes')
+        })
+
+        const argvs = readArgvLog(argvLog)
+        t.equal(argvs.length, 2, 'one attempt and one retry')
+        t.ok(
+            argvs.every(argv => endsWith(argv, EXTRA_ARGS)),
+            'every spawn ends with the extra args'
+        )
+        rmSync(base, { recursive: true, force: true })
+        rmSync(record, { recursive: true, force: true })
     }
 )

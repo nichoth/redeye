@@ -5361,6 +5361,53 @@ test('CLI subprocess - AC1.6 dry-run with a provider not on PATH',
         }
     })
 
+test('CLI subprocess - extra args after -- are accepted',
+    async t => {
+        const projectDir = tmp()
+        try {
+            const { issuesDir } = scratchDirs(projectDir)
+            writeFileSync(
+                join(issuesDir, '01-task.md'),
+                makeTicketBody({ status: 'ready-for-agent' })
+            )
+            const base = ['pi', '--spec', FEAT, '--dry-run']
+
+            const plain = await spawnCli(base, { cwd: projectDir })
+            t.equal(plain.code, 0, 'exit 0 without --')
+
+            const extra = await spawnCli(
+                [...base, '--', '--no-skills'],
+                { cwd: projectDir }
+            )
+            t.equal(extra.code, 0, 'exit 0 with -- --no-skills')
+        } finally {
+            rmSync(projectDir, { recursive: true, force: true })
+        }
+    })
+
+test('CLI subprocess - tokens after -- are not redeye options',
+    async t => {
+        const projectDir = tmp()
+        try {
+            const { issuesDir } = scratchDirs(projectDir)
+            writeFileSync(
+                join(issuesDir, '01-task.md'),
+                makeTicketBody({ status: 'ready-for-agent' })
+            )
+            // Unknown flags and extra positionals would trip
+            // .strict(), and `--turns abc` would fail the number
+            // check, if yargs parsed them.
+            const { code } = await spawnCli([
+                'pi', '--spec', FEAT, '--dry-run', '--',
+                '--bogus-flag', 'stray', 'positional', '-X',
+                '--timeout', 'abc',
+            ], { cwd: projectDir })
+            t.equal(code, 0, 'exit 0')
+        } finally {
+            rmSync(projectDir, { recursive: true, force: true })
+        }
+    })
+
 test('CLI subprocess - AC1.4 a path provider that is not ' +
     'executable fails with a clear reason', async t => {
     const projectDir = tmp()
@@ -7296,7 +7343,7 @@ const MOCK_CONTINUE = join(
 )
 const FAKE_PI_KEYS = [
     'FAKE_PI_RECORD_DIR', 'FAKE_PI_RESPONSES',
-    'FAKE_PI_COUNTER', 'FAKE_PI_DELEGATE',
+    'FAKE_PI_COUNTER', 'FAKE_PI_DELEGATE', 'FAKE_PI_ARGV_LOG',
 ] as const
 
 function readPiRecords (
@@ -10344,6 +10391,127 @@ async t => {
         removeWorktreesAndRepo(projectDir)
         rmSync(logDir, { recursive: true, force: true })
         rmSync(recordDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
+    }
+})
+
+test('CLI subprocess - extra args after `--` reach every spawn, ' +
+    'including the end-of-run review pass', async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const logDir = tmp()
+    const recordDir = join(logDir, 'records')
+    mkdirSync(recordDir)
+    try {
+        writeFileSync(
+            join(issuesDir, '01-pass.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        commitAll(projectDir, 'add tickets')
+
+        const argvLog = join(logDir, 'argv.log')
+        const { code, stdout, stderr } = await spawnCli([
+            FAKE_CLAUDE,
+            '--spec', FEAT,
+            '--timeout', '30',
+            '--retry-delay', '0',
+            '--test-cmd', 'true',
+            '--', '--some-flag',
+        ], {
+            cwd: projectDir,
+            env: fakeClaudeEnv({
+                FAKE_CLAUDE_DELEGATE: MOCK_REVIEW_AGENT,
+                FAKE_CLAUDE_ARGV_LOG: argvLog,
+                MOCK_RECORD_DIR: recordDir,
+                MOCK_REVIEW: 'findings',
+                MOCK_FIX: 'pass',
+                MOCK_TICKET: 'pass',
+            }),
+            closeStdin: true,
+        })
+
+        t.equal(code, 0, 'exits 0: ' + stdout + stderr)
+        const roles = readdirSync(recordDir).map(name => {
+            return (JSON.parse(
+                readFileSync(join(recordDir, name), 'utf8')
+            ) as { role:string }).role
+        })
+        t.ok(roles.includes('ticket'), 'the ticket ran')
+        t.ok(roles.includes('reviewer'), 'the review pass reviewed')
+        t.ok(roles.includes('fixer'), 'the review pass fixed')
+        const runs = readArgvLog(argvLog)
+        t.equal(runs.length, roles.length,
+            'one argv entry per spawn')
+        t.ok(runs.every(argv => argv.includes('--some-flag')),
+            'every spawn got the extra arg')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(logDir, { recursive: true, force: true })
+        rmSync(templateDir, { recursive: true, force: true })
+    }
+})
+
+test('CLI subprocess - the review role string\'s extra args reach ' +
+    'review spawns only, and CLI extra args never do', async t => {
+    const { projectDir, issuesDir, templateDir } = cliGitRepo()
+    const logDir = tmp()
+    try {
+        writeFileSync(
+            join(issuesDir, '01-task.md'),
+            makeTicketBody({ status: 'ready-for-agent' })
+        )
+        writeFileSync(
+            join(projectDir, '.redeye.json'),
+            JSON.stringify({
+                adversarial: {
+                    implement: FAKE_CLAUDE,
+                    review: `${FAKE_PI} -- --review-only`,
+                    maxRounds: 1,
+                    minRounds: 1,
+                },
+            })
+        )
+        commitAll(projectDir, 'add tickets and config')
+
+        const claudeLog = join(logDir, 'claude-argv.log')
+        const piLog = join(logDir, 'pi-argv.log')
+        const { code, stdout, stderr } = await spawnCli([
+            '--spec', FEAT,
+            '--timeout', '30',
+            '--test-cmd', 'true',
+            '--retries', '0',
+            '--', '--cli-extra',
+        ], {
+            cwd: projectDir,
+            env: rolesEnv({
+                FAKE_CLAUDE_DELEGATE: MOCK_PASS,
+                FAKE_CLAUDE_ARGV_LOG: claudeLog,
+                FAKE_PI_ARGV_LOG: piLog,
+                FAKE_PI_RESPONSES: 'clean',
+                FAKE_PI_COUNTER: join(logDir, 'counter'),
+            }),
+            closeStdin: true,
+        })
+
+        t.equal(code, 0, 'exits 0: ' + stdout + stderr)
+        const implementRuns = readArgvLog(claudeLog)
+        const reviewRuns = readArgvLog(piLog)
+        t.ok(implementRuns.length > 0, 'the implement role ran')
+        t.ok(reviewRuns.length > 0, 'the review role ran')
+        t.ok(reviewRuns.every(argv => argv.includes('--review-only')),
+            'every review spawn got the review role\'s extra arg')
+        t.ok(reviewRuns.every(argv => !argv.includes('--cli-extra')),
+            'no review spawn got the CLI extra arg')
+        t.ok(reviewRuns.every(argv => {
+            return argv[argv.length - 1]?.startsWith('@')
+        }), 'the prompt file stays the last review arg')
+        t.ok(implementRuns.every(argv => argv.includes('--cli-extra')),
+            'every implement spawn got the CLI extra arg')
+        t.ok(implementRuns.every(argv => {
+            return !argv.includes('--review-only')
+        }), 'no implement spawn got the review role\'s extra arg')
+    } finally {
+        removeWorktreesAndRepo(projectDir)
+        rmSync(logDir, { recursive: true, force: true })
         rmSync(templateDir, { recursive: true, force: true })
     }
 })

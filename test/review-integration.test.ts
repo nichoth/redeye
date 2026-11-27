@@ -2439,3 +2439,52 @@ test('US-020 --no-review with adversarial skips ' +
         recursive: true, force: true,
     })
 })
+
+test('per-ticket fix - the fixer gets the implement extraArgs',
+    async t => {
+        const piRecDir = mkdtempSync(join(tmpdir(), 'redeye-pirec-'))
+        const argvLog = join(piRecDir, 'argv.log')
+        const extraArgs = ['--some-flag', 'two words']
+        await withHarness({
+            MOCK_TICKET: 'pass',
+            FAKE_CLAUDE_DELEGATE: MOCK,
+            FAKE_CLAUDE_ARGV_LOG: argvLog,
+            FAKE_PI_RECORD_DIR: piRecDir,
+            FAKE_PI_RESPONSES: 'finding,verdict-fixed',
+            FAKE_PI_COUNTER: join(piRecDir, 'counter'),
+            MOCK_FIX_RESPONSES: 'fix-all',
+            MOCK_FIX_COUNTER: join(piRecDir, 'fix-counter'),
+        }, async h => {
+            const result = await h.run(
+                false, quietDisplay(), undefined,
+                {
+                    agentCmd: FAKE_CLAUDE,
+                    extraArgs,
+                    adversarial: {
+                        implementStr: 'claude',
+                        reviewStr: 'pi',
+                        review: { provider: FAKE_PI },
+                        maxRounds: 3,
+                        minRounds: 1,
+                    },
+                }
+            )
+            t.ok(result.allDone, 'ticket merges')
+            t.deepEqual(countRoles(h.recordDir),
+                { reviewer: 0, fixer: 1, ticket: 1 },
+                'a ticket run and a fix')
+            const argvs = readFileSync(argvLog, 'utf8')
+                .split('\n')
+                .filter(line => line !== '')
+                .map(line => JSON.parse(line) as string[])
+            t.equal(argvs.length, 2, 'two claude spawns')
+            t.ok(
+                argvs.every(argv => JSON.stringify(
+                    argv.slice(-extraArgs.length)
+                ) === JSON.stringify(extraArgs)),
+                'the ticket run and the fixer end with the extra args'
+            )
+        })
+        rmSync(piRecDir, { recursive: true, force: true })
+    }
+)

@@ -13,3 +13,6 @@ TODO.md
 WIP.md
 test-output.log
 ralph_codex.sh
+ralph_*.sh
+
+mock-agent-change-*.txt

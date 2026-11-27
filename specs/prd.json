@@ -1,29 +1,24 @@
 {
   "project": "redeye",
-  "branchName": "ralph/hermes-noninteractive",
-  "description": "Reliable non-interactive Hermes execution and delivery",
+  "branchName": "ralph/provider-pass-through-args",
+  "description": "Pass extra arguments to the agent harness with `--` (spec: tasks/prd-provider-pass-through-args.md)",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Add an offline fake Hermes process for CLI tests",
-      "description":
-        "As a maintainer, I want offline proof of ticket execution.",
+      "title": "Role strings accept `--`",
+      "description": "As a user, I want to write extra args in a role string in .redeye.json so that each role's harness gets its own flags.",
       "acceptanceCriteria": [
-        "Start from test/integration.test.ts and its spawnCli helper.",
-        "Provide an executable named hermes; never run real Hermes.",
-        "Record argv, cwd and complete stdin outside the worktree.",
-        "Reject missing single-turn flags before doing ticket work.",
-        "Read stdin to EOF before performing the controlled turn.",
-        "Success mode creates and commits one controlled change.",
-        "Provide nonzero, no-work and coordinated-wait modes.",
-        "Use hermetic Git repos with local user.name and user.email.",
-        "Isolate config and credentials; never contact model APIs.",
-        "Clean up all child processes and temporary files.",
-        "Register new test env keys in each clear/restore key list.",
-        "Keep tests independent under the existing suite sharding.",
-        "Add any new test suite to TESTS in scripts/test.sh.",
-        "Tests pass",
-        "Typecheck passes"
+        "ParsedRole in src/config.ts has an optional extraArgs:string[] field",
+        "parseRoleString('pi -m sonnet -- --no-skills --foo') returns extraArgs ['--no-skills', '--foo'] and model 'sonnet'",
+        "Tokens after `--` are not parsed as redeye options: parseRoleString('pi -- -m other') returns no model and extraArgs ['-m', 'other']",
+        "A role string with no `--`, or with `--` followed by nothing, returns no extraArgs (field absent or empty)",
+        "A stray positional before `--` still throws the existing 'Extra positional argument' error",
+        "The parseRoleString yargs parser uses parserConfiguration({ 'populate--': true }) and reads the extras from parsed['--']",
+        "renderRoleString appends ' -- <args>' when extraArgs is non-empty, and parseRoleString(renderRoleString(role)) round-trips",
+        "Unit tests in test/config.test.ts cover the cases above",
+        "npm run lint passes",
+        "Typecheck passes (npm run build, which runs tsc)",
+        "Tests pass"
       ],
       "priority": 1,
       "passes": true,
@@ -31,23 +26,17 @@
     },
     {
       "id": "US-002",
-      "title": "Execute and merge a Hermes ticket through the built CLI",
-      "description":
-        "As a user, I want ticket runs to produce committed work.",
+      "title": "The CLI accepts `--`",
+      "description": "As a user, I want to write `redeye pi -- --no-context-files` so that the implement role's harness gets those flags for this run.",
       "acceptanceCriteria": [
-        "Build dist/index.js before running this CLI regression.",
-        "Run one ready ticket with fake hermes and concurrency 1.",
-        "Use a temporary repo and the existing spawnCli boundary.",
-        "Disable unrelated review passes using existing controls.",
-        "Fake Hermes commits its controlled change in the worktree.",
-        "Exercise a real test command that checks the ticket change.",
-        "Record observable proof that the test gate ran and passed.",
-        "Assert the CLI waits, merges the change and exits 0.",
-        "Assert the merged file content and ticket done status.",
-        "Assert exactly one controlled ticket agent turn ran.",
-        "Keep the existing commit and test gates unchanged.",
-        "Tests pass",
-        "Typecheck passes"
+        "The default command in src/index.ts collects everything after `--` into a list without yargs parsing it (parserConfiguration({ 'populate--': true }), read from argv['--'])",
+        "Tokens after `--` never trip .strict() and are never read as redeye options or as the provider/turns positionals",
+        "CliOptions in src/config.ts has an optional extraArgs:string[], and runExecute passes the collected list through it to resolveRoles (resolveRoles may ignore it until US-003)",
+        "An integration test in test/integration.test.ts shows `redeye pi --dry-run -- --no-skills` exits 0, as it does without the `--` part",
+        "init and graph are unaffected (their existing tests still pass)",
+        "npm run lint passes",
+        "Typecheck passes (npm run build, which runs tsc)",
+        "Tests pass"
       ],
       "priority": 2,
       "passes": true,
@@ -55,21 +44,17 @@
     },
     {
       "id": "US-003",
-      "title": "Guard the non-interactive Hermes launch contract",
-      "description": "As a user, I want unattended Hermes turns to exit.",
+      "title": "resolveRoles merges extra args",
+      "description": "As a developer, I need one place that decides each role's extra args so that the rules cannot drift between call sites.",
       "acceptanceCriteria": [
-        "Assert argv begins --yolo chat --query-file - --quiet.",
-        "Use the shared provider selection and spawning path.",
-        "Keep working source logic and existing argument tests.",
-        "Add no second launcher and change no public command syntax.",
-        "The fake rejects missing query-file or quiet flags.",
-        "Temporarily remove Hermes provider args in a saved copy.",
-        "Rebuild and observe the behavioral regression test fail.",
-        "Restore the saved file, rebuild and observe the test pass.",
-        "Preserve unrelated edits; do not use Git restore commands.",
-        "Record the mutation result in progress.log.",
-        "Tests pass",
-        "Typecheck passes"
+        "With a CLI provider, implement.extraArgs is the CLI's extra args only (a CLI provider replaces the implement role whole)",
+        "With no CLI provider, implement.extraArgs is the implement role string's extra args followed by the CLI's ([...role, ...cli])",
+        "review.extraArgs is always the review role string's extra args only; CLI extra args never reach the review role",
+        "implementStr (run header and review logs) includes the merged implement extra args, rendered with renderRoleString",
+        "Unit tests in test/config.test.ts cover all three merge rules and the implementStr rendering",
+        "npm run lint passes",
+        "Typecheck passes (npm run build, which runs tsc)",
+        "Tests pass"
       ],
       "priority": 3,
       "passes": true,
@@ -77,19 +62,19 @@
     },
     {
       "id": "US-004",
-      "title": "Deliver the complete ticket prompt once through stdin",
-      "description":
-        "As a user, I want Hermes to receive all ticket instructions.",
+      "title": "spawnAgent forwards extra args",
+      "description": "As a user, I want the extra args to reach the harness process so that its behavior changes.",
       "acceptanceCriteria": [
-        "Assert captured stdin includes spec and agent instructions.",
-        "Use unique markers for the intended ticket prompt section.",
-        "Assert its fixture markers occur exactly once there.",
-        "Send prompt data through the existing stdin pipe.",
-        "Close stdin after writing; the fake observes EOF.",
-        "Assert prompt content is absent from argv.",
-        "Do not use Pi prompt files or terminal input simulation.",
-        "Tests pass",
-        "Typecheck passes"
+        "spawnAgent in src/orchestrator.ts takes an optional extraArgs:string[]",
+        "Extra args are placed after every flag redeye builds (provider args, --model, --max-turns, --thinking or --effort, codex's -c) and before pi's @<prompt file>, so the prompt stays the last argument",
+        "Extra args are passed as separate argv entries, in order, with no shell, quoting or splitting applied",
+        "With extraArgs absent or empty, the argv is exactly what it is today for every provider (claude, pi, codex, hermes)",
+        "A test using FAKE_CLAUDE_ARGV_LOG asserts the extra args appear as a contiguous run in the spawned argv, after --model",
+        "A pi test (new argv-logging key on the fake pi if needed) asserts the last argv entry still starts with '@'",
+        "Any new FAKE_* env key is added to the key list of every test file that sets it (FAKE_CLAUDE_KEYS, FAKE_ENV_KEYS, ENV_KEYS)",
+        "npm run lint passes",
+        "Typecheck passes (npm run build, which runs tsc)",
+        "Tests pass"
       ],
       "priority": 4,
       "passes": true,
@@ -97,17 +82,15 @@
     },
     {
       "id": "US-005",
-      "title": "Preserve multiline Markdown and special characters",
-      "description": "As a user, I want ticket text to retain its meaning.",
+      "title": "Implement-role spawns in orchestrator pass extraArgs",
+      "description": "As a user, I want every implement-role agent that src/orchestrator.ts spawns to get the implement role's extra args.",
       "acceptanceCriteria": [
-        "Use multiline Markdown, code fences and Unicode fixtures.",
-        "Include single quotes, double quotes and backticks.",
-        "Compare the exact fixture text in captured stdin.",
-        "Verify each fixture occurs once in its prompt section.",
-        "Verify line breaks and Unicode are preserved unchanged.",
-        "Exercise the built CLI with the offline fake Hermes.",
-        "Tests pass",
-        "Typecheck passes"
+        "Every spawnAgent call in src/orchestrator.ts that runs the implement role passes implement.extraArgs: ticket attempts and retries, merge-conflict agents, and the adversarial loop's fixer",
+        "The value comes from the roles resolved by resolveRoles, never from argv directly",
+        "With no `--` anywhere, every spawned argv is unchanged (existing tests pass)",
+        "npm run lint passes",
+        "Typecheck passes (npm run build, which runs tsc)",
+        "Tests pass"
       ],
       "priority": 5,
       "passes": true,
@@ -115,17 +98,16 @@
     },
     {
       "id": "US-006",
-      "title": "Keep prompt text free from shell interpretation",
-      "description":
-        "As a user, I want command examples to remain literal data.",
+      "title": "End-of-run review pass passes extraArgs",
+      "description": "As a user, I want the end-of-run review and fix pass to get the implement role's extra args so that no implement spawn in the run misses them.",
       "acceptanceCriteria": [
-        "Include literal dollar substitutions and backtick commands.",
-        "Commands would create unique marker files if evaluated.",
-        "Assert the literal strings reach stdin unchanged and once.",
-        "Assert no substitution marker file is created.",
-        "Retain direct process spawning without a shell for Hermes.",
-        "Tests pass",
-        "Typecheck passes"
+        "The review pass options in src/review.ts take an optional extraArgs:string[], and every deps.spawnAgent call in src/review.ts passes it",
+        "src/review.ts still imports no values from src/orchestrator.ts (module boundary in AGENTS.md)",
+        "The orchestrator passes implement.extraArgs into the review pass options",
+        "An integration test runs a ticket with the fake claude and `-- --some-flag`, and FAKE_CLAUDE_ARGV_LOG shows --some-flag on every spawn the run made, including the end-of-run review pass",
+        "npm run lint passes",
+        "Typecheck passes (npm run build, which runs tsc)",
+        "Tests pass (npm run build before npm test)"
       ],
       "priority": 6,
       "passes": true,
@@ -133,16 +115,16 @@
     },
     {
       "id": "US-007",
-      "title": "Forward the selected Hermes model unchanged",
-      "description": "As a user, I want Hermes to use my requested model.",
+      "title": "Review-role spawns pass review.extraArgs",
+      "description": "As a user, I want the adversarial review role's harness to get its own role string's extra args, and not the implement role's.",
       "acceptanceCriteria": [
-        "Run the built CLI with -m anthropic/claude-sonnet-4.6.",
-        "Assert --model follows the chat options in captured argv.",
-        "Assert its value is exactly anthropic/claude-sonnet-4.6.",
-        "Do not rewrite provider prefixes, aliases or model slugs.",
-        "Keep existing lower-level model argument coverage.",
-        "Tests pass",
-        "Typecheck passes"
+        "Every spawnAgent call in src/orchestrator.ts with agentCmd: adv.review.provider passes review.extraArgs",
+        "An integration test with an adversarial .redeye.json whose review role string has `-- --review-only` shows that flag on review spawns and not on implement spawns",
+        "The same test shows CLI `--` extra args do not appear on review spawns",
+        "Any new FAKE_* env key is added to that test file's key list",
+        "npm run lint passes",
+        "Typecheck passes (npm run build, which runs tsc)",
+        "Tests pass (npm run build before npm test)"
       ],
       "priority": 7,
       "passes": true,
@@ -150,259 +132,21 @@
     },
     {
       "id": "US-008",
-      "title": "Leave omitted model selection to Hermes configuration",
-      "description": "As a user, I want my existing default model to apply.",
+      "title": "Document the `--` syntax",
+      "description": "As a user, I want the README and --help to show `--` so that I can find the feature.",
       "acceptanceCriteria": [
-        "Run the built CLI without a model in isolated run config.",
-        "Assert captured argv contains no --model option.",
-        "Assert no empty or synthetic model value is supplied.",
-        "Assert the fake completes its controlled turn normally.",
-        "Do not read or modify the real user Hermes configuration.",
-        "Tests pass",
-        "Typecheck passes"
+        "The default command's usage or epilog in --help shows an example with `--`",
+        "README documents the CLI form, the role-string form, the merge rules from US-003, and the argv placement from US-004",
+        "README warns that redeye does not check forwarded args, and that flags which change the harness's output format (pi's --mode, claude's --output-format) or its permission mode will break the run",
+        "README notes that pi's --no-context-files also stops pi from loading the target project's AGENTS.md",
+        "README notes that for hermes, extra args land after `chat`, so only chat options work there",
+        "The AGENTS.md invariant about provider-specific options gets one line saying extra args are decided in resolveRoles and placed by spawnAgent",
+        "Docs use `--` instead of em dashes and `->` instead of arrow characters",
+        "No tests are written for docs",
+        "npm run lint passes",
+        "Typecheck passes (npm run build, which runs tsc)"
       ],
       "priority": 8,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-009",
-      "title": "Support both bare and full-path Hermes executables",
-      "description":
-        "As a user, I want executable paths to preserve behavior.",
-      "acceptanceCriteria": [
-        "Resolve bare hermes through a controlled test PATH.",
-        "Also run with an explicit full path whose basename is hermes.",
-        "Both routes capture the same single-turn launch options.",
-        "Both routes receive the complete fixture prompt on stdin.",
-        "Both routes complete the controlled ticket successfully.",
-        "Preserve existing executable preflight and basename logic.",
-        "Tests pass",
-        "Typecheck passes"
-      ],
-      "priority": 9,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-010",
-      "title": "Run Hermes inside its isolated ticket worktree",
-      "description":
-        "As a user, I want agent commits isolated from my checkout.",
-      "acceptanceCriteria": [
-        "Assert captured cwd is the ticket worktree, not base cwd.",
-        "Assert the fake commits on the expected ticket branch.",
-        "Assert captures are stored outside the removable worktree.",
-        "Assert the base gains the ticket change through the merge.",
-        "Reuse existing worktree selection and queued operations.",
-        "Tests pass",
-        "Typecheck passes"
-      ],
-      "priority": 10,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-011",
-      "title": "Preserve autonomous Hermes approval behavior",
-      "description": "As a user, I want agent turns to proceed unattended.",
-      "acceptanceCriteria": [
-        "Assert --yolo precedes the chat subcommand.",
-        "Have the fake reject a missing or misplaced --yolo.",
-        "Complete the CLI scenario without terminal interaction.",
-        "Preserve current approvals and add no new Hermes flags.",
-        "Tests pass",
-        "Typecheck passes"
-      ],
-      "priority": 11,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-012",
-      "title": "Wait for EOF and the complete Hermes turn",
-      "description":
-        "As a user, I want gating to wait for completed agent work.",
-      "acceptanceCriteria": [
-        "Use condition-based coordination with the fake process.",
-        "Record stdin EOF before allowing controlled work to begin.",
-        "While blocked, assert the CLI has not finished the ticket.",
-        "Release the fake, then create the change and commit it.",
-        "Emit a final output marker only after the commit exists.",
-        "Assert gate execution and merge follow completed agent work.",
-        "Assert final output is retained before CLI completion.",
-        "Use bounded deadlines, no fixed sleeps or 1-2s assumptions.",
-        "Tests pass",
-        "Typecheck passes"
-      ],
-      "priority": 12,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-013",
-      "title": "Keep nonzero Hermes exits as unfinished attempts",
-      "description":
-        "As a user, I want failed agent work reported as unfinished.",
-      "acceptanceCriteria": [
-        "Run fake Hermes with a known nonzero exit and diagnostics.",
-        "Bound retries using existing CLI options.",
-        "Assert the ticket is not marked done and CLI is nonzero.",
-        "Assert no controlled ticket change is merged.",
-        "Assert diagnostics survive in the attempt log.",
-        "Retain existing failure classification and retry policy.",
-        "Tests pass",
-        "Typecheck passes"
-      ],
-      "priority": 13,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-014",
-      "title": "Reject exit-0 Hermes attempts that make no commits",
-      "description":
-        "As a user, I want an empty agent turn to stay unfinished.",
-      "acceptanceCriteria": [
-        "Run fake Hermes in no-work mode with exit code 0.",
-        "Use bounded retries and record the number of fake turns.",
-        "Assert the existing no-commits outcome is recorded.",
-        "Assert the ticket remains unfinished and CLI is nonzero.",
-        "Assert no ticket implementation change is merged.",
-        "Preserve established retry behavior; add no success bypass.",
-        "Tests pass",
-        "Typecheck passes"
-      ],
-      "priority": 14,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-015",
-      "title": "Retain Hermes final output and attempt diagnostics",
-      "description":
-        "As a user, I want logs that explain quiet or failed runs.",
-      "acceptanceCriteria": [
-        "Emit distinct final stdout and stderr markers from the fake.",
-        "Assert the attempt log retains both markers after exit.",
-        "Cover successful and nonzero fake turn output.",
-        "Keep existing output callbacks and log flushing behavior.",
-        "Route active-run messages through the existing display.",
-        "Add no Hermes event parsing, token stats or cost reporting.",
-        "Tests pass",
-        "Typecheck passes"
-      ],
-      "priority": 15,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-016",
-      "title": "Preserve Hermes cancellation and timeout handling",
-      "description":
-        "As a user, I want unattended processes to stay manageable.",
-      "acceptanceCriteria": [
-        "Keep Hermes in the shared process group and registry.",
-        "Use fake readiness conditions before sending cancellation.",
-        "Assert cancellation cleans up the agent process group.",
-        "Keep signal handlers only in src/index.ts.",
-        "Exercise a timeout with deterministic fake coordination.",
-        "Assert timed-out work still reaches the existing gate.",
-        "Assert timeout work retains the current commit policy.",
-        "Do not turn timeouts into retries or ordinary failures.",
-        "Use wide timing margins and existing process cleanup.",
-        "Tests pass",
-        "Typecheck passes"
-      ],
-      "priority": 16,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-017",
-      "title": "Warn and omit unsupported Hermes provider options",
-      "description": "As a user, I want unsupported options to stay harmless.",
-      "acceptanceCriteria": [
-        "Exercise effort, max-turns and preferred subagent options.",
-        "Assert each uses the existing warning and omission rules.",
-        "Assert no unsupported option reaches captured Hermes argv.",
-        "Do not map these settings to new flags or config changes.",
-        "Keep existing provider argument tests as compatibility guards.",
-        "Tests pass",
-        "Typecheck passes"
-      ],
-      "priority": 17,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-018",
-      "title": "Verify the installed CLI from a freshly packed artifact",
-      "description":
-        "As a maintainer, I want the shipped package verified offline.",
-      "acceptanceCriteria": [
-        "Build using the existing package lifecycle before packing.",
-        "Pack a fresh tarball without invoking version or publish.",
-        "Install it in a temporary consumer with offline dependencies.",
-        "Keep registry access and real user configuration out of tests.",
-        "Run the installed CLI, not a source or global executable.",
-        "Reuse the successful offline fake Hermes ticket scenario.",
-        "Assert installed argv and stdin match the launch contract.",
-        "Assert committed work passes the real test gate and merges.",
-        "Assert ticket done status, exit 0 and retained final logs.",
-        "Test must expose a stale or incomplete dist artifact.",
-        "Clean up the consumer and tarball using suite conventions.",
-        "Use no real credentials, model APIs or Tiiny device.",
-        "Tests pass",
-        "Typecheck passes"
-      ],
-      "priority": 18,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-019",
-      "title": "Clarify Hermes delegation to a configured Tiiny device",
-      "description":
-        "As a user, I want normal turns to reach my delegation setup.",
-      "acceptanceCriteria": [
-        "Document that Hermes receives one complete noninteractive turn.",
-        "Explain that Tiiny activity requires manager delegation.",
-        "Do not claim a cloud manager turn proves local inference.",
-        "Describe an optional real-Hermes small-ticket manual check.",
-        "The manual check inspects the commit and attempt log.",
-        "Keep manual inference out of automated acceptance checks.",
-        "Change no router, model loading, credentials or delegation.",
-        "Do not force delegation or add device utilization measures.",
-        "Typecheck passes"
-      ],
-      "priority": 19,
-      "passes": true,
-      "notes": ""
-    },
-    {
-      "id": "US-020",
-      "title": "Document replacing a stale project-local redeye package",
-      "description": "As a user, I want npx to execute the verified build.",
-      "acceptanceCriteria": [
-        "Explain npx can select the project-installed dependency.",
-        "Explain newer sibling source does not replace that copy.",
-        "Document build, fresh tarball and local consumer installation.",
-        "Show checking the installed package version and resolution.",
-        "Show a Hermes run with model and --concurrency 1.",
-        "Document upgrading the local dependency to the fixed release.",
-        "State a fixed release must have a distinct version from 0.1.8.",
-        "Prepare guidance using the existing package release workflow.",
-        "Publishing remains a separate maintainer action.",
-        "Do not invoke push, publish or npm version hooks in this work.",
-        "Do not alter Roast, another checkout or the observed run.",
-        "Run focused regressions, then build, full tests and lint.",
-        "Run npm run build before npm test uses distribution files.",
-        "Keep documentation lines under 80 columns.",
-        "Tests pass",
-        "Typecheck passes"
-      ],
-      "priority": 20,
       "passes": true,
       "notes": ""
     }

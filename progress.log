@@ -1,1112 +1,250 @@
 # Ralph Progress Log
 
-Feature: hermes-noninteractive
-Spec: .scratch/hermes-noninteractive/spec.md
-Status: Converted to 20 stories; implementation not started.
-
-## US-001: Add an offline fake Hermes process for CLI tests
-
-Date: 2026-11-22
-Status: DONE
-
-### What changed
-- Created `test/fake-hermes/hermes` -- shell wrapper (like
-  fake-claude) whose basename makes spawnAgent take the hermes
-  branch
-- Created `test/mock-agent-hermes.js` -- Node script that:
-  - Validates required Hermes flags (--yolo chat --query-file
-    - --quiet) and exits 2 on mismatch
-  - Records argv, cwd, and stdin to files via FAKE_HERMES_*
-    env vars
-  - Success mode: creates and commits a file
-  - Nonzero exit mode: exits with FAKE_HERMES_EXIT code, no
-    commit
-  - No-work mode: exits 0 without committing
-    (FAKE_HERMES_NO_WORK=1)
-  - Coordinated-wait mode: signals readiness via
-    FAKE_HERMES_READY_FILE, blocks until FAKE_HERMES_WAIT_FILE
-    appears, then commits
-  - Emits stdout/stderr markers via FAKE_HERMES_OUTPUT and
-    FAKE_HERMES_STDERR
-- Created `test/hermes.test.ts` with 40 assertions covering
-  all modes, flag validation, recording, isolation, identity,
-  and sharding independence
-- Added `hermes` to TESTS in `scripts/test.sh`
-
-### Patterns and gotchas
-- macOS /var is a symlink to /private/var, so cwd comparisons
-  need realpathSync
-- tapzero has no t.pass() -- use t.ok(true, ...) instead
-- The FAKE_HERMES_KEYS list must be kept in sync with new env
-  vars (same pattern as FAKE_CLAUDE_KEYS in integration tests)
-- Pre-existing failures in integration shards 13/20 and 14/20
-  are unrelated to this change (confirmed by running clean main)
-
-## US-002: Execute and merge a Hermes ticket through the built CLI
-
-Date: 2026-11-22
-Status: DONE
-
-### What changed
-- Added CLI subprocess test in `test/integration.test.ts` that
-  runs the full hermes ticket flow through the built CLI
-- Test uses `cliGitRepo()` for a hermetic git repo, `spawnCli`
-  with `FAKE_HERMES` as the agent command, `--concurrency 1`,
-  `--no-review`, and `--test-cmd 'ls hermes-change-*.txt'`
-- Added `FAKE_HERMES` constant, `FAKE_HERMES_KEYS` list, and
-  `fakeHermesEnv()` helper to integration test file
-- Assertions cover: exit 0, ticket done status, merged file
-  content (hermes-change-*.txt on base branch), test gate ran
-  and passed (test.log exists and contains the change file),
-  and exactly one agent turn (argv log has one entry)
-
-### Patterns and gotchas
-- No source changes needed -- the existing hermes provider path
-  in spawnAgent works correctly end-to-end with fake hermes
-- The test falls in integration shard 5/20 (index 146 % 20 = 6,
-  but count shifted, found via grep)
-- Pre-existing tiiny.test.ts lint errors (indent) are unrelated
-
-## US-003: Guard the non-interactive Hermes launch contract
-
-Date: 2026-11-22
-Status: DONE
-
-### What changed
-- Added integration test in `test/integration.test.ts` that
-  asserts captured hermes argv begins with
-  `--yolo chat --query-file - --quiet`
-- Uses same spawnCli + fakeHermesEnv pattern as US-002
-- Parses the argv JSON log and deepEquals the prefix
-
-### Mutation test
-- Saved `src/orchestrator.ts`, replaced hermes args with `[]`,
-  rebuilt dist and test: test failed (fake hermes rejected the
-  launch, argv log never written, ENOENT)
-- Restored the saved file, rebuilt: test passes
-- No git restore commands used; backup file cleaned up
-
-### Patterns and gotchas
-- No source changes needed -- the guard test validates existing
-  provider args in `PROVIDER_ARGS.hermes`
-- The test falls in integration shard 6/20 (index 146 % 20 = 6)
-- Pre-existing failures in shards 13/20 and 14/20 are unrelated
-
-## US-004: Deliver the complete ticket prompt once through stdin
-
-Date: 2026-11-22
-Status: DONE
-
-### What changed
-- Added integration test in `test/integration.test.ts` that
-  asserts hermes receives the complete ticket prompt on stdin
-- Uses FAKE_HERMES_STDIN_LOG to capture what hermes reads
-- Ticket and spec contain unique fixture markers
-  (US004-SPEC-UNIQUE-7f3a2e, US004-TICKET-UNIQUE-9b1c4d)
-- 13 assertions cover: stdin captured (EOF observed), all three
-  prompt sections present (SPEC CONTEXT, TICKET, AGENT
-  INSTRUCTIONS), each fixture marker occurs exactly once,
-  prompt content absent from argv
-
-### Patterns and gotchas
-- No source changes needed -- spawnAgent already writes the
-  prompt to stdin and closes the pipe (lines 1378-1381 of
-  src/orchestrator.ts)
-- The test falls in integration shard 7/20 (index 147 % 20 = 7)
-- Pre-existing failure in shard 13/20 is intermittent and
-  unrelated
-
-## US-005: Preserve multiline Markdown and special characters
-
-Date: 2026-11-22
-Status: BLOCKED at final verification; passes remains false.
-
-### What changed
-- Strengthened the existing built-CLI fake Hermes regression to compare
-  the complete spec and ticket fixtures exactly in their own sections.
-- Asserted each complete fixture occurs once in its section and once
-  in the complete captured stdin, preserving Markdown fences, quotes,
-  backticks, Unicode, blank lines and trailing newlines.
-- Existing stdin delivery already preserves the text; no production
-  changes are needed.
-
-### Verification
-- npm run build: passed, including declaration typecheck.
-- Focused test: TEST_SHARD=148/149, all 9 assertions passed.
-- Mutation check: temporarily replaced prompt newlines with spaces,
-  rebuilt the CLI AND test bundle, and observed 7 assertion failures.
-  Restored the exact original source, rebuilt and observed 9/9 pass.
-- Initial mutation attempt removed dist/test during build and therefore
-  failed to load the test; discarded that result and reran correctly.
-- eslint test/integration.test.ts and git diff --check: passed.
-- npm run lint: failed on 89 pre-existing indentation errors in
-  test/tiiny.test.ts, which this task does not modify.
-- npm test: ran once; all suites passed except tiiny, which crashed
-  with listen EPERM on 127.0.0.1 under the sandbox restrictions.
-- Optional whole-tree tsc --noEmit also found existing test type errors
-  (including missing Display.setRoundLabel); build typecheck passed.
-
-### Patterns and blockers
-- docs/INDEX.md is absent; consulted README.md and the supplied AGENTS
-  instructions instead.
-- renderPrompt puts the ticket filename before the ticket body; exact
-  body comparisons must account for that line.
-- npm run build deletes dist/test: bundle tests after every build.
-- Do not mark this story passing or commit it until the required lint
-  and full-suite gates pass. Left test changes uncommitted and the PRD
-  untouched, as required by the commit gate. Fixing unrelated Tiiny
-  formatting is outside this session's single-story scope; localhost
-  binding also needs an environment that permits it.
-
-## US-005: Verification retry
-
-Date: 2026-11-22
-Status: BLOCKED; passes remains false and no commit was made.
-
-- Re-read specs/prd.json, progress.log and the existing US-005 diff.
-  docs/INDEX.md is still absent; consulted docs/README.md and the
-  prompt rendering and stdin delivery code.
-- Preserved the existing test-first regression and its recorded
-  newline-flattening mutation result. No production changes are needed:
-  stdin already retains the exact fixtures.
-- npm run build passed, including declaration typecheck.
-- Rebundled integration tests after the build. The focused run
-  TEST_SHARD=148/149 passed all 9 US-005 assertions through the built
-  CLI and offline fake Hermes.
-- ESLint on test/integration.test.ts and git diff --check passed.
-- npm run lint still fails with 89 existing indentation errors in
-  untouched test/tiiny.test.ts (lines 373-512).
-- Ran npm test exactly once this session. Only the tiiny suite failed;
-  its localhost listener raised EPERM on 127.0.0.1 in this sandbox.
-- Did not change Tiiny tests, bypass checks, mark this or any other
-  story passing, or commit with failed gates. Resolving the unrelated
-  lint errors and providing a localhost-capable test environment are
-  prerequisites to completing the required verification.
-
-## US-005: Environment preflight and focused mutation retry
-
-Date: 2026-11-22
-Status: BLOCKED; passes remains false and no commit was made.
-
-- Re-read the PRD, progress log, existing regression and feature spec.
-  docs/INDEX.md is absent; docs/README.md is the available docs index.
-- Tried a different diagnostic approach before repeating the full suite:
-  a standalone Node server cannot bind an ephemeral port on 127.0.0.1.
-  It fails immediately with listen EPERM, independently of Tiiny code.
-  The Tiiny tests require a fake HTTP device, so the environment still
-  cannot satisfy the full-suite gate with the tests unchanged.
-- npm run lint reproduced the same 89 indentation errors, all in
-  untouched test/tiiny.test.ts (lines 373-512).
-- npm run build passed, including declaration typecheck. Rebundled
-  integration tests after the build, which removes dist/test.
-- Fresh mutation proof used only the built CLI: saved its exact bytes,
-  flattened prompt newlines, and ran TEST_SHARD=148/149. Seven of nine
-  assertions failed on section boundaries and exact fixture equality.
-  Restored the exact bytes in a finally block; all nine assertions then
-  passed through the built CLI and offline fake Hermes.
-- ESLint on test/integration.test.ts and git diff --check passed.
-- Did not rerun npm test after the environment preflight confirmed the
-  previously failing localhost prerequisite. Did not skip Tiiny tests,
-  weaken gates, alter unrelated code, or mark any other story passing.
-- Preserved the existing US-005 test changes. Required final gates are
-  still blocked, so the PRD is untouched and there is no task commit.
-
-## US-005: Verification prerequisite audit
-
-Date: 2026-11-22
-Status: BLOCKED; passes remains false and no commit was made.
-
-- Read specs/prd.json, progress.log, AGENTS.md and docs/README.md.
-  docs/INDEX.md remains absent. Reviewed the complete US-005 fixtures,
-  exact section comparisons and the shared stdin write/end path.
-- Tested the prerequisite directly before attempting another build or
-  full-suite run: Node cannot bind an ephemeral port on 127.0.0.1.
-  Its standalone net.createServer fails with listen EPERM, without
-  importing project code. The unchanged Tiiny suite requires this
-  listener, so another full-suite run cannot satisfy the commit gate.
-- Focused ESLint reproduced 89 indentation errors in the untouched
-  test/tiiny.test.ts. git diff --check passed for the current changes.
-- No new production or test changes were necessary for US-005. Preserved
-  the existing exact-fixture regression and its recorded red/green proof.
-  Did not repeat the build, mutation test or known-failing full suite.
-- This session's execution policy forbids permission escalation. A test
-  environment permitting localhost listeners and resolution of existing
-  Tiiny lint failures are required before the mandated gates can pass.
-  Did not replace the transport, skip tests or change lint configuration
-  to manufacture a passing gate for an unrelated Markdown regression.
-- Left specs/prd.json unchanged, including US-005 and all manual stories.
-  No task commit: the user's required successful verification has not
-  occurred. Stopped without starting another story.
-
-## US-005: Current-checkout prerequisite check
-
-Date: 2026-11-22
-Status: BLOCKED; passes remains false and no task commit was made.
-
-- Read specs/prd.json and progress.log at session start.
-  docs/INDEX.md is absent; read docs/README.md instead.
-- The checkout started clean at 20f453b (wip). Contrary to earlier
-  progress entries, the existing US-005 regression is now committed
-  in the current history, rather than left as an uncommitted diff.
-- Confirmed the regression compares exact multiline spec and ticket
-  fixtures in their respective sections and in the complete stdin.
-- npm run lint failed with 89 indentation errors in test/tiiny.test.ts.
-- A standalone Node net.createServer listener on 127.0.0.1 failed
-  with EPERM. This reproduces the documented full-suite prerequisite
-  failure without running project code.
-- Stopped at the confirmed blockers, as instructed for failures that
-  cannot be fixed this session. Did not repeat the known-failing full
-  suite, modify unrelated Tiiny tests, or bypass verification gates.
-- No source or test changes, no PRD changes and no task commit.
-  Completing US-005 still requires successful lint and full tests in
-  an environment that permits the suite's localhost listeners.
-
-## US-005: Session prerequisite recheck
-
-Date: 2026-11-22
-Status: BLOCKED; passes remains false and no task commit was made.
-
-- Read specs/prd.json and progress.log before inspecting the checkout.
-  docs/INDEX.md is absent; read docs/README.md instead.
-- The checkout already contained the US-005 exact-fixture regression
-  and an uncommitted progress.log entry; preserved both.
-- Confirmed the existing test covers multiline Markdown, code fences,
-  single and double quotes, backticks, Unicode and exact occurrence
-  counts in each prompt section and the complete captured stdin.
-- npm run lint freshly failed with 89 indentation errors in untouched
-  test/tiiny.test.ts. A standalone Node localhost listener freshly
-  failed with listen EPERM on 127.0.0.1, confirming the full-suite
-  environment prerequisite remains unavailable.
-- Followed the instruction to stop at an unfixable session blocker.
-  Did not repeat the known-failing full suite or mutation cycle,
-  change unrelated tests, weaken verification, or add dependencies.
-- Left all PRD stories unchanged. No completion claim or task commit:
-  successful lint and full-suite verification are still required.
-
-## US-005: Direct suite-dependency investigation
-
-Date: 2026-11-22
-Status: BLOCKED; passes remains false and no task commit was made.
-
-- Read specs/prd.json and progress.log at session start. The requested
-  docs/INDEX.md is absent; read docs/README.md and AGENTS.md instead.
-- Reviewed the committed US-005 regression. It already compares the
-  exact spec and ticket fixtures, including Markdown fences, quotes,
-  backticks, Unicode and line breaks, once in each prompt section.
-- Tested the earlier environment assumption at the actual dependency
-  boundary instead of repeating the standalone net-server probe:
-  imported test/fake-device.ts directly with Node and called
-  createFakeDevice(). Its HTTP listener failed with listen EPERM on
-  127.0.0.1 before startup completed. The helper emits an unhandled
-  server error, so a try/catch around its promise cannot recover it.
-  This confirms the unchanged Tiiny suite cannot start its fake device
-  in the current execution environment, independently of Hermes.
-- npm run lint freshly failed with the same 89 indentation errors in
-  test/tiiny.test.ts. Git history confirms that file is unchanged by
-  US-005; no formatting or transport changes were made outside scope.
-- Preserved the existing regression and its recorded red/green proof.
-  Did not repeat the known-blocked full suite, add dependencies, skip
-  tests or weaken verification. The required passing lint and full
-  suite remain prerequisites to setting passes:true and committing.
-- Stopped at the verified environment blocker under the session's
-  error-handling rule. Left all PRD stories and manual work untouched.
-
-## US-005: Completed
-
-Date: 2026-11-22
-Status: DONE
-
-### What changed
-- Previous sessions wrote the US-005 test regression (exact multiline
-  Markdown, code fences, quotes, backticks, Unicode fixtures compared
-  in captured stdin sections) and committed it. No production changes
-  were needed: stdin delivery already preserves the text exactly.
-- Fixed 89 pre-existing indentation errors in test/tiiny.test.ts using
-  eslint --fix. These were all @stylistic/indent violations on lines
-  373-512, unrelated to US-005 but blocking the required lint gate.
-- The localhost EPERM environment blocker from earlier sessions is now
-  resolved (the execution environment permits 127.0.0.1 binding).
-
-### Verification
-- npm run lint: passed (0 errors after tiiny indent fix).
-- npm run build: passed, including declaration typecheck.
-- npm test: full suite passed, all suites green, 0 failures.
-- Set passes:true for US-005 only. No other stories touched.
-
-## US-006: Keep prompt text free from shell interpretation
-
-Date: 2026-11-22
-Status: DONE
-
-### What changed
-- Added integration test in `test/integration.test.ts` that
-  verifies shell metacharacters in ticket and spec text pass
-  through stdin as literal data, never evaluated by a shell
-- Fixtures contain literal `$(touch /tmp/MARKER)` and
-  `` `touch /tmp/MARKER` `` with unique randomUUID markers
-- 14 assertions cover: each literal reaches stdin unchanged,
-  each occurs exactly once, and no marker files are created
-- No production changes needed: spawnAgent already uses
-  `spawn()` without `shell: true`, so prompt text is piped
-  directly to the agent process via stdin
-
-### Patterns and gotchas
-- eslint requires single quotes for non-interpolated string
-  fragments, even when concatenated with template literals
-- The test falls in integration shard 9/20 (index 149 % 20 = 9)
-- Pre-existing intermittent failures in shards 13/20 and 14/20
-  are unrelated (documented since US-001, timing-dependent under
-  parallel load)
-
-### Verification
-- npm run lint: passed (0 errors).
-- npm run build: passed, including declaration typecheck.
-- Focused test: TEST_SHARD=9/20, all 35 assertions passed.
-- npm test: full suite passed except pre-existing intermittent
-  failures in shards 13/20 and 14/20 (confirmed unrelated).
-- Set passes:true for US-006 only. No other stories touched.
-
-## US-007: Forward the selected Hermes model unchanged
-
-Date: 2026-11-22
-Status: DONE
-
-### What changed
-- Added integration test in `test/integration.test.ts` that
-  runs the built CLI with `-m anthropic/claude-sonnet-4.6` and
-  asserts the model value reaches hermes argv unchanged
-- Parses captured argv JSON log and asserts:
-  - `--model` is present in argv
-  - `--model` follows the `chat` subcommand (it is a chat option)
-  - The value is exactly `anthropic/claude-sonnet-4.6`
-  - The `anthropic/` provider prefix is not stripped or rewritten
-- No production changes needed: spawnAgent already pushes
-  `--model <value>` verbatim after the provider args
-
-### Patterns and gotchas
-- The test falls in integration shard 10/20 (index 150 % 20 = 10)
-- No model rewriting, alias resolution or slug normalization
-  exists in the codebase; the value flows through unchanged
-
-### Verification
-- npm run lint: passed (0 errors).
-- npm run build: passed, including declaration typecheck.
-- Focused test: TEST_SHARD=10/20, all 29 assertions passed.
-- npm test: full suite passed, all suites green.
-- Set passes:true for US-007 only. No other stories touched.
-
-## US-008: Leave omitted model selection to Hermes configuration
-
-Date: 2026-11-22
-Status: DONE
-
-### What changed
-- Added integration test in `test/integration.test.ts` that
-  runs the built CLI without -m/--model and asserts:
-  - --model is absent from captured hermes argv
-  - No empty or synthetic model value (empty string, 'undefined',
-    'null') appears in argv
-  - The fake hermes completes its controlled turn normally (exit 0)
-- No production changes needed: spawnAgent already guards
-  `--model` behind `if (opts.model)` at orchestrator.ts:1140,
-  so a null model produces no --model arg
-
-### Verification
-- npm run lint: passed (0 errors).
-- npm run build: passed, including declaration typecheck.
-- Focused test: TEST_SHARD=11/20, all 33 assertions passed.
-- npm test: full suite passed, all suites green.
-- Set passes:true for US-008 only. No other stories touched.
-
-## US-009: Support both bare and full-path Hermes executables
-
-Date: 2026-11-22
-Status: DONE
-
-### What changed
-- Added `dirname` to the path import in `test/integration.test.ts`
-- Added `hermesRun` helper that runs a full hermes ticket flow and
-  returns captured argv and stdin, used by all three US-009 tests
-- Added three integration tests:
-  1. Bare `hermes` resolved through a controlled test PATH --
-     asserts required prefix args and stdin delivery
-  2. Full-path hermes (the FAKE_HERMES constant) -- asserts
-     the same required prefix args and stdin delivery
-  3. Equivalence test -- runs both routes and asserts their
-     captured argv arrays are identical and both receive the
-     agent instructions prompt
-- No production changes needed: `getProviderArgs` and `spawnAgent`
-  already use `basename(cmd)` to extract the provider name, so
-  both bare names and full paths produce the same provider args
-
-### Verification
-- npm run lint: passed (0 errors).
-- npm run build: passed, including declaration typecheck.
-- Focused tests: shards 12/20, 13/20, 14/20 all passed.
-- npm test: full suite passed, all suites green.
-- Set passes:true for US-009 only. No other stories touched.
-
-## US-010: Run Hermes inside its isolated ticket worktree
-
-Date: 2026-11-22
-Status: DONE
-
-### What changed
-- Added integration test in `test/integration.test.ts` that
-  asserts hermes runs inside the ticket worktree, not the base
-  project directory
-- Added `realpathSync` to fs imports for macOS /var symlink
-  handling (documented gotcha from US-001)
-- 10 assertions cover: cwd log exists, captured cwd differs from
-  base project dir, cwd is a worktree sibling of base (matches
-  `<repoName>.<feature>-<num>-<slug>` pattern), hermes commit
-  exists in history, ticket branch exists with expected name,
-  capture logs are outside the worktree, hermes change file
-  merged into base, ticket marked done
-- The worktree is removed after merge, so the test resolves the
-  parent directory (which persists) instead of the worktree path
-
-### Patterns and gotchas
-- No production changes needed: spawnAgent already passes
-  `worktree.worktreePath` as the cwd (orchestrator.ts:2600)
-- The worktree is cleaned up after merge, so realpathSync on
-  the captured cwd fails; resolve dirname + basename instead
-- tapzero has no `t.not`; use `t.notEqual` for inequality
-- The test falls in integration shard 15/20 (index 155 % 20 = 15)
-
-### Verification
-- npm run lint: passed (0 errors).
-- npm run build: passed, including declaration typecheck.
-- Focused test: TEST_SHARD=15/20, all 39 assertions passed.
-- npm test: full suite passed, all suites green, 0 failures.
-- Set passes:true for US-010 only. No other stories touched.
-
-## US-011: Preserve autonomous Hermes approval behavior
-
-Date: 2026-11-22
-Status: DONE
-
-### What changed
-- Added unit test in `test/hermes.test.ts` for misplaced --yolo
-  (after chat): confirms the fake rejects with exit 2 and an
-  error message when --yolo follows chat instead of preceding it
-- Added integration test in `test/integration.test.ts` that
-  asserts --yolo precedes chat in captured argv, --yolo is the
-  first argument, exactly one approval flag exists (no extra
-  --yolo, -y, or --auto-approve), and the scenario completes
-  without terminal interaction (exit 0, ticket done)
-- No production changes needed: spawnAgent already passes
-  --yolo as the first argument in PROVIDER_ARGS.hermes
-
-### Patterns and gotchas
-- The hermes unit test count increased from 40 to 42 (new
-  misplaced --yolo test adds 2 assertions)
-- The integration test falls in shard 16/20 (index 156 % 20 = 16)
-- Pre-existing intermittent failures in shards 13/20 and 14/20
-  are unrelated (documented since US-001)
-
-### Verification
-- npm run lint: passed (0 errors).
-- npm run build: passed, including declaration typecheck.
-- Focused tests: hermes suite all 42 passed; integration
-  TEST_SHARD=16/20, all 29 assertions passed.
-- npm test: full suite passed except pre-existing intermittent
-  failures in shards 13/20 and 14/20 (confirmed unrelated).
-- Set passes:true for US-011 only. No other stories touched.
-
-## US-012: Wait for EOF and the complete Hermes turn
-
-Date: 2026-11-22
-Status: DONE
-
-### What changed
-- Added integration test in `test/integration.test.ts` that
-  exercises the coordinated-wait mode through the built CLI
-- Uses FAKE_HERMES_READY_FILE and FAKE_HERMES_WAIT_FILE to
-  coordinate: CLI starts hermes, hermes signals readiness
-  after stdin EOF, test checks ticket is not done while
-  hermes is blocked, then releases hermes to commit and emit
-  a final output marker
-- 9 assertions cover: ready file created (EOF recorded),
-  ticket not done while blocked, exit 0 after release,
-  ticket marked done, hermes change merged, test gate ran,
-  final output marker retained in attempt log, argv log
-  exists, exactly one agent turn
-- Uses bounded deadline polling (20s) with no fixed sleeps
-- No production changes needed: the existing spawnAgent
-  stdin write/end and process wait already handle this
-
-### Patterns and gotchas
-- The coordinated-wait mode was already implemented in the
-  fake hermes mock (US-001); this test exercises it through
-  the full CLI subprocess path
-- spawnCli returns a promise, so coordinated-wait works by
-  starting the promise, polling for the ready file, checking
-  disk state mid-flight, writing the wait file, then awaiting
-- The test falls in integration shard 17/20 (index 157 % 20 = 17)
-
-### Verification
-- npm run lint: passed (0 errors).
-- npm run build: passed, including declaration typecheck.
-- Focused test: TEST_SHARD=17/20, all 34 assertions passed.
-- npm test: full suite passed, all suites green, 0 failures.
-- Set passes:true for US-012 only. No other stories touched.
-
-## US-013: Keep nonzero Hermes exits as unfinished attempts
-
-Date: 2026-11-22
-Status: DONE
-
-### What changed
-- Added integration test in `test/integration.test.ts` that
-  runs the built CLI with fake hermes in nonzero exit mode
-  (FAKE_HERMES_EXIT=1) with diagnostic markers on stdout and
-  stderr
-- Uses --retries 1 --retry-delay 0 to bound retry attempts
-- 10 assertions cover: CLI exits nonzero, ticket not marked
-  done, no hermes change file merged, argv log has exactly
-  2 turns (1 initial + 1 retry), learnings.md exists and
-  contains at least one exit-outcome entry with exit code 1,
-  attempt log files exist and contain diagnostic markers
-- No production changes needed: the existing failure
-  classification in runTicketAttempt (kind:'failed',
-  reason:'exit') and retry policy in runWithRetries already
-  handle nonzero exits correctly
-
-### Patterns and gotchas
-- The test falls in integration shard 18/20 (index 158 % 20 = 18)
-- The fake hermes nonzero exit mode (FAKE_HERMES_EXIT) was
-  already implemented in US-001; this test exercises it through
-  the full CLI subprocess path with bounded retries
-- Diagnostic output (FAKE_HERMES_OUTPUT, FAKE_HERMES_STDERR)
-  flows through the agent process into the attempt log files
-  in the logs directory
-
-### Verification
-- npm run lint: passed (0 errors).
-- npm run build: passed, including declaration typecheck.
-- Focused test: TEST_SHARD=18/20, all 33 assertions passed.
-- npm test: full suite passed, all suites green, 0 failures.
-- Set passes:true for US-013 only. No other stories touched.
-
-## US-014: Reject exit-0 Hermes attempts that make no commits
-
-Date: 2026-11-22
-Status: DONE
-
-### What changed
-- Added integration test in `test/integration.test.ts` that
-  runs the built CLI with fake hermes in no-work mode
-  (FAKE_HERMES_NO_WORK=1) with bounded retries
-- Uses --retries 1 --retry-delay 0 to bound retry attempts
-- 7 assertions cover: CLI exits nonzero, ticket not marked
-  done, no hermes change file merged, argv log has exactly
-  2 turns (1 initial + 1 retry), learnings.md exists and
-  contains at least one no-commits outcome entry
-- No production changes needed: the existing no-commits
-  detection in runTicketAttempt (hasNewCommits check at
-  orchestrator.ts:2689) and retry policy in runWithRetries
-  already handle exit-0-no-commits correctly -- the outcome
-  falls through without stop:true so it is retried
-
-### Patterns and gotchas
-- The test falls in integration shard 19/20 (index 159 % 20 = 19)
-- The fake hermes no-work mode (FAKE_HERMES_NO_WORK=1) was
-  already implemented in US-001; this test exercises it through
-  the full CLI subprocess path with bounded retries
-- Unlike the nonzero-exit retry path (which checks exitCode),
-  the no-commits retry works because runWithRetries returns
-  stop:false for the no-commits outcome kind
-
-### Verification
-- npm run lint: passed (0 errors).
-- npm run build: passed, including declaration typecheck.
-- Focused test: TEST_SHARD=19/20, all 31 assertions passed.
-- npm test: full suite passed, all suites green, 0 failures.
-- Set passes:true for US-014 only. No other stories touched.
-
-## US-015: Retain Hermes final output and attempt diagnostics
-
-Date: 2026-11-22
-Status: BLOCKED on full-suite environment permissions
-
-### What changed
-- Strengthened the existing successful and nonzero Hermes CLI tests
-  with 64 KiB of output on each stream and distinct final markers
-  without trailing newlines.
-- Assert all filler bytes and both final markers survive in the single
-  attempt log, and final lines reach the existing display callback.
-- Observed both tests fail before changing the fake: process.exit()
-  truncated pending pipe writes. The fake now sets process.exitCode
-  and lets pending output drain naturally.
-- Kept production callbacks, log flushing and provider parsing intact.
-
-### Patterns and gotchas
-- stdout and stderr chunks can interleave within a line in their shared
-  log. Count distinct filler bytes rather than require each stream's
-  entire output or each line to be contiguous.
-- docs/INDEX.md does not exist in this checkout; read docs/README.md
-  as the available documentation entry point.
-
-### Verification and blocker
-- npm run build: passed, including declaration typecheck.
-- Focused US-015 cases: 20 assertions passed across
-  TEST_SHARD=160/162 and TEST_SHARD=161/162.
-- Fake Hermes suite: all 42 assertions passed.
-- npm run lint and git diff --check: passed.
-- Ran npm test once: all suites except tiiny passed. Tiiny aborts
-  when its fake device tries to listen on 127.0.0.1: listen EPERM,
-  operation not permitted. This environment denies local server
-  sockets; approval is unavailable. No unrelated code was changed.
-- Full output is in /tmp/redeye-us015-full.log for this session.
-- Left US-015 passes:false and did not commit: the required full-suite
-  gate has not passed. No other stories changed. Resume in an
-  environment that permits the existing local fake-device server,
-  rerun the final gate, then mark US-015 passing and commit.
-
-### US-015 resumed verification (2026-11-22)
-
-- Reviewed the existing test-first changes and retained their scope.
-  Production output callbacks and log flushing need no changes.
-- `docs/INDEX.md` is still absent; read `docs/README.md` instead.
-- `npm run build`: passed, including declaration typecheck.
-- Focused CLI cases (`TEST_SHARD=160/162` and `161/162`):
-  all 20 assertions passed. Fake Hermes: all 42 assertions passed.
-- `npm run lint` and `git diff --check`: passed.
-- A minimal Node localhost listener reproduced `listen EPERM` on
-  `127.0.0.1`, independently of the application or test fixtures.
-- Ran the full `npm test` gate once this session. Every suite except
-  `tiiny` passed; Tiiny cannot bind its existing fake-device server
-  under this environment's socket restrictions. Full output:
-  `/tmp/redeye-us015-resume-full.log`.
-- No test skips, dependency additions, or unrelated fixes were made.
-  No approval escalation is available in this session. US-015 remains
-  `passes:false`; no other PRD story changed and no commit was made
-  because the required full-suite gate did not pass.
-- Resume with localhost server sockets available, then rerun the gate
-  before marking US-015 passing and committing its existing changes.
-
-### US-015 socket preflight and focused verification (2026-11-22)
-
-- Re-read the PRD, progress log, available docs entry point and diff.
-  Reviewed the saved failing tests before retaining the fixture fix.
-- Tried an isolated socket preflight before another full-suite run.
-  A minimal Node net.Server still fails to listen on 127.0.0.1 with
-  EPERM, without any redeye code or test fixtures involved.
-- Inspected test/fake-device.ts: the existing Tiiny tests require that
-  localhost listener. Changing those unrelated tests or skipping them
-  would not satisfy this story's required full-suite gate.
-- Fresh npm run build (including typecheck) and npm run lint passed.
-  Rebundled the focused tests; US-015 passed all 20 assertions and
-  fake Hermes passed all 42 assertions. git diff --check passed.
-- Did not repeat npm test after reproducing its known prerequisite
-  failure. No source changes, dependency additions or test skips.
-- US-015 remains passes:false and uncommitted because the full-suite
-  gate remains blocked. No other story changed. Stop here until the
-  test environment permits localhost listening.
-
-### US-015 actual-suite prerequisite and final gate (2026-11-22)
-
-- Read specs/prd.json and progress.log at session start. Studied
-  docs/README.md because the requested docs/INDEX.md is absent.
-- Preserved the existing test-first regressions and fixture drain fix.
-  Reviewed the production close handler and log flush callback; no
-  additional output parsing or production changes are needed.
-- Checked the actual, freshly bundled Tiiny suite rather than repeating
-  a standalone socket probe. Its first fake-device listener fails with
-  listen EPERM on 127.0.0.1. This is an execution-policy restriction;
-  changing Hermes output handling cannot resolve it within this story.
-- npm run build passed, including declaration typecheck. Both focused
-  US-015 cases passed all 20 assertions; fake Hermes passed all 42.
-  npm run lint and git diff --check passed.
-- Ran npm test exactly once as the final gate. Only tiiny failed, with
-  the same listener EPERM; every other suite passed. Complete output:
-  /tmp/redeye-us015-current-full.log.
-- No dependencies, test skips, unrelated changes or permission bypasses
-  were added. All PRD stories remain unchanged, including US-015 with
-  passes:false. No task commit was made because the full-suite gate
-  did not pass. Stop until the environment permits the existing
-  localhost fake-device listener; do not repeat Hermes implementation
-  work to address this external prerequisite.
-
-### US-015 completed verification (2026-11-23)
-
-- Reviewed the existing final-output regressions and fake Hermes drain
-  fix. Both successful and nonzero turns retain stdout and stderr,
-  including final markers without trailing newlines after 64 KiB on
-  each stream. All 20 US-015 assertions passed in the full suite.
-- Production output callbacks, display routing and log flushing remain
-  unchanged. No Hermes event parsing, token stats or cost reporting
-  were added.
-- Fresh npm run build passed, including declaration typecheck.
-  npm run lint and git diff --check passed.
-- The sandboxed npm test run failed only on Tiiny's localhost listener
-  with listen EPERM. An approved run outside the sandbox then passed
-  the full npm test suite, including Tiiny and fake Hermes. Output:
-  /tmp/redeye-us015-20261123-unsandboxed.log.
-- Marked only US-015 passes:true in specs/prd.json. The earlier socket
-  restriction is resolved for this verification run; no test skips or
-  unrelated implementation changes were needed.
-
-## US-016: Preserve Hermes cancellation and timeout handling
-
-Date: 2026-11-23
-Status: BLOCKED on full-suite environment permissions
-
-### What changed
-- Added built-CLI regressions for SIGINT and SIGTERM cancellation.
-  The fake records stdin EOF and waits for its descendant to record
-  its own PID before signalling readiness. Cancellation must exit
-  130/143 and kill both Hermes and the descendant holding stdout.
-- Added a coordinated timeout case: fake Hermes commits work, leaves
-  a dirty file and starts its descendant before signalling readiness.
-  With a 15-second timeout, committed and dirty work both reach the
-  real test gate and merge. One available retry must remain unused.
-- Extended spawnCli with an optional child callback and deadline for
-  lifecycle tests. Existing callers retain their defaults. Both fake
-  environment key lists include the new controls.
-- Kept production process groups, registries, timeout classification,
-  auto-commit policy and src/index.ts signal handlers unchanged.
-
-### Test-first evidence and patterns
-- Wrote the cancellation and timeout regressions first. Both failed
-  because the fake lacked the requested descendant coordination;
-  implemented the fake modes afterward and observed both pass.
-- Readiness contains the agent PID and is emitted only after the child
-  records its PID. Tests wait on conditions rather than fixed sleeps.
-- Cleanup signals the CLI first, waits for it, then uses the existing
-  process-group helper and removes worktrees and temporary files.
-- docs/INDEX.md is absent; studied docs/README.md as the available
-  documentation entry point. No new dependencies were needed.
-
-### Verification
-- npm run build passed, including declaration typecheck.
-- Focused integration shards 162/165, 163/165 and 164/165 passed all
-  24 assertions. The fake Hermes suite passed all 42 assertions.
-- npm run lint passed after correcting one property layout issue.
-  git diff --check passed; all added lines are under 80 columns.
-- Ran npm test once as the final gate. Tiiny's existing fake-device
-  localhost listener failed with listen EPERM on 127.0.0.1. This
-  session cannot request an execution-permission escalation.
-- Full-suite output: /tmp/redeye-us016-full.log. No test skips or
-  unrelated fixes were made. US-016 remains passes:false; no other
-  PRD story changed. No commit until the required full suite passes.
-- Final full-suite result: only tiiny failed. Every other suite passed,
-  including all three new US-016 CLI cases under parallel suite load.
-  Resume with localhost listening permitted, rerun the final gate,
-  then mark only US-016 passing and commit this task's changes.
-
-### US-016 resumed verification (2026-11-23)
-
-- Read specs/prd.json and progress.log at session start. Studied
-  docs/README.md because docs/INDEX.md remains absent.
-- Reviewed the existing test-first changes and shared production
-  process registry, group termination, signal and timeout paths.
-  No additional implementation changes were needed.
-- Fresh npm run build passed, including declaration typecheck.
-  npm run lint and git diff --check passed.
-- Rebundled and ran integration shards 162/165, 163/165 and 164/165:
-  all 24 US-016 assertions passed. Fake Hermes passed all 42 assertions.
-- Ran npm test exactly once as the final gate. Only tiiny failed:
-  its existing fake-device listener receives listen EPERM on
-  127.0.0.1. Every other suite passed, including the US-016 cases.
-  Full output: /tmp/redeye-us016-resume-20261123-full.log.
-- This session cannot request execution-permission escalation.
-  No dependencies, test skips, unrelated fixes or PRD changes were
-  made. US-016 remains passes:false and uncommitted because the
-  required full-suite gate failed. Resume with localhost listening
-  permitted, then verify the gate before marking and committing.
-
-### US-016 prerequisite audit (2026-11-23)
-
-- Re-read specs/prd.json and progress.log. docs/INDEX.md is absent;
-  studied docs/README.md and retained the saved test-first changes.
-- Reviewed the shared registry, process-group cleanup, CLI signal
-  handlers and timeout auto-commit path. No production change needed.
-- Fresh npm run build passed, including declaration typecheck.
-  npm run lint and git diff --check passed.
-- Freshly bundled integration shards 162/165, 163/165 and 164/165
-  passed all 24 lifecycle assertions. Fake Hermes passed all 42.
-- Tested the actual, freshly bundled Tiiny suite before repeating the
-  full gate. Its first residentModels fake-device listener still fails
-  with listen EPERM on 127.0.0.1, after 28 earlier assertions pass.
-  Output: /tmp/redeye-us016-tiiny-20261123-check.log.
-- Did not repeat npm test after its existing listener prerequisite
-  failed. Changing Hermes code or skipping Tiiny cannot satisfy the
-  required full-suite gate. Execution-permission escalation is not
-  available in this session.
-- No dependencies, test skips, source changes or PRD changes were made.
-  US-016 remains passes:false and uncommitted. Resume only when the
-  environment permits the existing localhost fake-device listener,
-  then run the full gate before marking this story and committing.
-
-### US-016 session prerequisite check (2026-11-23)
-
-- Read specs/prd.json and all of progress.log before resuming work.
-  docs/INDEX.md is absent; studied docs/README.md instead.
-- Reviewed the saved cancellation and timeout regressions, their
-  recorded test-first evidence, fake descendant coordination and
-  shared production process lifecycle. Preserved the existing changes.
-- Invoked createFakeDevice() from test/fake-device.ts directly with
-  Node v26.11.1 before repeating builds or the final gate. Its existing
-  HTTP listener failed immediately with listen EPERM on 127.0.0.1.
-  The fake could not start, so its request and cleanup checks did not
-  run. This confirms the full-suite prerequisite is still unavailable.
-- This session's execution policy forbids permission escalation.
-  No implementation change within US-016 can grant listener access.
-  Did not repeat the known-failing full suite, alter unrelated tests,
-  skip checks, add dependencies or change any PRD story.
-- Stopped under the requested unfixable-failure rule. US-016 remains
-  passes:false and uncommitted until the required full suite can pass
-  in an environment that permits the existing localhost listener.
-
-### US-016 completed verification (2026-11-23)
-
-- Read specs/prd.json and progress.log at session start. The requested
-  docs/INDEX.md is absent; studied docs/README.md instead.
-- Reviewed the existing test-first lifecycle regressions and fake
-  coordination, already committed in eaf9441. No additional source
-  changes were needed. Shared process groups, registries, CLI signal
-  handlers and timeout auto-commit policy remain intact.
-- The actual createFakeDevice() localhost listener now starts, serves
-  a request and closes successfully in this execution environment.
-- Fresh npm run build passed, including declaration typecheck.
-  npm run lint and git diff --check passed.
-- Freshly bundled integration shards 162/165, 163/165 and 164/165
-  passed all 24 US-016 assertions. Fake Hermes passed all 42 assertions.
-- Ran npm test once as the final gate: the full suite passed, including
-  Tiiny and the Hermes lifecycle tests under parallel suite load.
-  Output: /tmp/redeye-us016-final-20261123.log.
-- Marked only US-016 passes:true. No dependencies, test skips, manual
-  story changes or unrelated implementation changes were added.
-- Completion commit attempted with message FEATURE: [US-016] - Preserve
-  Hermes cancellation and timeout handling. Both git add and git commit
-  failed: cannot create .git/index.lock, Operation not permitted.
-  This session permits reading .git but not writing repository metadata;
-  permission escalation is unavailable. The verified US-016 flag and
-  this progress entry remain uncommitted. Stop under the requested
-  unfixable-failure rule; commit these two files when Git writes are
-  permitted. No other story was started or marked passing.
-
-## US-017: Warn and omit unsupported Hermes provider options
-
-Date: 2026-11-23
-Status: Verified; completion commit pending.
-
-### What changed
-- Added a built-CLI regression exercising --effort high, --max-turns
-  17 and --prefer-subagent haiku together with offline fake Hermes.
-- Assert all three existing warning formats, exact captured argv with
-  no unsupported flags or values, no subagent prompt rules, one turn,
-  ticket completion and the controlled change passing the merge gate.
-- The test first failed only on the missing effort warning (8/9 pass).
-  spawnAgent now treats a provider without an effort ladder as having
-  no supported levels and emits the existing warning through onLine.
-- Existing max-turns and preferred-subagent omission rules remain
-  intact. No new flags, configuration changes or dependencies.
-
-### Verification and patterns
-- docs/INDEX.md is absent; studied docs/README.md instead.
-- npm run build passed, including declaration typecheck.
-- Focused US-017 regression: TEST_SHARD=164/166, all 9 assertions pass.
-- Existing orchestrator suite passed all 891 compatibility assertions.
-- npm run lint and git diff --check passed.
-- Ran npm test once as the final gate: every suite passed, including
-  US-017 under parallel load. Output: /tmp/redeye-us017-full.log.
-- Marked only US-017 passes:true. Preserved the pre-existing US-016
-  PRD flag and progress entry without including them in this task's
-  prepared commit patch. Left all remaining and manual stories alone.
-
-### Completion blocker
-- Staging the task-only patch failed: cannot create .git/index.lock,
-  Operation not permitted. The required git commit then reported no
-  staged changes. Repository metadata writes are blocked in this
-  session and escalation is unavailable.
-- Verified implementation, tests and US-017 passes:true remain on disk
-  uncommitted. The task-only patch is /tmp/redeye-us017-commit.patch;
-  it excludes the pre-existing US-016 edits. Recreate it to include
-  this blocker entry before committing when Git writes are permitted.
-- Stopped under the requested unfixable-failure rule. No next story
-  was started and no other story was marked passing this session.
-
-## US-018: Verify the installed CLI from a freshly packed artifact
-
-Date: 2026-11-23
-Status: Verified; completion commit pending.
-
-### What changed
-- Added prepack to run the existing build lifecycle before npm pack.
-  No version, publish, network, credentials or device calls are used.
-- Added an installed-artifact regression using the existing spawnCli
-  helper with an optional cliPath. The default remains dist/index.js.
-- Pack an isolated source copy with a deliberately stale dist/index.js.
-  Isolation prevents prepack's build from deleting parallel test shards.
-- Install the fresh tarball into a temporary consumer using npm offline,
-  an empty private cache, private npm/Git config and copied lockfile
-  runtime dependencies. No new dependencies or registry access needed.
-- Execute the consumer bin with fake Hermes. Check packaged resources,
-  exact argv, complete stdin, one turn, test gate, merged commit and
-  content, done status, exit 0, and retained stdout/stderr final logs.
-- Temporary source, consumer, tarball, config and worktrees are cleaned
-  up in finally, within the existing suite's private TMPDIR conventions.
-
-### Test-first evidence and verification
-- Before the fix, the regression reported missing packaged resources,
-  unchanged stale CLI contents and installed exit 77: STALE_ARTIFACT.
-  Adding prepack rebuilds that stale artifact and passes all 20 checks.
-- npm pack JSON differs across npm versions, and lifecycle compiler
-  output can mix with stdout. Discover the one fresh .tgz by directory
-  contents instead of parsing npm's presentation output.
-- docs/INDEX.md is absent; studied docs/README.md instead.
-- npm run build passed, including declaration typecheck.
-- Focused TEST_SHARD=166/167 passed all 20 assertions.
-- npm run lint and git diff --check passed.
-- Ran npm test once as the final gate: every suite passed, including
-  the packed installed CLI regression under parallel suite load.
-  Output: /tmp/redeye-us018-full.log.
-- Marked only US-018 passes:true; preserved all earlier uncommitted
-  work and left remaining/manual stories unchanged.
-
-### Completion blocker
-- Staging and committing both failed because Git cannot create
-  .git/index.lock: Operation not permitted. Repository metadata is
-  read-only under this session's execution policy; escalation is
-  unavailable. No commit was created.
-- Verified US-018 changes and passes:true remain on disk. The isolated
-  task patch is /tmp/redeye-us018-commit.patch; it excludes pre-existing
-  US-016 and US-017 changes and includes this blocker entry.
-- Stop under the requested unfixable-failure rule. Apply the patch to
-  the index and commit when Git metadata writes are permitted. No
-  other story was started or marked passing in this session.
-
-
-## US-019: Clarify Hermes delegation to a configured Tiiny device
-
-Date: 2026-11-23
-Status: Documentation implemented; full-suite gate failed.
-
-### What changed
-- docs/INDEX.md is absent; studied docs/README.md and the Hermes
-  README sections, feature spec and shared launcher instead.
-- Documented one complete noninteractive turn delivered through stdin
-  and EOF, followed by the existing commit and test gates.
-- Explained that configured Tiiny activity requires manager delegation;
-  a successful cloud manager turn does not prove local inference.
-- Added an optional real-Hermes small-ticket check with concurrency 1,
-  commit and test-gate inspection, ticket status and attempt log paths.
-- Kept real inference outside automated acceptance and preserved all
-  router, model loading, credential and delegation settings.
-- Added four offline documentation checks to the existing Hermes suite.
-  All four failed before the README change; all 46 Hermes assertions
-  passed afterward. No dependencies or runtime changes were added.
-
-### Verification and blocker
-- npm run build passed, including declaration typecheck.
-- npm run lint passed after removing one extra test blank line.
-  git diff --check and added-line checks under 80 columns passed.
-- Ran npm test once as requested. Hermes passed all 46 assertions, but
-  existing integration shards 13/20 and 14/20 failed: the typo-warning
-  CLI case returned 1, and the execute smoke case returned 1 with
-  unfinished tickets and no second attempt log. Other suites passed.
-  Full output: /tmp/redeye-us019-full.log.
-- Reran only those two cases as integration shards 13/167 and 14/167:
-  all 7 assertions passed. Logs: /tmp/redeye-us019-existing-typo.log
-  and /tmp/redeye-us019-existing-smoke.log. The failures did not
-  reproduce alone; the full run does not retain their CLI diagnostics.
-  Their cause remains unconfirmed. No unrelated tests were changed.
-- Stopped under the requested failure rule without claiming a passing
-  full gate. US-019 remains passes:false; every other story and all
-  pre-existing edits remain untouched. No completion commit was made
-  because the required full-suite gate failed. Resume by diagnosing
-  those existing CLI failures under parallel suite load, then verify
-  before marking and committing only US-019.
-- Saved only this session's changes in /tmp/redeye-us019-task.patch;
-  it excludes the pre-existing US-016, US-017 and US-018 changes.
-
-### US-019 resumed verification (2026-11-23)
-
-- Read specs/prd.json and progress.log at session start. docs/INDEX.md
-  is still absent; studied docs/README.md and the feature spec instead.
-- Reviewed the saved test-first docs checks and their four expected
-  failures in /tmp/redeye-us019-red.log. Rechecked all four assertions
-  against HEAD's README (all false) and the updated README (all true).
-- Verified launch flags, stdin EOF and attempt log paths against the
-  shared launcher. The optional small-ticket check inspects commits,
-  test results and logs without claiming proof of local inference.
-- Fresh npm run build passed, including declaration typecheck. The
-  Hermes suite passed all 46 assertions. Both previously failing CLI
-  cases passed their targeted runs (7 assertions total).
-- npm run lint and git diff --check passed. Every added docs and test
-  line is under 80 columns. No dependencies or runtime changes added.
-- Ran npm test once as this session's final gate: all 66 suite processes
-  passed, including the earlier typo-warning and execute smoke cases.
-  Their earlier parallel-load failures did not recur; no unrelated
-  test changes or timeout adjustments were needed.
-- Logs: /tmp/redeye-us019-session-{build,hermes,typo,smoke,lint,full}.log.
-- Marked only US-019 passes:true. Preserved all pre-existing US-016,
-  US-017 and US-018 edits, and left US-020 and manual stories untouched.
-
-### US-019 completion commit blocker (2026-11-23)
-
-- Prepared /tmp/redeye-us019-commit.patch with only the US-019 README,
-  Hermes docs test, progress entry and PRD flag. It excludes the earlier
-  US-016, US-017 and US-018 changes, including their PRD/log edits.
-- Staging failed: Git cannot create .git/index.lock (Operation not
-  permitted). This session permits reading repository metadata but not
-  writing it, and permission escalation is unavailable. No completion
-  commit was created. The verified changes remain on disk uncommitted.
-- Intended commit: FEATURE: [US-019] - Clarify Hermes Tiiny delegation.
-  Refreshed the task-only patch to include this blocker entry. Stopped
-  without starting another story or changing other stories' flags.
-
-
-## US-020: Document replacing a stale project-local redeye package
-
-Date: 2026-11-23
-Status: Verified; completion commit pending.
-
-### What changed
-- docs/INDEX.md is absent; studied docs/README.md instead.
-- Added README troubleshooting guidance explaining how npx can select
-  a project-installed dependency and why newer sibling source does not
-  replace that copy. Linked the section from the installation TOC.
-- Showed checking the scoped package version, resolved package path,
-  bin link and installed CLI version from the consumer project.
-- Documented build, lint, tests, packing into a fresh empty directory,
-  local consumer installation, and a configured single-ticket Hermes
-  check with an explicit model and --concurrency 1.
-- Documented upgrading the consumer to the actual fixed release with
-  a version distinct from 0.1.8. Publishing stays a maintainer action.
-- Checked package scripts directly: preversion lints, version updates
-  and stages the TOC, postversion pushes and publishes, prepack and
-  prepublishOnly build. prepublishOnly does not run tests, despite
-  the older project instructions claiming otherwise.
-- No dependencies, runtime changes, version changes, publishing,
-  pushes, other checkouts or observed runs were touched.
-
-### Test-first evidence and verification
-- Added seven offline docs checks to the existing Hermes suite.
-  All seven failed before the README edit (46 passed, 7 failed).
-  After the guide, all 53 assertions passed.
-- npm run build passed, including declaration typecheck.
-- npm run lint passed after removing one extra test blank line.
-- Ran npm test once as the final gate: all 66 suite processes passed.
-  Output: /tmp/redeye-us020-full.log. Focused red/green, build and lint
-  output: /tmp/redeye-us020-{red,green,build,lint}.log.
-- git diff --check passed. All added docs/test lines are under 80
-  columns, including the shortened TOC link label.
-- Marked only US-020 passes:true; all earlier edits and manual stories
-  remain unchanged. Prepared /tmp/redeye-us020-commit.patch relative
-  to the session baseline so earlier uncommitted work is excluded.
-
-### Completion blocker
-- Both staging the task-only patch and creating the required commit
-  failed: cannot create .git/index.lock, Operation not permitted.
-  Repository metadata is read-only in this session and permission
-  escalation is unavailable. No completion commit was created.
-- Verified US-020 docs, tests and passes:true remain uncommitted.
-  Refreshed /tmp/redeye-us020-commit.patch to include this blocker;
-  it excludes all pre-existing US-016 through US-019 changes.
-- Intended commit: FEATURE: [US-020] - Document replacing stale local
-  packages. Apply the task-only patch to the index and commit when
-  repository metadata writes are permitted. No other story started.
+Feature: provider-pass-through-args
+Spec: tasks/prd-provider-pass-through-args.md
+Status: Converted to 8 stories; implementation not started.
+
+## US-001 -- Role strings accept `--` (2026-11-26)
+
+- `ParsedRole.extraArgs?:string[]` holds the tokens after `--`.
+  `parseRoleString` turns on yargs `populate--` and reads
+  `parsed['--']`; the field is set only when non-empty, so a role
+  with no `--` (or a trailing bare `--`) deep-equals what it did
+  before.
+- `renderRoleString` appends ` -- <args>` when extraArgs is
+  non-empty; `parseRoleString(renderRoleString(r))` round-trips.
+- Assumption: the story says a stray positional before `--` throws
+  the "Extra positional argument" error. In practice `.strict()`
+  rejects it first with "Unknown argument: <tok>" (true before this
+  change too, which is why the old test matches either). Behaviour
+  is unchanged; the new test uses the same either-or regex.
+- Gotcha: `mergeRoleWithCli` builds a fresh object and drops
+  extraArgs. That is US-003's job (resolveRoles merge rules).
+- Gotcha: tapzero's `t.throws` must be awaited in an async test, or
+  a missing throw does not fail the test.
+- docs/INDEX.md does not exist in this repo; the session prompt
+  asked to study it. Nothing to read there.
+- Verification: config tests 108/108, lint clean, build (tsc)
+  clean. The full `npm test` went red on three runs, each time on
+  a different set of timing-bound CLI subprocess tests in
+  integration / review-integration (30s spawnCli timeouts, exit
+  143; the 20s "round 2 reviewer started" wait). The machine's
+  load average was 170-230 from other processes. The base commit
+  passed those suites once at a lower load. The flakiest one
+  (interrupted run resumes at the next round) passed 3/3 when run
+  alone with this change. No test outside config.test.ts uses
+  `--` in a role string, and a role string with no `--` parses to
+  the same object as before. Treat these as load flakes. If the
+  suite is red in a later session, check `uptime` first.
+- Gotcha: `test` from test/shard.ts has no `.only`. To run one
+  test, the copy must import `test` from
+  '@substrate-system/tapzero' as well as switch it to `test.only`.
+
+## US-002 -- The CLI accepts `--` (2026-11-26)
+
+- The default command's builder sets
+  `parserConfiguration({ 'populate--': true })`; the handler
+  passes `readExtraArgs(argv['--'])` to `runExecute`, which hands
+  it to `resolveRoles` as `CliOptions.extraArgs`. resolveRoles
+  ignores it until US-003. Setting the config inside the builder
+  is enough: argv['--'] is filled for the default command, and
+  init/graph keep yargs' default `--` handling.
+- New `readExtraArgs(dashDash:unknown):string[]` in src/config.ts
+  is the one reader of a yargs `--` list, shared by
+  `parseRoleString` and the CLI. yargs coerces numeric tokens
+  after `--` to numbers even with populate-- on (`-- 7` gives
+  `[7]`), so it maps each entry back to a string.
+- Gotcha: yargs never ran `.strict()` or the positional checks on
+  tokens after `--`, even before this change (they went to
+  `argv._` and were dropped). So the CLI integration tests
+  (`pi --dry-run -- --no-skills`, and `--` followed by unknown
+  flags, stray positionals and `--timeout abc`) passed before the
+  change too. The red step for this story was the unit test for
+  `readExtraArgs`. The flags only become observable on the spawned
+  argv (US-004) and in implementStr (US-003).
+- Verification: config tests 111/111, the two new integration
+  tests pass alone, lint clean, build (tsc) clean, full `npm test`
+  green on the first run (load average ~110).
+
+## US-003 -- resolveRoles merges extra args (2026-11-26)
+
+- `resolveRoles` is the one place that decides extra args. With a
+  CLI provider, implement.extraArgs is the CLI's list only. With
+  none, it is the implement role string's list then the CLI's.
+  review.extraArgs is always its own role string's list; CLI
+  extras never reach it.
+- `mergeRoleWithCli` now keeps the role's own extraArgs (it used
+  to drop them) but never adds `cli.extraArgs`, since the review
+  role goes through it too. CLI extras are appended in
+  resolveRoles by the private `withExtraArgs`, which leaves
+  extraArgs unset when the merged list is empty. Existing
+  deepEqual tests on roles with no extras still pass unchanged.
+- implementStr: with a CLI provider (or no config) it is
+  `renderRoleString(implement)`, as before, now with the extras.
+  With a config and no CLI extras it is still the config string
+  verbatim, which already holds the role's own extras. With a
+  config and CLI extras it is `renderRoleString` of the config
+  role (not the CLI-filled merge) plus the merged extras.
+  Assumption: re-rendering only the config role's own flags keeps
+  the log line close to what the user wrote in .redeye.json.
+- Gotcha: when running one integration test from a `test.only`
+  copy, run node from the repo root (`node dist/test/x.test.js`),
+  not from inside dist/test. Running from dist/test makes the
+  timeout test fail for reasons that have nothing to do with the
+  change, which looks like a regression.
+- Verification: config tests 124/124 (9 new asserts red first),
+  lint clean, build (tsc) clean. Full `npm test` at load average
+  110-170: run 1 failed the 6s-timeout test in integration
+  ("agent killed at the timeout keeps its committed and
+  uncommitted work"), which passed 2/2 alone with this change.
+  Run 2 passed that, but integration slice 9/20 crashed on the
+  1s-timeout spawnAgent grandchild test (ENOENT on
+  grandchild.pid, because the agent was killed before the
+  grandchild wrote it). That slice passed 2/2 alone at load ~150.
+  Neither test goes through resolveRoles. Every suite passed in
+  at least one full run.
+
+## US-004 -- spawnAgent forwards extra args (2026-11-26)
+
+- `spawnAgent` takes an optional `extraArgs:string[]`. It is
+  pushed onto argv after every flag redeye builds (provider args,
+  --model, --max-turns, --thinking/--effort, codex's -c) and
+  before pi's `@<prompt file>`, so the prompt stays last. Each
+  entry is its own argv entry passed to `spawn` with no shell, so
+  spaces and `$` reach the harness verbatim. Absent or empty
+  extraArgs leaves the argv exactly as before for every provider.
+  No caller passes it yet (US-005 to US-007).
+- For hermes the extras land after `chat --query-file - --quiet`
+  and --model, so only chat options work there (README note is
+  US-008).
+- New fake key `FAKE_PI_ARGV_LOG` in test/mock-agent-pi.js: it
+  appends the fake pi's argv as one JSON array per run. Only
+  test/orchestrator.test.ts sets it, and it is in that file's
+  `FAKE_ENV_KEYS`.
+- Tests (test/orchestrator.test.ts): a `spawnedArgv` helper
+  spawns the fake once per call with model, maxTurns and effort
+  set and returns each logged argv. Claude's argv with extras is
+  the plain argv plus the extras; pi's is the plain argv minus
+  the prompt file, plus the extras, then `@...`; empty extraArgs
+  gives the plain argv. Pi argvs are compared up to the last
+  entry, since the prompt file name is random per spawn.
+- Verification: the three new tests went red (5 failed asserts)
+  then green 8/8 alone; lint clean; build (tsc) clean. Full
+  `npm test` at load average ~100-140: every suite passed except
+  integration slice 9/20, which crashed on the same 1s-timeout
+  grandchild.pid ENOENT flake US-003 recorded. That slice passed
+  42/42 twice alone. That test never passes extraArgs.
+
+## US-005 -- Implement-role spawns in orchestrator pass extraArgs (2026-11-26)
+
+- `runWavesIsolated` opts and `runWaves` (a new trailing positional)
+  take `extraArgs`; `src/index.ts` passes `implement.extraArgs`
+  from the resolved roles to both, never the raw argv.
+- Threaded to every implement-role spawn: ticket attempts and
+  retries (`TicketAttemptOpts.extraArgs`, read by
+  `runTicketAttempt`), the in-place `runWaves` attempt and retry
+  loop, `respawnAndRetryMerge` (merge-conflict agent), and the
+  adversarial loop's fixer.
+- The fixer spawns inside `runTicketFixStep` in src/review.ts, so
+  `TicketFixOpts` and `SpawnAgentFn` gained an optional
+  `extraArgs` that the fix step passes on. review.ts still imports
+  no values from orchestrator. The end-of-run `runReviewPass`
+  (US-006) and the reviewer round (US-007) do not pass it yet.
+- New mock `test/mock-agent-conflict.js`: every ticket writes
+  `shared.txt`, so two tickets in one wave conflict at merge; given
+  the merge prompt ("resolving a merge conflict") it writes the
+  resolution and commits the merge. It is the first test that
+  drives `respawnAndRetryMerge` end to end (check for a
+  `*.respawn.log` in logsDir).
+- Tests: orchestrator.test.ts (isolated run with a retry via
+  FAKE_CLAUDE_FAIL_ONCE plus a conflict respawn: 4 spawns, all end
+  with the extras; in-place runWaves with a retry) and
+  review-integration.test.ts (adversarial fixer with FAKE_CLAUDE
+  delegating to mock-agent-review.js, pi reviewer). All red first
+  (3 failed asserts), then green.
+- Gotcha: `EXTRA_ARGS` is already a top-level const in
+  orchestrator.test.ts (US-004); reuse it, esbuild rejects a
+  redeclaration in the bundle.
+- Gotcha: a shell heredoc whose text mentions reading an env var
+  from the process trips a local hook that blocks reading secret
+  files. Write such text with a file write instead.
+- docs/INDEX.md, named in the session prompt, does not exist;
+  docs/README.md is the closest index.
+- Verification: new tests pass alone, lint clean, build (tsc)
+  clean, full `npm test` green on the first run (load ~75-140).
+
+## US-006 -- End-of-run review pass passes extraArgs (2026-11-26)
+
+- `ReviewRole` in src/review.ts gained an optional `extraArgs`, and
+  both review-pass spawns pass their own role's list
+  (`reviewer.extraArgs`, `fixer.extraArgs`). The roles are fields
+  of `ReviewPassOpts`, so the options carry the extras.
+- Assumption (the AC names one shared field on the options): the
+  end-of-run reviewer is the adversarial review role when one is
+  configured, possibly a different provider, so one shared list
+  would hand implement's extras to the review harness, against
+  US-007's intent. Per-role lists keep the two apart.
+- The orchestrator's `runRole` (fixer, and the reviewer when no
+  adversarial config) gets `opts.extraArgs`, i.e. the resolved
+  `implement.extraArgs`. The adversarial reviewer role in the
+  review pass gets none yet: US-007 should set it from
+  `adv.review.extraArgs` (AdversarialOpts.review's type has no
+  extraArgs field yet), alongside the orchestrator review spawns.
+- review.ts still imports no values from orchestrator.
+- Test (integration.test.ts): fake claude delegating to
+  mock-agent-review.js, `-- --some-flag`, MOCK_REVIEW=findings so
+  the pass both reviews and fixes; every logged argv (one per
+  recorded spawn: ticket, reviewer, fixer) has --some-flag. Red
+  first (reviewer and fixer lacked it), then green.
+- Gotcha: shard.ts's `test` has no `.only`. To run one test, copy
+  the file, swap the `./shard.js` import for tapzero's `test`,
+  then mark the test `test.only`.
+- Verification: lint clean, build (tsc) clean. Full `npm test`
+  (load ~120-140): every suite passed except integration slice
+  9/20, the known 1s-timeout grandchild.pid ENOENT flake; that
+  slice passed 42/42 twice alone.
+
+## US-007 -- Review-role spawns pass review.extraArgs (2026-11-26)
+
+- `AdversarialOpts.review` in src/orchestrator.ts gained an
+  optional `extraArgs`. src/index.ts already passes
+  `roles.review` (a `ParsedRole` from `resolveRoles`), so the
+  review role string's extras arrive with no index change.
+- Both spawns with `agentCmd: adv.review.provider` now pass
+  `adv.review.extraArgs`: the adversarial loop's reviewer round
+  (`TicketReviewRoundOpts.extraArgs`, new in src/review.ts and
+  forwarded by `runTicketReviewRound`), and the end-of-run review
+  pass's reviewer role when adversarial config is set (the
+  `ReviewRole.extraArgs` that US-006 added).
+- Test (integration.test.ts): adversarial `.redeye.json` with
+  `review: "<fake pi> -- --review-only"`, CLI `-- --cli-extra`,
+  no `--no-review`, so the fake pi runs both the ticket review
+  round and the end-of-run review. Every pi argv (FAKE_PI_ARGV_LOG)
+  has --review-only, never --cli-extra, and still ends with `@...`;
+  every claude argv has --cli-extra, never --review-only. Red first
+  (pi argvs lacked --review-only), then green.
+- `FAKE_PI_ARGV_LOG` was not in integration.test.ts's
+  `FAKE_PI_KEYS`; added it.
+- Verification: lint clean, build (tsc) clean, full `npm test`
+  green on the first run.
+
+## US-008 -- Document the `--` syntax (2026-11-26)
+
+- `--help`: the default command gained a yargs `.example`
+  (`redeye pi -m sonnet -- --no-skills`); an example registered in
+  the default command's builder shows in the top-level `--help`.
+- README: new section "Extra harness arguments (`--`)" (before
+  Environment Settings) with the CLI and role-string forms, the
+  US-003 merge rules, which spawns get which list, the US-004 argv
+  placement, the warning about unchecked args / output-format and
+  permission-mode flags, pi's --no-context-files dropping the
+  target's AGENTS.md, and hermes' after-`chat` placement. The role
+  string syntax cell and the CLI flag table link to it.
+- Gotcha: role strings have no quoting. parseRoleString splits on
+  whitespace, so `-- --append-system-prompt 'Be terse'` yields
+  `["--append-system-prompt", "'Be", "terse'"]`. The README says an
+  extra arg in `.redeye.json` cannot contain a space. CLI extras
+  are fine, since the shell does the quoting.
+- AGENTS.md: one line on the provider-specific options invariant.
+- No tests (docs only, per AC). Verification: lint clean, build
+  (tsc) clean, full `npm test` green.

@@ -8,6 +8,8 @@ import {
     mergeRoleWithCli,
     resolveRoles,
     sameModel,
+    renderRoleString,
+    readExtraArgs,
     type AdversarialConfig,
     type ParsedRole,
 } from '../src/config.js'
@@ -89,6 +91,76 @@ test('--max-turns alone', t => {
     const result = parseRoleString('claude --max-turns 25')
     t.equal(result.provider, 'claude')
     t.equal(result.maxTurns, 25)
+})
+
+test('tokens after -- become extraArgs', t => {
+    const result = parseRoleString('pi -m sonnet -- --no-skills --foo')
+    t.equal(result.provider, 'pi')
+    t.equal(result.model, 'sonnet')
+    t.deepEqual(result.extraArgs, ['--no-skills', '--foo'])
+})
+
+test('redeye options after -- are not parsed', t => {
+    const result = parseRoleString('pi -- -m other')
+    t.equal(result.model, undefined)
+    t.deepEqual(result.extraArgs, ['-m', 'other'])
+})
+
+test('readExtraArgs returns the tokens as strings, in order', t => {
+    t.deepEqual(
+        readExtraArgs(['--no-skills', 7, '-m', 'x']),
+        ['--no-skills', '7', '-m', 'x']
+    )
+})
+
+test('readExtraArgs gives [] when there is no -- list', t => {
+    t.deepEqual(readExtraArgs(undefined), [])
+    t.deepEqual(readExtraArgs([]), [])
+})
+
+test('no -- gives no extraArgs', t => {
+    const result = parseRoleString('pi -m sonnet')
+    t.ok(!result.extraArgs?.length, 'no extra args')
+})
+
+test('a trailing -- gives no extraArgs', t => {
+    const result = parseRoleString('pi -m sonnet --')
+    t.equal(result.model, 'sonnet')
+    t.ok(!result.extraArgs?.length, 'no extra args')
+})
+
+test('a stray positional before -- still throws', async t => {
+    await t.throws(
+        () => parseRoleString('pi opus -- --foo'),
+        /extra positional|unknown argument/i
+    )
+})
+
+test('renderRoleString appends extra args after --', t => {
+    const role:ParsedRole = {
+        provider: 'pi',
+        model: 'sonnet',
+        extraArgs: ['--no-skills', '-m', 'x'],
+    }
+    t.equal(
+        renderRoleString(role),
+        'pi -m sonnet -- --no-skills -m x'
+    )
+    t.deepEqual(parseRoleString(renderRoleString(role)), {
+        provider: 'pi',
+        model: 'sonnet',
+        effort: undefined,
+        maxTurns: undefined,
+        preferSubagent: undefined,
+        extraArgs: ['--no-skills', '-m', 'x'],
+    }, 'round-trips')
+})
+
+test('renderRoleString omits -- with no extra args', t => {
+    t.equal(
+        renderRoleString({ provider: 'pi', extraArgs: [] }),
+        'pi'
+    )
 })
 
 // --- loadConfig tests ---
@@ -567,6 +639,63 @@ test('resolveRoles - the implement string names the role ' +
         'claude -m sonnet',
         'the command-line provider and its flags on an override'
     )
+})
+
+test('resolveRoles - a CLI provider gets only the CLI extra ' +
+    'args', t => {
+    const adv = advConfig('pi -- --no-skills', 'claude -- --verbose')
+    const roles = resolveRoles(
+        'codex', { extraArgs: ['--foo', 'bar'] }, adv
+    )
+    t.deepEqual(roles.implement.extraArgs, ['--foo', 'bar'],
+        'the implement role string extras do not carry over')
+    t.equal(roles.implementStr, 'codex -- --foo bar',
+        'the implement string shows the CLI extras')
+})
+
+test('resolveRoles - with no CLI provider, role extras come ' +
+    'before CLI extras', t => {
+    const adv = advConfig('pi -m qwen -- --no-skills', 'claude')
+    const roles = resolveRoles(
+        undefined, { extraArgs: ['--foo'] }, adv
+    )
+    t.deepEqual(roles.implement.extraArgs, ['--no-skills', '--foo'],
+        'role extras, then CLI extras')
+    t.equal(roles.implementStr, 'pi -m qwen -- --no-skills --foo',
+        'the implement string shows the merged extras')
+
+    const noCli = resolveRoles(undefined, {}, adv)
+    t.deepEqual(noCli.implement.extraArgs, ['--no-skills'],
+        'role extras alone without CLI extras')
+    t.equal(noCli.implementStr, 'pi -m qwen -- --no-skills')
+})
+
+test('resolveRoles - no config, CLI extras reach implement', t => {
+    const roles = resolveRoles(
+        'claude', { extraArgs: ['--verbose'] }, null
+    )
+    t.deepEqual(roles.implement.extraArgs, ['--verbose'])
+    t.equal(roles.implementStr, 'claude -- --verbose')
+})
+
+test('resolveRoles - review gets only its own role extras', t => {
+    const adv = advConfig('pi', 'claude -m opus -- --verbose')
+    const cli = { extraArgs: ['--foo'] }
+    t.deepEqual(resolveRoles(undefined, cli, adv).review?.extraArgs,
+        ['--verbose'], 'no CLI extras with no CLI provider')
+    t.deepEqual(resolveRoles('codex', cli, adv).review?.extraArgs,
+        ['--verbose'], 'no CLI extras with a CLI provider')
+
+    const plain = advConfig('pi', 'claude')
+    t.equal(resolveRoles('codex', cli, plain).review?.extraArgs,
+        undefined, 'a review role with no extras gets none')
+})
+
+test('resolveRoles - no extras anywhere leaves extraArgs unset', t => {
+    const adv = advConfig('pi', 'claude')
+    const roles = resolveRoles(undefined, { extraArgs: [] }, adv)
+    t.equal(roles.implement.extraArgs, undefined)
+    t.equal(roles.implementStr, 'pi')
 })
 
 test('resolveRoles - no provider and no config throws', async t => {

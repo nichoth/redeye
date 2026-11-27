@@ -39,6 +39,8 @@ export interface ParsedRole {
     effort?:string
     maxTurns?:number
     preferSubagent?:string
+    // tokens after `--`, passed to the harness unparsed
+    extraArgs?:string[]
 }
 
 export function parseRoleString (input:string):ParsedRole {
@@ -49,7 +51,10 @@ export function parseRoleString (input:string):ParsedRole {
 
     const args = trimmed.split(/\s+/)
 
+    // populate-- keeps the tokens after `--` out of the strict
+    // option and positional checks
     const parsed = yargs(args)
+        .parserConfiguration({ 'populate--': true })
         .command(
             '$0 <provider>',
             false,
@@ -86,6 +91,7 @@ export function parseRoleString (input:string):ParsedRole {
     }
 
     const provider = parsed.provider as string
+    const extraArgs = readExtraArgs(parsed['--'])
 
     const rawSubagent = parsed.preferSubagent as
         string|undefined
@@ -99,7 +105,16 @@ export function parseRoleString (input:string):ParsedRole {
         effort: parsed.effort as string|undefined,
         maxTurns: parsed.maxTurns as number|undefined,
         preferSubagent,
+        ...(extraArgs.length ? { extraArgs } : {}),
     }
+}
+
+// The tokens yargs collects after `--` when populate-- is on.
+// yargs turns numeric tokens into numbers, so each one goes
+// back to a string; the harness gets them as written.
+export function readExtraArgs (dashDash:unknown):string[] {
+    if (!Array.isArray(dashDash)) return []
+    return dashDash.map(String)
 }
 
 export interface CliOptions {
@@ -107,10 +122,14 @@ export interface CliOptions {
     effort?:string
     maxTurns?:number
     preferSubagent?:string
+    // the tokens after `--` on the command line
+    extraArgs?:string[]
 }
 
 // Merges a parsed role with CLI options. The role's flags
-// win; CLI fills in whatever the role leaves out.
+// win; CLI fills in whatever the role leaves out. The role keeps
+// its own extra args; CLI extra args are not merged here, since
+// only resolveRoles knows which role they belong to.
 export function mergeRoleWithCli (
     role:ParsedRole,
     cli:CliOptions
@@ -122,7 +141,18 @@ export function mergeRoleWithCli (
         maxTurns: role.maxTurns ?? cli.maxTurns,
         preferSubagent: role.preferSubagent ??
             cli.preferSubagent,
+        ...(role.extraArgs?.length ?
+            { extraArgs: [...role.extraArgs] } :
+            {}),
     }
+}
+
+// `role` with `extra` appended to its extra args. extraArgs stays
+// unset when both lists are empty.
+function withExtraArgs (role:ParsedRole, extra:string[]):ParsedRole {
+    const merged = [...(role.extraArgs ?? []), ...extra]
+    const { extraArgs: _, ...rest } = role
+    return merged.length ? { ...rest, extraArgs: merged } : rest
 }
 
 export interface ResolvedRoles {
@@ -148,6 +178,7 @@ export function renderRoleString (role:ParsedRole):string {
     if (role.preferSubagent) {
         parts.push('--prefer-subagent', role.preferSubagent)
     }
+    if (role.extraArgs?.length) parts.push('--', ...role.extraArgs)
     return parts.join(' ')
 }
 
@@ -173,6 +204,12 @@ function dropUnsupported (
 // no provider, `implement` is used. Each role's own flags win and
 // the CLI flags fill in the rest. Throws when there is neither a
 // provider nor a config.
+//
+// Extra args (the tokens after `--`) are decided here and nowhere
+// else. CLI extras go to the implement role only: with a CLI
+// provider they are its whole list; with none they follow the
+// implement role string's own. The review role gets only the
+// extras in its own role string.
 export function resolveRoles (
     cliProvider:string|undefined,
     cli:CliOptions,
@@ -185,9 +222,13 @@ export function resolveRoles (
             'or set implement in .redeye.json'
         )
     }
-    const implement = cliProvider ?
-        mergeRoleWithCli({ provider: cliProvider }, cli) :
-        mergeRoleWithCli(adv!.implement, cli)
+    const cliExtra = cli.extraArgs ?? []
+    const implement = withExtraArgs(
+        cliProvider ?
+            mergeRoleWithCli({ provider: cliProvider }, cli) :
+            mergeRoleWithCli(adv!.implement, cli),
+        cliExtra
+    )
     const warnings:string[] = []
     dropUnsupported(review ? [implement, review] : [implement], warnings)
     return {
@@ -195,10 +236,22 @@ export function resolveRoles (
         review,
         overridden: !!cliProvider && adv !== null,
         warnings,
-        implementStr: cliProvider || !adv ?
-            renderRoleString(implement) :
-            adv.implementStr,
+        implementStr: implementString(cliProvider, implement, adv, cliExtra),
     }
+}
+
+// The implement role for logs. With no CLI provider it is the
+// config string, re-rendered with the CLI extras appended when
+// there are any.
+function implementString (
+    cliProvider:string|undefined,
+    implement:ParsedRole,
+    adv:AdversarialConfig|null,
+    cliExtra:string[]
+):string {
+    if (cliProvider || !adv) return renderRoleString(implement)
+    if (!cliExtra.length) return adv.implementStr
+    return renderRoleString(withExtraArgs(adv.implement, cliExtra))
 }
 
 // True when two roles run the same provider (by basename) and the

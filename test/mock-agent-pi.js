@@ -12,14 +12,19 @@
 //   hang        -- never exits, until killed
 // FAKE_PI_RECORD_DIR: writes { provider, model, prompt, cwd }
 // as one JSON file per invocation.
+// FAKE_PI_ARGV_LOG: appends its arguments to that file as one
+// JSON array per run.
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import {
-    mkdirSync, readFileSync, writeFileSync,
+    appendFileSync, mkdirSync, readFileSync, writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
 
 const args = process.argv.slice(2)
+
+const argvLog = process.env.FAKE_PI_ARGV_LOG
+if (argvLog) appendFileSync(argvLog, JSON.stringify(args) + '\n')
 
 let promptFile = null
 let model = null

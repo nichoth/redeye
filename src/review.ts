@@ -490,6 +490,8 @@ export type SpawnAgentFn = (opts:{
     effort?:EffortLevel
     // claude only: model for subagents; unset = off
     preferSubagent?:string
+    // harness args from after `--`, placed by spawnAgent
+    extraArgs?:string[]
     onLine?:(line:string) => void
     progress?:{
         label:string
@@ -510,6 +512,8 @@ export type ReviewRole = {
     effort?:EffortLevel
     maxTurns?:number
     preferSubagent?:string
+    // harness args from after `--`, for this role's spawns only
+    extraArgs?:string[]
 }
 
 export type ReviewPassOpts = {
@@ -644,6 +648,7 @@ export async function runReviewer (
                 maxTurns: reviewer.maxTurns,
                 effort,
                 preferSubagent: reviewer.preferSubagent,
+                extraArgs: reviewer.extraArgs,
                 onLine: opts.log,
                 progress: { label: 'review', onLine: opts.log },
             })
@@ -750,6 +755,7 @@ export async function runFixer (
                 maxTurns: fixer.maxTurns,
                 effort,
                 preferSubagent: fixer.preferSubagent,
+                extraArgs: fixer.extraArgs,
                 onLine: opts.log,
                 progress: { label: 'review-fix', onLine: opts.log },
             })
@@ -1156,6 +1162,8 @@ export type TicketReviewRoundOpts = {
     effort?:EffortLevel
     maxTurns?:number
     preferSubagent?:string
+    // the review role's harness args from after `--`
+    extraArgs?:string[]
     baseBranch:string
     worktreePath:string
     repoRoot:string
@@ -1470,6 +1478,7 @@ export async function runTicketReviewRound (
                 maxTurns: opts.maxTurns,
                 effort,
                 preferSubagent: opts.preferSubagent,
+                extraArgs: opts.extraArgs,
                 onLine: opts.log,
                 progress: {
                     label: `${stem} review`,
@@ -1529,6 +1538,8 @@ export type TicketFixOpts = {
     effort?:EffortLevel
     maxTurns?:number
     preferSubagent?:string
+    // the implement role's harness args from after `--`
+    extraArgs?:string[]
     worktreePath:string
     timeout:number
     logsDir:string
@@ -1591,6 +1602,7 @@ export async function runTicketFixStep (
             maxTurns: opts.maxTurns,
             effort,
             preferSubagent: opts.preferSubagent,
+            extraArgs: opts.extraArgs,
             onLine: opts.log,
             progress: {
                 label: `${stem} fix`,

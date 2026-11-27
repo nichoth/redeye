@@ -35,6 +35,7 @@ import {
     loadConfig,
     parseRoleString,
     resolveRoles,
+    readExtraArgs,
     sameModel,
 } from './config.js'
 import { detectTestCmd, detectInstallCmd } from './testcmd.js'
@@ -196,6 +197,10 @@ yargs(hideBin(process.argv))
         '$0 [provider] [turns]',
         'Execute tickets with the given provider',
         y => y
+            // Everything after `--` is for the harness: kept out
+            // of the option, positional and strict checks, and
+            // read from argv['--'] as written.
+            .parserConfiguration({ 'populate--': true })
             .positional('provider', {
                 type: 'string',
                 describe: 'Agent CLI to spawn ' +
@@ -284,6 +289,11 @@ yargs(hideBin(process.argv))
                 describe: 'Review the merged work and run one ' +
                     'fix pass at the end. --no-review skips it.',
             })
+            .example(
+                '$0 pi -m sonnet -- --no-skills',
+                'Pass everything after -- to the implement ' +
+                    'agent as written, after redeye\'s own flags'
+            )
             .check(argv => {
                 if (!argv.provider) {
                     let hasConfig = false
@@ -333,6 +343,7 @@ yargs(hideBin(process.argv))
                 concurrency: argv.concurrency as
                     number|undefined,
                 review: argv.review as boolean|undefined,
+                extraArgs: readExtraArgs(argv['--']),
             })
         }
     )
@@ -612,6 +623,7 @@ async function runExecute (argv:{
     retryDelay?:number
     concurrency?:number
     review?:boolean
+    extraArgs?:string[]
 }):Promise<void> {
     const selections = await resolveIssuesDir(
         argv.spec
@@ -633,6 +645,7 @@ async function runExecute (argv:{
         effort: argv.effort,
         maxTurns: argv.maxTurns,
         preferSubagent: argv.preferSubagent,
+        extraArgs: argv.extraArgs,
     }, adversarial)
     const cliOverride = roles.overridden
     const implement = roles.implement
@@ -883,6 +896,7 @@ async function runExecute (argv:{
             retryDelay: argv.retryDelay,
             concurrency: argv.concurrency,
             preferSubagent,
+            extraArgs: implement.extraArgs,
             progressPaths,
             warnings: loaded.warnings,
             review: argv.review === false ?
@@ -922,6 +936,7 @@ async function runExecute (argv:{
             argv.concurrency,
             loaded.warnings,
             preferSubagent,
+            implement.extraArgs,
         )
     }
 

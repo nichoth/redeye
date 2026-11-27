@@ -1,6 +1,4 @@
-import {
-    spawn, execFileSync,
-} from 'node:child_process'
+import { spawn, execFileSync } from 'node:child_process'
 import {
     createWriteStream,
     mkdirSync,
@@ -1101,6 +1099,8 @@ export function spawnAgent (opts:{
     onLine?:(line:string) => void
     // claude only: sets CLAUDE_CODE_SUBAGENT_MODEL for the agent
     preferSubagent?:string
+    // the role's args after `--`, passed through unchecked
+    extraArgs?:string[]
     // claude only: called each time the subagent stats change
     onStats?:(stats:SubagentStats) => void
     // a line every intervalMs (default 30s) while the agent
@@ -1162,6 +1162,12 @@ export function spawnAgent (opts:{
             )
         }
     }
+    // After every flag redeye builds, so the user's flags are
+    // read last, and before pi's @<prompt file>, which must stay
+    // the last argument. Each entry is its own argv entry, with
+    // no shell in between.
+    if (opts.extraArgs) args.push(...opts.extraArgs)
+
     const prefix = opts.label ?
         `  [${opts.label}] ` :
         '  '
@@ -1697,6 +1703,8 @@ async function respawnAndRetryMerge (opts:{
     maxTurns?:number
     // claude only: model for subagents; unset = off
     preferSubagent?:string
+    // the implement role's harness args from after `--`
+    extraArgs?:string[]
     onLine?:(msg:string) => void
     // called with every agent result, for the run's stats tally
     onAgentRun?:(result:AgentResult) => void
@@ -1759,6 +1767,7 @@ async function respawnAndRetryMerge (opts:{
         label,
         maxTurns: opts.maxTurns,
         preferSubagent: opts.preferSubagent,
+        extraArgs: opts.extraArgs,
         onLine: opts.onLine,
     })
     opts.onAgentRun?.(result)
@@ -1936,6 +1945,8 @@ export type AdversarialOpts = {
         effort?:string
         maxTurns?:number
         preferSubagent?:string
+        // the review role string's harness args from after `--`
+        extraArgs?:string[]
     }
     maxRounds:number
     minRounds:number
@@ -1958,6 +1969,8 @@ type TicketAttemptOpts = {
     effort?:EffortLevel
     // claude only: model for subagents; unset = off
     preferSubagent?:string
+    // the implement role's harness args from after `--`
+    extraArgs?:string[]
     learningsPath:string
     retries:number
     retryDelay:number
@@ -2183,6 +2196,7 @@ async function runAdversarialLoop (ctx:{
                 maxTurns: adv.review.maxTurns,
                 preferSubagent:
                     adv.review.preferSubagent,
+                extraArgs: adv.review.extraArgs,
                 baseBranch: opts.baseBranch,
                 worktreePath:
                     worktree.worktreePath,
@@ -2319,6 +2333,7 @@ async function runAdversarialLoop (ctx:{
                 maxTurns: opts.maxTurns,
                 preferSubagent:
                     opts.preferSubagent,
+                extraArgs: opts.extraArgs,
                 worktreePath:
                     worktree.worktreePath,
                 timeout: opts.timeout,
@@ -2580,7 +2595,9 @@ async function runTicketAttempt (
     }
 
     const ticketSpec = lookupSpec(
-        opts.specBodies, opts.specBody, ticket.feature
+        opts.specBodies,
+        opts.specBody,
+        ticket.feature
     )
     const agentResult = await spawnAgent({
         prompt: renderPrompt(
@@ -2608,6 +2625,7 @@ async function runTicketAttempt (
         maxTurns: opts.maxTurns,
         effort: opts.effort,
         preferSubagent: opts.preferSubagent,
+        extraArgs: opts.extraArgs,
         onStats: opts.onStats,
         onLine: (line) => d.log(line),
     })
@@ -3326,6 +3344,8 @@ export async function runWaves (
     warnings:ReadonlyArray<BlockerWarning> = [],
     // claude only: model for subagents; unset = off
     preferSubagent?:string,
+    // the implement role's harness args from after `--`
+    extraArgs?:string[],
 ):Promise<{ allDone:boolean }> {
     mkdirSync(logsDir, { recursive: true })
 
@@ -3405,6 +3425,7 @@ export async function runWaves (
                     maxTurns,
                     effort: level,
                     preferSubagent,
+                    extraArgs,
                     onStats,
                     onLine: (line) => d.log(line),
                 })
@@ -3449,6 +3470,7 @@ export async function runWaves (
                         maxTurns,
                         effort: level,
                         preferSubagent,
+                        extraArgs,
                         onStats,
                         onLine: (line) => d.log(line),
                     })
@@ -3551,6 +3573,8 @@ export async function runWavesIsolated (opts:{
     concurrency?:number
     // claude only: model for subagents; unset = off
     preferSubagent?:string
+    // the implement role's harness args from after `--`
+    extraArgs?:string[]
     // per-feature progress paths for multi-feature runs
     progressPaths?:Map<string, string>
     // blocker problems found while loading, for the finish summary
@@ -3707,6 +3731,7 @@ export async function runWavesIsolated (opts:{
                     maxTurns: opts.maxTurns,
                     effort: opts.effort,
                     preferSubagent: opts.preferSubagent,
+                    extraArgs: opts.extraArgs,
                     learningsPath: learningsPathFor(
                         tracker.pathFor(t.feature)
                     ),
@@ -4031,6 +4056,7 @@ export async function runWavesIsolated (opts:{
                                 installCmd: opts.installCmd,
                                 maxTurns: opts.maxTurns,
                                 preferSubagent: opts.preferSubagent,
+                                extraArgs: opts.extraArgs,
                                 onLine: (msg) => d.log(msg),
                                 onAgentRun,
                             }) :
@@ -4208,6 +4234,7 @@ export async function runWavesIsolated (opts:{
                 effort: opts.effort,
                 maxTurns: opts.maxTurns,
                 preferSubagent: opts.preferSubagent,
+                extraArgs: opts.extraArgs,
             }
             const adv = opts.adversarial
             const reviewerRole = adv ?
@@ -4219,6 +4246,7 @@ export async function runWavesIsolated (opts:{
                     maxTurns: adv.review.maxTurns,
                     preferSubagent:
                         adv.review.preferSubagent,
+                    extraArgs: adv.review.extraArgs,
                 } :
                 runRole
             const outcome = await runReviewPass({
