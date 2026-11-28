@@ -12,7 +12,7 @@ export type BlockerParse = {
     typos:string[];   // feature-shaped words that name no feature
 }
 
-const FIELD_RE = /\*\*Blocked by:\*\*/i
+const FIELD_RE = /^\s*(?:[-*]\s+)?\*\*Blocked by:\*\*/i
 const NEXT_FIELD_RE = /^\s*(?:[-*]\s+)?\*\*[^*\n]+:\*\*/
 const HEADING_RE = /^\s*#{1,6}\s/
 const CHECKLIST_RE = /^\s*[-*+]\s+\[[ xX]\]/

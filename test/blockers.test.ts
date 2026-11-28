@@ -151,6 +151,16 @@ test('AC1.10: the field ends at a blank line or the next field', t => {
     t.deepEqual(bullet.refs.map(r => r.num), [1], 'bulleted field')
 })
 
+test('a marker quoted in prose is not the field', t => {
+    const body = [
+        'unlike the `**Blocked by:** 02` example, this ticket',
+        'starts right away.',
+        '',
+        '**Blocked by:** None',
+    ].join('\n')
+    t.deepEqual(parseBlockerField(body, KNOWN).refs, [], 'no blockers')
+})
+
 test('AC1.10: a checklist item or heading ends the field', t => {
     const checklist = parseBlockerField(
         '**Blocked by:** 01\n- [ ] Do step 2\n## Heading 3',

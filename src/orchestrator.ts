@@ -192,9 +192,15 @@ export function parseTicketFilename (
     return { num: Number(m[1]), slug: m[2] }
 }
 
+// A **Status:** field line: the marker starts the line, after the
+// same lead-in NEXT_FIELD_RE in blockers.ts allows. Group 1 is the
+// lead-in, group 2 the value. The gap after the marker never
+// crosses a newline.
+const STATUS_LINE_RE = /^(\s*(?:[-*]\s+)?)\*\*Status:\*\*[ \t]*(.*)$/im
+
 export function parseStatus (body:string):string {
-    const m = body.match(/\*\*Status:\*\*\s*(.+)/i)
-    return m ? m[1].trim().toLowerCase() : ''
+    const m = body.match(STATUS_LINE_RE)
+    return m ? m[2].trim().toLowerCase() : ''
 }
 
 /**
@@ -488,8 +494,8 @@ export function markDone (ticket:Ticket):void {
     // the file claiming done with unchecked items.
     body = checkAllItems(body)
     const updated = body.replace(
-        /\*\*Status:\*\*\s*.+/i,
-        '**Status:** done'
+        STATUS_LINE_RE,
+        (_, lead:string) => `${lead}**Status:** done`
     )
     writeFileSync(ticket.filepath, updated)
     ticket.status = 'done'
@@ -504,8 +510,8 @@ export function markHuman (ticket:Ticket):void {
         body = ticket.body
     }
     const updated = body.replace(
-        /\*\*Status:\*\*\s*.+/i,
-        `**Status:** ${HUMAN_STATUS}`
+        STATUS_LINE_RE,
+        (_, lead:string) => `${lead}**Status:** ${HUMAN_STATUS}`
     )
     writeFileSync(ticket.filepath, updated)
     ticket.status = HUMAN_STATUS

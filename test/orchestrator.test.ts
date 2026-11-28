@@ -15,6 +15,7 @@ import {
     findReadyTickets,
     findBlockedTickets,
     markDone,
+    markHuman,
     checkItems,
     COMPLETED_RE,
     TOOL_USE_RE,
@@ -198,6 +199,28 @@ test('parseStatus works in multi-line body', t => {
         '**Blocked by:** 1, 2',
     ].join('\n')
     t.equal(parseStatus(body), 'ready-for-agent')
+})
+
+// A ticket that describes the ticket format quotes the field
+// markers in its prose, before its own field lines.
+const QUOTED_MARKERS_BODY = [
+    '# Ticket',
+    '',
+    'follow the tracker doc: numbered from 01, with',
+    '`**Status:**` and `**Blocked by:** 02` lines, recording',
+    'severity.',
+    '',
+    '**Status:** done',
+    '**Blocked by:** None',
+].join('\n')
+
+test('parseStatus ignores a marker quoted in prose', t => {
+    t.equal(parseStatus(QUOTED_MARKERS_BODY), 'done')
+})
+
+test('parseStatus reads an empty status line as empty', t => {
+    const body = '**Status:**\n**Blocked by:** None'
+    t.equal(parseStatus(body), '')
 })
 
 // -- scanTickets blocker refs --
@@ -1969,6 +1992,87 @@ test('markDone keeps on-disk edits missing from ticket.body', t => {
     t.ok(
         !onDisk.includes('- [ ] first item'),
         'stale scanned body was not written back'
+    )
+})
+
+function quotedMarkersTicket (status:string):Ticket {
+    const dir = tmp()
+    const filepath = join(dir, '04-format.md')
+    const body = QUOTED_MARKERS_BODY.replace(
+        '**Status:** done',
+        `**Status:** ${status}`
+    )
+    writeFileSync(filepath, body)
+    return {
+        num: 4,
+        slug: 'format',
+        filename: '04-format.md',
+        filepath,
+        body,
+        status,
+        blockers: [],
+        feature: '',
+    }
+}
+
+test('markDone rewrites the status line, not a quoted marker', t => {
+    const ticket = quotedMarkersTicket('ready-for-agent')
+
+    markDone(ticket)
+
+    const onDisk = readFileSync(ticket.filepath, 'utf8')
+    t.equal(parseStatus(onDisk), 'done', 'status line is done')
+    t.equal(
+        onDisk,
+        QUOTED_MARKERS_BODY,
+        'only the status line changed'
+    )
+})
+
+test('markDone keeps the list lead-in of a status list item', t => {
+    const dir = tmp()
+    const filepath = join(dir, '05-list.md')
+    const body = [
+        '# Ticket',
+        '',
+        '- **Status:** ready-for-agent',
+        '- **Blocked by:** None',
+    ].join('\n')
+    writeFileSync(filepath, body)
+    t.equal(parseStatus(body), 'ready-for-agent', 'list item parses')
+
+    markDone({
+        num: 5,
+        slug: 'list',
+        filename: '05-list.md',
+        filepath,
+        body,
+        status: 'ready-for-agent',
+        blockers: [],
+        feature: '',
+    })
+
+    t.equal(
+        readFileSync(filepath, 'utf8'),
+        body.replace('ready-for-agent', 'done'),
+        'lead-in kept'
+    )
+})
+
+test('markHuman rewrites the status line, not a quoted marker', t => {
+    const ticket = quotedMarkersTicket('ready-for-agent')
+
+    markHuman(ticket)
+
+    const onDisk = readFileSync(ticket.filepath, 'utf8')
+    t.equal(parseStatus(onDisk), HUMAN_STATUS, 'status line is human')
+    t.equal(
+        onDisk,
+        QUOTED_MARKERS_BODY.replace(
+            '**Status:** done',
+            `**Status:** ${HUMAN_STATUS}`
+        ),
+        'only the status line changed'
     )
 })
 

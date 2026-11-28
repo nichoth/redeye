@@ -22,6 +22,9 @@ Issues and specs for this repo live as markdown files in `.scratch/`.
   and ends at a blank line, the next `**Field:**` line, a heading or
   a checklist item. Example:
   `**Blocked by:** 01, 02, newsletter-audit 16 (shares the import route)`
+- A field marker counts only at the start of its line, after optional
+  indentation or a `-` list marker, so a marker quoted inside other text
+  is ignored
 - Comments and conversation history append to the bottom of the file under
   a `## Comments` heading
 
